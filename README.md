@@ -4,6 +4,9 @@ Fortran 2008 translations of numerical algorithms from R time-series packages.
 The implemented-package index links each translation to its detailed coverage,
 provenance, and licensing notes.
 
+The [API documentation](https://beliavsky.github.io/Time-Series/) is generated
+from the FORD comments embedded in the Fortran sources.
+
 ## Shared Infrastructure
 
 - `kind.f90`: shared `kind_mod` module defining the double-precision kind `dp`.
