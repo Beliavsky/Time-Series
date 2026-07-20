@@ -3,7 +3,7 @@
 program test_mts
    use kind_mod, only: dp
    use mts_mod
-   use time_series_random_mod, only: set_random_seed
+   use random_mod, only: set_random_seed
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
    implicit none
    type(mts_var_fit_t) :: fitted, selected
@@ -1072,9 +1072,9 @@ program test_mts
 contains
 
    subroutine check(ok, name)
-      ! Stop the test program when a named assertion fails.
-      logical, intent(in) :: ok
-      character(len=*), intent(in) :: name
+      !! Stop the test program when a named assertion fails.
+      logical, intent(in) :: ok !! Flag controlling ok.
+      character(len=*), intent(in) :: name !! Name.
       if (.not. ok) then
          print '(a)', 'FAILED: '//name
          error stop 1

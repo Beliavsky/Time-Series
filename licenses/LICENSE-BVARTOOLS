@@ -1,0 +1,11 @@
+bvartools Fortran translation license notice
+
+The algorithms in bvartools.f90 are translated from the bvartools R package,
+version 0.2.4.9000, by Franz X. Mohr.
+
+The upstream DESCRIPTION licenses bvartools under the GNU General Public
+License, version 2 or later. The translated source is distributed under the
+same terms using SPDX identifier GPL-2.0-or-later.
+
+GNU GPL 2.0:
+https://www.gnu.org/licenses/old-licenses/gpl-2.0.html

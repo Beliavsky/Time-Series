@@ -102,9 +102,9 @@ program test_varshrink
 contains
 
    subroutine assert_true(condition, label)
-      ! Stop the test program when a condition is false.
-      logical, intent(in) :: condition
-      character(len=*), intent(in) :: label
+      !! Stop the test program when a condition is false.
+      logical, intent(in) :: condition !! Flag controlling condition.
+      character(len=*), intent(in) :: label !! Label.
 
       if (.not. condition) then
          print *, 'FAILED: ', trim(label)

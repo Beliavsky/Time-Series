@@ -3,10 +3,11 @@
 ! Structured sparse-VAR algorithms translated from the R BigVAR package.
 module bigvar_mod
    use kind_mod, only: dp
-   use time_series_linalg_mod, only: symmetric_eigen, invert_matrix
-   use time_series_linalg_mod, only: symmetric_pseudoinverse, inverse_logdet
-   use time_series_stats_mod, only: normal_quantile
-   use time_series_random_mod, only: random_multivariate_normal_matrix
+   use linalg_mod, only: symmetric_eigen, invert_matrix
+   use linalg_mod, only: symmetric_pseudoinverse, inverse_logdet
+   use stats_mod, only: normal_quantile
+   use random_mod, only: random_multivariate_normal_matrix
+   use time_series_var_utils_mod, only: build_var_data, build_varx_data
    use bigtime_mod, only: bigtime_var_fit_t
    use bigtime_mod, only: bigtime_forecast_t
    use bigtime_mod, only: bigtime_simulation_t
@@ -423,8 +424,11 @@ contains
 
    pure elemental real(dp) function bigvar_mcp_update(score, lambda, gamma, &
       curvature) result(value)
-      ! Apply BigVAR's scalar MCP coordinate update.
-      real(dp), intent(in) :: score, lambda, gamma, curvature
+      !! Apply BigVAR's scalar MCP coordinate update.
+      real(dp), intent(in) :: score !! Score.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in) :: curvature !! Curvature.
       real(dp) :: magnitude, sign_value
 
       magnitude = abs(score)
@@ -441,8 +445,11 @@ contains
 
    pure elemental real(dp) function bigvar_scad_update(score, lambda, gamma, &
       curvature) result(value)
-      ! Apply BigVAR's scalar SCAD coordinate update.
-      real(dp), intent(in) :: score, lambda, gamma, curvature
+      !! Apply BigVAR's scalar SCAD coordinate update.
+      real(dp), intent(in) :: score !! Score.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in) :: curvature !! Curvature.
       real(dp) :: magnitude, sign_value
 
       magnitude = abs(score)
@@ -462,10 +469,13 @@ contains
 
    pure function bigvar_group_prox(values, threshold, structure, variables, &
       lag_order, alpha) result(out)
-      ! Apply a BigVAR group or sparse-group proximal operator.
-      real(dp), intent(in) :: values(:, :), threshold
-      integer, intent(in) :: structure, variables, lag_order
-      real(dp), intent(in), optional :: alpha
+      !! Apply a BigVAR group or sparse-group proximal operator.
+      real(dp), intent(in) :: values(:, :) !! Input values.
+      real(dp), intent(in) :: threshold !! Decision or truncation threshold.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: lag_order !! Model lag order.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
       real(dp) :: out(size(values, 1), size(values, 2))
       real(dp) :: group_norm, selected_alpha, shrinkage, weight
       integer :: group_structure
@@ -629,9 +639,13 @@ contains
 
    pure function bigvar_efx_prox(values, threshold, variables, ar_order, &
       x_variables, exogenous_order) result(out)
-      ! Apply BigVAR's endogenous-first nested VARX proximal operator.
-      real(dp), intent(in) :: values(:, :), threshold
-      integer, intent(in) :: variables, ar_order, x_variables, exogenous_order
+      !! Apply BigVAR's endogenous-first nested VARX proximal operator.
+      real(dp), intent(in) :: values(:, :) !! Input values.
+      real(dp), intent(in) :: threshold !! Decision or truncation threshold.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: x_variables !! X variables.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
       real(dp) :: out(size(values, 1), size(values, 2))
       real(dp) :: group_norm, shrinkage
       integer :: response, lag, ar_first, ar_last, x_first, x_last
@@ -681,18 +695,20 @@ contains
    pure function bigvar_structured_var(series, lag_order, lambda, structure, &
       tolerance, max_iterations, initial_phi, alpha, gamma, refit_fraction, &
       direct_horizon, minnesota_target, include_intercept) result(out)
-      ! Estimate a structured sparse VAR with accelerated proximal gradients.
-      real(dp), intent(in) :: series(:, :), lambda
-      integer, intent(in) :: lag_order, structure
-      real(dp), intent(in), optional :: tolerance
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: initial_phi(:, :)
-      real(dp), intent(in), optional :: alpha
-      real(dp), intent(in), optional :: gamma
-      real(dp), intent(in), optional :: refit_fraction
-      integer, intent(in), optional :: direct_horizon
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Estimate a structured sparse VAR with accelerated proximal gradients.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: initial_phi(:, :) !! Initial phi.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      integer, intent(in), optional :: direct_horizon !! Direct horizon.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_fit_t) :: out
       real(dp), allocatable :: response(:, :), original_response(:, :), design(:, :)
       real(dp), allocatable :: centered_response(:, :), centered_design(:, :)
@@ -878,18 +894,20 @@ contains
       structure, tolerance, max_iterations, warm_start, alpha, gamma, &
       refit_fraction, direct_horizon, minnesota_target, include_intercept) &
       result(out)
-      ! Estimate a warm-started path of BigVAR structured models.
-      real(dp), intent(in) :: series(:, :), lambdas(:)
-      integer, intent(in) :: lag_order, structure
-      real(dp), intent(in), optional :: tolerance
-      integer, intent(in), optional :: max_iterations
-      logical, intent(in), optional :: warm_start
-      real(dp), intent(in), optional :: alpha
-      real(dp), intent(in), optional :: gamma
-      real(dp), intent(in), optional :: refit_fraction
-      integer, intent(in), optional :: direct_horizon
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Estimate a warm-started path of BigVAR structured models.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: lambdas(:) !! Candidate penalty or shrinkage parameters.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: warm_start !! Flag controlling warm start.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      integer, intent(in), optional :: direct_horizon !! Direct horizon.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_path_t) :: out
       type(bigvar_fit_t) :: fit, penalized_fit
       real(dp), allocatable :: starting_phi(:, :)
@@ -1008,14 +1026,20 @@ contains
       alphas, structure, tolerance, max_iterations, warm_start, gamma, &
       refit_fraction, direct_horizon, minnesota_target, include_intercept) &
       result(out)
-      ! Estimate VAR paths with a distinct lambda grid for each alpha value.
-      real(dp), intent(in) :: series(:, :), lambdas(:, :), alphas(:)
-      integer, intent(in) :: lag_order, structure
-      real(dp), intent(in), optional :: tolerance, gamma, refit_fraction
-      integer, intent(in), optional :: max_iterations, direct_horizon
-      logical, intent(in), optional :: warm_start
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Estimate VAR paths with a distinct lambda grid for each alpha value.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: lambdas(:, :) !! Candidate penalty or shrinkage parameters.
+      real(dp), intent(in) :: alphas(:) !! Alphas.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      integer, intent(in), optional :: direct_horizon !! Direct horizon.
+      logical, intent(in), optional :: warm_start !! Flag controlling warm start.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_dual_path_t) :: out
       type(bigvar_path_t) :: path
       integer :: alpha_index, variables, predictors
@@ -1074,16 +1098,20 @@ contains
       structure, tolerance, max_iterations, initial_phi, alpha, gamma, &
       refit_fraction, direct_horizon, minnesota_target, include_intercept) &
       result(out)
-      ! Estimate a VAR with a separate penalty for each response equation.
-      real(dp), intent(in) :: series(:, :), lambdas(:)
-      integer, intent(in) :: lag_order, structure
-      real(dp), intent(in), optional :: tolerance, initial_phi(:, :)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: alpha, gamma
-      real(dp), intent(in), optional :: refit_fraction
-      integer, intent(in), optional :: direct_horizon
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Estimate a VAR with a separate penalty for each response equation.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: lambdas(:) !! Candidate penalty or shrinkage parameters.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: initial_phi(:, :) !! Initial phi.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      integer, intent(in), optional :: direct_horizon !! Direct horizon.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_fit_t) :: out
       real(dp), allocatable :: response(:, :), original_response(:, :), design(:, :)
       real(dp), allocatable :: centered_response(:, :), centered_design(:, :)
@@ -1251,16 +1279,20 @@ contains
       lambdas, structure, tolerance, max_iterations, warm_start, alpha, gamma, &
       refit_fraction, direct_horizon, minnesota_target, include_intercept) &
       result(out)
-      ! Estimate a warm-started path of response-specific VAR penalties.
-      real(dp), intent(in) :: series(:, :), lambdas(:, :)
-      integer, intent(in) :: lag_order, structure
-      real(dp), intent(in), optional :: tolerance, alpha, gamma
-      real(dp), intent(in), optional :: refit_fraction
-      integer, intent(in), optional :: direct_horizon
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
-      integer, intent(in), optional :: max_iterations
-      logical, intent(in), optional :: warm_start
+      !! Estimate a warm-started path of response-specific VAR penalties.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: lambdas(:, :) !! Candidate penalty or shrinkage parameters.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      integer, intent(in), optional :: direct_horizon !! Direct horizon.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: warm_start !! Flag controlling warm start.
       type(bigvar_separate_path_t) :: out
       type(bigvar_fit_t) :: fit, penalized_fit
       real(dp), allocatable :: starting_phi(:, :)
@@ -1365,14 +1397,17 @@ contains
    pure function bigvar_separate_lambda_grid(series, lag_order, structure, &
       grid_ratio, grid_size, alpha, direct_horizon, minnesota_target, linear, &
       include_intercept) result(lambdas)
-      ! Construct descending zero-model penalty grids for each response.
-      real(dp), intent(in) :: series(:, :), grid_ratio
-      integer, intent(in) :: lag_order, structure, grid_size
-      real(dp), intent(in), optional :: alpha
-      integer, intent(in), optional :: direct_horizon
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: linear
-      logical, intent(in), optional :: include_intercept
+      !! Construct descending zero-model penalty grids for each response.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: grid_ratio !! Grid ratio.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: grid_size !! Grid size.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      integer, intent(in), optional :: direct_horizon !! Direct horizon.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: linear !! Flag controlling linear.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       real(dp), allocatable :: lambdas(:, :)
       real(dp), allocatable :: response(:, :)
       real(dp), allocatable :: design(:, :)
@@ -1448,14 +1483,17 @@ contains
    pure function bigvar_lambda_grid(series, lag_order, structure, grid_ratio, &
       grid_size, alpha, direct_horizon, minnesota_target, linear, &
       include_intercept) result(lambdas)
-      ! Construct a descending grid whose first value gives the zero model.
-      real(dp), intent(in) :: series(:, :), grid_ratio
-      integer, intent(in) :: lag_order, structure, grid_size
-      real(dp), intent(in), optional :: alpha
-      integer, intent(in), optional :: direct_horizon
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: linear
-      logical, intent(in), optional :: include_intercept
+      !! Construct a descending grid whose first value gives the zero model.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: grid_ratio !! Grid ratio.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: grid_size !! Grid size.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      integer, intent(in), optional :: direct_horizon !! Direct horizon.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: linear !! Flag controlling linear.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       real(dp), allocatable :: lambdas(:)
       real(dp), allocatable :: response(:, :), design(:, :)
       real(dp), allocatable :: centered_response(:, :), centered_design(:, :)
@@ -1531,13 +1569,17 @@ contains
    pure function bigvar_lambda_alpha_grid(series, lag_order, structure, &
       grid_ratio, grid_size, alphas, direct_horizon, minnesota_target, linear, &
       include_intercept) result(lambdas)
-      ! Construct an alpha-specific matrix of descending VAR lambda grids.
-      real(dp), intent(in) :: series(:, :), grid_ratio, alphas(:)
-      integer, intent(in) :: lag_order, structure, grid_size
-      integer, intent(in), optional :: direct_horizon
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: linear
-      logical, intent(in), optional :: include_intercept
+      !! Construct an alpha-specific matrix of descending VAR lambda grids.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: grid_ratio !! Grid ratio.
+      real(dp), intent(in) :: alphas(:) !! Alphas.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: grid_size !! Grid size.
+      integer, intent(in), optional :: direct_horizon !! Direct horizon.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: linear !! Flag controlling linear.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       real(dp), allocatable :: lambdas(:, :)
       real(dp), allocatable :: column(:)
       integer :: alpha_index
@@ -1565,17 +1607,23 @@ contains
       exogenous_order, lambda, structure, tolerance, max_iterations, &
       initial_phi, initial_beta, alpha, gamma, refit_fraction, &
       contemporaneous, minnesota_target, include_intercept) result(out)
-      ! Estimate a BigVAR structured VARX with joint endogenous and exogenous updates.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :), lambda
-      integer, intent(in) :: ar_order, exogenous_order, structure
-      real(dp), intent(in), optional :: tolerance
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: initial_phi(:, :), initial_beta(:, :)
-      real(dp), intent(in), optional :: alpha, gamma
-      real(dp), intent(in), optional :: refit_fraction
-      logical, intent(in), optional :: contemporaneous
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Estimate a BigVAR structured VARX with joint endogenous and exogenous updates.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: initial_phi(:, :) !! Initial phi.
+      real(dp), intent(in), optional :: initial_beta(:, :) !! Initial beta.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: contemporaneous !! Flag controlling contemporaneous.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_varx_fit_t) :: out
       real(dp), allocatable :: response(:, :), ar_design(:, :), x_design(:, :)
       real(dp), allocatable :: centered_response(:, :), combined(:, :)
@@ -1809,16 +1857,22 @@ contains
       exogenous_order, lambdas, structure, tolerance, max_iterations, &
       warm_start, alpha, gamma, refit_fraction, contemporaneous, &
       minnesota_target, include_intercept) result(out)
-      ! Estimate a warm-started path of BigVAR structured VARX models.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :), lambdas(:)
-      integer, intent(in) :: ar_order, exogenous_order, structure
-      real(dp), intent(in), optional :: tolerance, alpha, gamma
-      real(dp), intent(in), optional :: refit_fraction
-      logical, intent(in), optional :: contemporaneous
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
-      integer, intent(in), optional :: max_iterations
-      logical, intent(in), optional :: warm_start
+      !! Estimate a warm-started path of BigVAR structured VARX models.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      real(dp), intent(in) :: lambdas(:) !! Candidate penalty or shrinkage parameters.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: contemporaneous !! Flag controlling contemporaneous.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: warm_start !! Flag controlling warm start.
       type(bigvar_varx_path_t) :: out
       type(bigvar_varx_fit_t) :: fit, penalized_fit
       real(dp), allocatable :: starting_phi(:, :), starting_beta(:, :)
@@ -1941,15 +1995,22 @@ contains
       ar_order, exogenous_order, lambdas, alphas, structure, tolerance, &
       max_iterations, warm_start, gamma, refit_fraction, contemporaneous, &
       minnesota_target, include_intercept) result(out)
-      ! Estimate VARX paths with a distinct lambda grid for each alpha value.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      real(dp), intent(in) :: lambdas(:, :), alphas(:)
-      integer, intent(in) :: ar_order, exogenous_order, structure
-      real(dp), intent(in), optional :: tolerance, gamma, refit_fraction
-      integer, intent(in), optional :: max_iterations
-      logical, intent(in), optional :: warm_start, contemporaneous
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Estimate VARX paths with a distinct lambda grid for each alpha value.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      real(dp), intent(in) :: lambdas(:, :) !! Candidate penalty or shrinkage parameters.
+      real(dp), intent(in) :: alphas(:) !! Alphas.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: warm_start !! Flag controlling warm start.
+      logical, intent(in), optional :: contemporaneous !! Flag controlling contemporaneous.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_varx_dual_path_t) :: out
       type(bigvar_varx_path_t) :: path
       integer :: alpha_index, variables, x_variables, x_blocks
@@ -2028,14 +2089,19 @@ contains
       exogenous_order, structure, grid_ratio, grid_size, alpha, &
       contemporaneous, minnesota_target, linear, include_intercept) &
       result(lambdas)
-      ! Construct a descending BigVAR VARX grid from the joint zero-model bound.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :), grid_ratio
-      integer, intent(in) :: ar_order, exogenous_order, structure, grid_size
-      real(dp), intent(in), optional :: alpha
-      logical, intent(in), optional :: contemporaneous
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: linear
-      logical, intent(in), optional :: include_intercept
+      !! Construct a descending BigVAR VARX grid from the joint zero-model bound.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      real(dp), intent(in) :: grid_ratio !! Grid ratio.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: grid_size !! Grid size.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      logical, intent(in), optional :: contemporaneous !! Flag controlling contemporaneous.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: linear !! Flag controlling linear.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       real(dp), allocatable :: lambdas(:)
       real(dp), allocatable :: response(:, :), ar_design(:, :), x_design(:, :)
       real(dp), allocatable :: combined(:, :), gradient(:, :)
@@ -2116,14 +2182,19 @@ contains
       exogenous_order, structure, grid_ratio, grid_size, alphas, &
       contemporaneous, minnesota_target, linear, include_intercept) &
       result(lambdas)
-      ! Construct an alpha-specific matrix of descending VARX lambda grids.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      real(dp), intent(in) :: grid_ratio, alphas(:)
-      integer, intent(in) :: ar_order, exogenous_order, structure, grid_size
-      logical, intent(in), optional :: contemporaneous
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: linear
-      logical, intent(in), optional :: include_intercept
+      !! Construct an alpha-specific matrix of descending VARX lambda grids.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      real(dp), intent(in) :: grid_ratio !! Grid ratio.
+      real(dp), intent(in) :: alphas(:) !! Alphas.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: grid_size !! Grid size.
+      logical, intent(in), optional :: contemporaneous !! Flag controlling contemporaneous.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: linear !! Flag controlling linear.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       real(dp), allocatable :: lambdas(:, :)
       real(dp), allocatable :: column(:)
       integer :: alpha_index
@@ -2149,10 +2220,11 @@ contains
    end function bigvar_varx_lambda_alpha_grid
 
    pure function bigvar_bgr(series, lag_order, tau, random_walk) result(out)
-      ! Estimate BigVAR's BGR Bayesian VAR from dummy observations.
-      real(dp), intent(in) :: series(:, :), tau
-      integer, intent(in) :: lag_order
-      logical, intent(in), optional :: random_walk(:)
+      !! Estimate BigVAR's BGR Bayesian VAR from dummy observations.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: tau !! Tau.
+      integer, intent(in) :: lag_order !! Model lag order.
+      logical, intent(in), optional :: random_walk(:) !! Flag controlling random walk.
       type(bigvar_fit_t) :: out
       real(dp), allocatable :: response(:, :), lag_design(:, :), design(:, :)
       real(dp), allocatable :: scales(:), means(:), indicator(:)
@@ -2255,10 +2327,11 @@ contains
 
    pure function bigvar_bgr_path(series, lag_order, tau, random_walk) &
       result(out)
-      ! Estimate BGR fits over a supplied prior-tightness grid.
-      real(dp), intent(in) :: series(:, :), tau(:)
-      integer, intent(in) :: lag_order
-      logical, intent(in), optional :: random_walk(:)
+      !! Estimate BGR fits over a supplied prior-tightness grid.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: tau(:) !! Tau.
+      integer, intent(in) :: lag_order !! Model lag order.
+      logical, intent(in), optional :: random_walk(:) !! Flag controlling random walk.
       type(bigvar_path_t) :: out
       type(bigvar_fit_t) :: fit
       integer :: index, variables, predictors
@@ -2300,8 +2373,9 @@ contains
    end function bigvar_bgr_path
 
    pure function bigvar_bgr_default_grid(variables, lag_order) result(tau)
-      ! Construct BigVAR's package-default BGR tightness grid.
-      integer, intent(in) :: variables, lag_order
+      !! Construct BigVAR's package-default BGR tightness grid.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: lag_order !! Model lag order.
       real(dp), allocatable :: tau(:)
       integer :: index
 
@@ -2317,10 +2391,10 @@ contains
    end function bigvar_bgr_default_grid
 
    pure function bigvar_forecast(fit, history, horizon) result(out)
-      ! Recursively forecast a BigVAR fit through the shared bigtime routine.
-      type(bigvar_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: history(:, :)
-      integer, intent(in) :: horizon
+      !! Recursively forecast a BigVAR fit through the shared bigtime routine.
+      type(bigvar_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: history(:, :) !! History.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(bigtime_forecast_t) :: out
       type(bigtime_var_fit_t) :: adapter
 
@@ -2347,9 +2421,9 @@ contains
    end function bigvar_forecast
 
    pure function bigvar_direct_forecast(fit, history) result(prediction)
-      ! Forecast the fitted direct horizon from the latest observed VAR lags.
-      type(bigvar_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: history(:, :)
+      !! Forecast the fitted direct horizon from the latest observed VAR lags.
+      type(bigvar_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: history(:, :) !! History.
       real(dp), allocatable :: prediction(:)
       real(dp), allocatable :: lag_vector(:)
       integer :: variables, lag
@@ -2370,8 +2444,8 @@ contains
    end function bigvar_direct_forecast
 
    pure function bigvar_innovation_covariance(residuals) result(covariance)
-      ! Estimate the innovation covariance using BigVAR's MLE divisor.
-      real(dp), intent(in) :: residuals(:, :)
+      !! Estimate the innovation covariance using BigVAR's MLE divisor.
+      real(dp), intent(in) :: residuals(:, :) !! Model residuals.
       real(dp), allocatable :: covariance(:, :)
       integer :: observations, variables
 
@@ -2389,9 +2463,11 @@ contains
 
    pure function bigvar_forecast_covariance(phi, lag_order, &
       innovation_covariance, horizon) result(covariance)
-      ! Propagate VAR innovation covariance through moving-average coefficients.
-      real(dp), intent(in) :: phi(:, :), innovation_covariance(:, :)
-      integer, intent(in) :: lag_order, horizon
+      !! Propagate VAR innovation covariance through moving-average coefficients.
+      real(dp), intent(in) :: phi(:, :) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: innovation_covariance(:, :) !! Innovation covariance matrix.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       real(dp), allocatable :: covariance(:, :, :)
       real(dp), allocatable :: psi(:, :, :), current(:, :)
       integer :: variables, step, lag
@@ -2428,11 +2504,11 @@ contains
 
    pure function bigvar_var_forecast_interval(fit, history, horizon, level) &
       result(out)
-      ! Forecast a VAR with horizon-specific covariance and marginal intervals.
-      type(bigvar_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: history(:, :)
-      integer, intent(in) :: horizon
-      real(dp), intent(in), optional :: level
+      !! Forecast a VAR with horizon-specific covariance and marginal intervals.
+      type(bigvar_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: history(:, :) !! History.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in), optional :: level !! Model level or confidence level.
       type(bigvar_interval_forecast_t) :: out
       type(bigtime_forecast_t) :: point
       real(dp) :: selected_level, cutoff
@@ -2484,11 +2560,12 @@ contains
 
    pure function bigvar_varx_forecast_interval(fit, endogenous_history, &
       exogenous_values, horizon, level) result(out)
-      ! Forecast VARX conditionally on exogenous values with normal intervals.
-      type(bigvar_varx_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: endogenous_history(:, :), exogenous_values(:, :)
-      integer, intent(in) :: horizon
-      real(dp), intent(in), optional :: level
+      !! Forecast VARX conditionally on exogenous values with normal intervals.
+      type(bigvar_varx_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: endogenous_history(:, :) !! Endogenous history.
+      real(dp), intent(in) :: exogenous_values(:, :) !! Exogenous values.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in), optional :: level !! Model level or confidence level.
       type(bigvar_interval_forecast_t) :: out
       type(bigtime_forecast_t) :: point
       real(dp) :: selected_level, cutoff
@@ -2537,10 +2614,11 @@ contains
 
    pure function bigvar_varx_forecast(fit, endogenous_history, &
       exogenous_values, horizon) result(out)
-      ! Forecast a VARX fit, including optional contemporaneous predictors.
-      type(bigvar_varx_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: endogenous_history(:, :), exogenous_values(:, :)
-      integer, intent(in) :: horizon
+      !! Forecast a VARX fit, including optional contemporaneous predictors.
+      type(bigvar_varx_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: endogenous_history(:, :) !! Endogenous history.
+      real(dp), intent(in) :: exogenous_values(:, :) !! Exogenous values.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(bigtime_forecast_t) :: out
       real(dp), allocatable :: working(:, :)
       integer :: observations, variables, x_variables
@@ -2602,10 +2680,10 @@ contains
    end function bigvar_varx_forecast
 
    pure function bigvar_relaxed_var(series, fit, refit_fraction) result(out)
-      ! Refit selected VAR coefficients by least squares and blend the result.
-      real(dp), intent(in) :: series(:, :)
-      type(bigvar_fit_t), intent(in) :: fit
-      real(dp), intent(in), optional :: refit_fraction
+      !! Refit selected VAR coefficients by least squares and blend the result.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      type(bigvar_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
       type(bigvar_fit_t) :: out
       real(dp), allocatable :: response(:, :), original_response(:, :)
       real(dp), allocatable :: design(:, :)
@@ -2673,10 +2751,11 @@ contains
 
    pure function bigvar_relaxed_varx(endogenous, exogenous, fit, &
       refit_fraction) result(out)
-      ! Refit selected VARX coefficients by least squares and blend the result.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      type(bigvar_varx_fit_t), intent(in) :: fit
-      real(dp), intent(in), optional :: refit_fraction
+      !! Refit selected VARX coefficients by least squares and blend the result.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      type(bigvar_varx_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
       type(bigvar_varx_fit_t) :: out
       real(dp), allocatable :: response(:, :), original_response(:, :)
       real(dp), allocatable :: ar_design(:, :), x_design(:, :)
@@ -2771,10 +2850,10 @@ contains
    end function bigvar_relaxed_varx
 
    pure function bigvar_forecast_loss(error, loss_type, delta) result(value)
-      ! Sum the selected BigVAR forecast loss over response components.
-      real(dp), intent(in) :: error(:)
-      integer, intent(in) :: loss_type
-      real(dp), intent(in), optional :: delta
+      !! Sum the selected BigVAR forecast loss over response components.
+      real(dp), intent(in) :: error(:) !! Error.
+      integer, intent(in) :: loss_type !! Loss type.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
       real(dp) :: value
       real(dp) :: selected_delta
 
@@ -2795,8 +2874,9 @@ contains
    end function bigvar_forecast_loss
 
    pure elemental real(dp) function huber_component(error, delta) result(value)
-      ! Return one component of the Huber forecast loss.
-      real(dp), intent(in) :: error, delta
+      !! Return one component of the Huber forecast loss.
+      real(dp), intent(in) :: error !! Error.
+      real(dp), intent(in) :: delta !! Model increment or differencing parameter.
 
       if (abs(error) <= delta) then
          value = 0.5_dp*error**2
@@ -2811,18 +2891,27 @@ contains
       gamma, random_walk, refit_fraction, recursive, minnesota_target, &
       include_intercept) &
       result(out)
-      ! Select BigVAR penalties by rolling multi-step forecast validation.
-      real(dp), intent(in) :: series(:, :), lambdas(:)
-      integer, intent(in) :: lag_order, structure, first_origin, last_origin
-      integer, intent(in) :: horizon
-      integer, intent(in), optional :: loss_type, window_size, max_iterations
-      real(dp), intent(in), optional :: delta, alphas(:), tolerance, gamma
-      real(dp), intent(in), optional :: refit_fraction
-      logical, intent(in), optional :: one_standard_error
-      logical, intent(in), optional :: random_walk(:)
-      logical, intent(in), optional :: recursive
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Select BigVAR penalties by rolling multi-step forecast validation.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: lambdas(:) !! Candidate penalty or shrinkage parameters.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: last_origin !! Last origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      integer, intent(in), optional :: window_size !! Window size.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
+      real(dp), intent(in), optional :: alphas(:) !! Alphas.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: one_standard_error !! Flag controlling one standard error.
+      logical, intent(in), optional :: random_walk(:) !! Flag controlling random walk.
+      logical, intent(in), optional :: recursive !! Flag controlling recursive.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_validation_t) :: out
       type(bigvar_fit_t) :: fit
       type(bigtime_forecast_t) :: forecast
@@ -2981,16 +3070,28 @@ contains
       horizon, loss_type, delta, one_standard_error, window_size, alphas, &
       tolerance, max_iterations, gamma, refit_fraction, contemporaneous, &
       minnesota_target, include_intercept) result(out)
-      ! Select BigVAR VARX penalties by rolling multi-step validation.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :), lambdas(:)
-      integer, intent(in) :: ar_order, exogenous_order, structure
-      integer, intent(in) :: first_origin, last_origin, horizon
-      integer, intent(in), optional :: loss_type, window_size, max_iterations
-      real(dp), intent(in), optional :: delta, alphas(:), tolerance, gamma
-      real(dp), intent(in), optional :: refit_fraction
-      logical, intent(in), optional :: one_standard_error, contemporaneous
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Select BigVAR VARX penalties by rolling multi-step validation.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      real(dp), intent(in) :: lambdas(:) !! Candidate penalty or shrinkage parameters.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: last_origin !! Last origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      integer, intent(in), optional :: window_size !! Window size.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
+      real(dp), intent(in), optional :: alphas(:) !! Alphas.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: one_standard_error !! Flag controlling one standard error.
+      logical, intent(in), optional :: contemporaneous !! Flag controlling contemporaneous.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_validation_t) :: out
       type(bigvar_varx_fit_t) :: fit
       type(bigtime_forecast_t) :: forecast
@@ -3136,17 +3237,26 @@ contains
       one_standard_error, window_size, alpha, tolerance, max_iterations, &
       gamma, refit_fraction, recursive, minnesota_target, include_intercept) &
       result(out)
-      ! Select a separate rolling-validation penalty for each VAR response.
-      real(dp), intent(in) :: series(:, :), lambdas(:, :)
-      integer, intent(in) :: lag_order, structure, first_origin, last_origin
-      integer, intent(in) :: horizon
-      integer, intent(in), optional :: loss_type, window_size, max_iterations
-      real(dp), intent(in), optional :: delta, alpha, tolerance, gamma
-      real(dp), intent(in), optional :: refit_fraction
-      logical, intent(in), optional :: one_standard_error
-      logical, intent(in), optional :: recursive
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Select a separate rolling-validation penalty for each VAR response.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: lambdas(:, :) !! Candidate penalty or shrinkage parameters.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: last_origin !! Last origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      integer, intent(in), optional :: window_size !! Window size.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: one_standard_error !! Flag controlling one standard error.
+      logical, intent(in), optional :: recursive !! Flag controlling recursive.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_separate_validation_t) :: out
       type(bigvar_fit_t) :: fit
       type(bigtime_forecast_t) :: forecast
@@ -3284,17 +3394,26 @@ contains
       first_origin, last_origin, horizon, loss_type, delta, window_size, &
       alpha, tolerance, max_iterations, gamma, random_walk, refit_fraction, &
       recursive, minnesota_target, include_intercept) result(out)
-      ! Refit a selected BigVAR model over a rolling evaluation period.
-      real(dp), intent(in) :: series(:, :), lambda
-      integer, intent(in) :: lag_order, structure, first_origin, last_origin
-      integer, intent(in) :: horizon
-      integer, intent(in), optional :: loss_type, window_size, max_iterations
-      real(dp), intent(in), optional :: delta, alpha, tolerance, gamma
-      real(dp), intent(in), optional :: refit_fraction
-      logical, intent(in), optional :: random_walk(:)
-      logical, intent(in), optional :: recursive
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Refit a selected BigVAR model over a rolling evaluation period.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: last_origin !! Last origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      integer, intent(in), optional :: window_size !! Window size.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: random_walk(:) !! Flag controlling random walk.
+      logical, intent(in), optional :: recursive !! Flag controlling recursive.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_validation_t) :: out
       real(dp) :: selected_delta, selected_alpha
       real(dp) :: selected_tolerance, selected_gamma
@@ -3347,16 +3466,27 @@ contains
       loss_type, delta, window_size, alpha, tolerance, max_iterations, gamma, &
       refit_fraction, contemporaneous, minnesota_target, include_intercept) &
       result(out)
-      ! Refit a selected BigVAR VARX model over a rolling evaluation period.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :), lambda
-      integer, intent(in) :: ar_order, exogenous_order, structure
-      integer, intent(in) :: first_origin, last_origin, horizon
-      integer, intent(in), optional :: loss_type, window_size, max_iterations
-      real(dp), intent(in), optional :: delta, alpha, tolerance, gamma
-      real(dp), intent(in), optional :: refit_fraction
-      logical, intent(in), optional :: contemporaneous
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Refit a selected BigVAR VARX model over a rolling evaluation period.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: last_origin !! Last origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      integer, intent(in), optional :: window_size !! Window size.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: contemporaneous !! Flag controlling contemporaneous.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_validation_t) :: out
       real(dp) :: selected_delta, selected_alpha
       real(dp) :: selected_tolerance, selected_gamma
@@ -3402,18 +3532,29 @@ contains
       delta, one_standard_error, selection_window, window_size, alphas, &
       tolerance, max_iterations, gamma, random_walk, refit_fraction, recursive, &
       minnesota_target, include_intercept) result(out)
-      ! Reselect VAR penalties cumulatively before every evaluation forecast.
-      real(dp), intent(in) :: series(:, :), lambdas(:)
-      integer, intent(in) :: lag_order, structure, validation_first_origin
-      integer, intent(in) :: first_origin, last_origin, horizon
-      integer, intent(in), optional :: loss_type, selection_window, window_size
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: delta, alphas(:), tolerance, gamma
-      real(dp), intent(in), optional :: refit_fraction
-      logical, intent(in), optional :: one_standard_error, random_walk(:)
-      logical, intent(in), optional :: recursive
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Reselect VAR penalties cumulatively before every evaluation forecast.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: lambdas(:) !! Candidate penalty or shrinkage parameters.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: validation_first_origin !! Validation first origin.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: last_origin !! Last origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      integer, intent(in), optional :: selection_window !! Selection window.
+      integer, intent(in), optional :: window_size !! Window size.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
+      real(dp), intent(in), optional :: alphas(:) !! Alphas.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: one_standard_error !! Flag controlling one standard error.
+      logical, intent(in), optional :: random_walk(:) !! Flag controlling random walk.
+      logical, intent(in), optional :: recursive !! Flag controlling recursive.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_reselection_t) :: out
       type(bigvar_validation_t) :: selection, evaluation
       integer :: origin, index, selection_first, selection_last
@@ -3459,16 +3600,28 @@ contains
       loss_type, delta, one_standard_error, selection_window, window_size, &
       tolerance, max_iterations, gamma, refit_fraction, recursive, &
       minnesota_target, include_intercept) result(out)
-      ! Reselect an alpha-specific VAR lambda surface at every origin.
-      real(dp), intent(in) :: series(:, :), lambdas(:, :), alphas(:)
-      integer, intent(in) :: lag_order, structure, validation_first_origin
-      integer, intent(in) :: first_origin, last_origin, horizon
-      integer, intent(in), optional :: loss_type, selection_window, window_size
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: delta, tolerance, gamma, refit_fraction
-      logical, intent(in), optional :: one_standard_error, recursive
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Reselect an alpha-specific VAR lambda surface at every origin.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: lambdas(:, :) !! Candidate penalty or shrinkage parameters.
+      real(dp), intent(in) :: alphas(:) !! Alphas.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: validation_first_origin !! Validation first origin.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: last_origin !! Last origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      integer, intent(in), optional :: selection_window !! Selection window.
+      integer, intent(in), optional :: window_size !! Window size.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: one_standard_error !! Flag controlling one standard error.
+      logical, intent(in), optional :: recursive !! Flag controlling recursive.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_reselection_t) :: out
       type(bigvar_validation_t) :: selection, evaluation
       integer :: origin, index, selection_first, selection_last
@@ -3519,18 +3672,30 @@ contains
       selection_window, window_size, alphas, tolerance, max_iterations, gamma, &
       refit_fraction, contemporaneous, minnesota_target, include_intercept) &
       result(out)
-      ! Reselect VARX penalties cumulatively before every evaluation forecast.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :), lambdas(:)
-      integer, intent(in) :: ar_order, exogenous_order, structure
-      integer, intent(in) :: validation_first_origin, first_origin, last_origin
-      integer, intent(in) :: horizon
-      integer, intent(in), optional :: loss_type, selection_window, window_size
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: delta, alphas(:), tolerance, gamma
-      real(dp), intent(in), optional :: refit_fraction
-      logical, intent(in), optional :: one_standard_error, contemporaneous
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Reselect VARX penalties cumulatively before every evaluation forecast.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      real(dp), intent(in) :: lambdas(:) !! Candidate penalty or shrinkage parameters.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: validation_first_origin !! Validation first origin.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: last_origin !! Last origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      integer, intent(in), optional :: selection_window !! Selection window.
+      integer, intent(in), optional :: window_size !! Window size.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
+      real(dp), intent(in), optional :: alphas(:) !! Alphas.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: one_standard_error !! Flag controlling one standard error.
+      logical, intent(in), optional :: contemporaneous !! Flag controlling contemporaneous.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_reselection_t) :: out
       type(bigvar_validation_t) :: selection, evaluation
       integer :: origin, index, selection_first, selection_last
@@ -3578,18 +3743,30 @@ contains
       selection_window, window_size, tolerance, max_iterations, gamma, &
       refit_fraction, contemporaneous, minnesota_target, include_intercept) &
       result(out)
-      ! Reselect an alpha-specific VARX lambda surface at every origin.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      real(dp), intent(in) :: lambdas(:, :), alphas(:)
-      integer, intent(in) :: ar_order, exogenous_order, structure
-      integer, intent(in) :: validation_first_origin, first_origin, last_origin
-      integer, intent(in) :: horizon
-      integer, intent(in), optional :: loss_type, selection_window, window_size
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: delta, tolerance, gamma, refit_fraction
-      logical, intent(in), optional :: one_standard_error, contemporaneous
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Reselect an alpha-specific VARX lambda surface at every origin.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      real(dp), intent(in) :: lambdas(:, :) !! Candidate penalty or shrinkage parameters.
+      real(dp), intent(in) :: alphas(:) !! Alphas.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: validation_first_origin !! Validation first origin.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: last_origin !! Last origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      integer, intent(in), optional :: selection_window !! Selection window.
+      integer, intent(in), optional :: window_size !! Window size.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: one_standard_error !! Flag controlling one standard error.
+      logical, intent(in), optional :: contemporaneous !! Flag controlling contemporaneous.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_reselection_t) :: out
       type(bigvar_validation_t) :: selection, evaluation
       integer :: origin, index, selection_first, selection_last
@@ -3639,17 +3816,28 @@ contains
       loss_type, delta, one_standard_error, selection_window, window_size, &
       alpha, tolerance, max_iterations, gamma, refit_fraction, recursive, &
       minnesota_target, include_intercept) result(out)
-      ! Reselect response-specific VAR penalties before every forecast.
-      real(dp), intent(in) :: series(:, :), lambdas(:, :)
-      integer, intent(in) :: lag_order, structure, validation_first_origin
-      integer, intent(in) :: first_origin, last_origin, horizon
-      integer, intent(in), optional :: loss_type, selection_window, window_size
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: delta, alpha, tolerance, gamma
-      real(dp), intent(in), optional :: refit_fraction
-      logical, intent(in), optional :: one_standard_error, recursive
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Reselect response-specific VAR penalties before every forecast.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: lambdas(:, :) !! Candidate penalty or shrinkage parameters.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: validation_first_origin !! Validation first origin.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: last_origin !! Last origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      integer, intent(in), optional :: selection_window !! Selection window.
+      integer, intent(in), optional :: window_size !! Window size.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: one_standard_error !! Flag controlling one standard error.
+      logical, intent(in), optional :: recursive !! Flag controlling recursive.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_reselection_t) :: out
       type(bigvar_separate_validation_t) :: selection
       type(bigvar_fit_t) :: fit
@@ -3734,13 +3922,15 @@ contains
    pure function bigvar_least_squares_varx(endogenous, exogenous, ar_order, &
       exogenous_order, forecast_horizon, information_criterion, &
       contemporaneous, include_intercept) result(out)
-      ! Fit a VARX model by stable least squares with an optional intercept.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      integer, intent(in) :: ar_order, exogenous_order
-      integer, intent(in), optional :: forecast_horizon
-      integer, intent(in), optional :: information_criterion
-      logical, intent(in), optional :: contemporaneous
-      logical, intent(in), optional :: include_intercept
+      !! Fit a VARX model by stable least squares with an optional intercept.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in), optional :: forecast_horizon !! Forecast horizon.
+      integer, intent(in), optional :: information_criterion !! Information criterion.
+      logical, intent(in), optional :: contemporaneous !! Flag controlling contemporaneous.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_ls_varx_fit_t) :: out
       real(dp), allocatable :: response(:, :), predictors(:, :), design(:, :)
       real(dp), allocatable :: normal_matrix(:, :), inverse(:, :)
@@ -3840,13 +4030,15 @@ contains
    pure function bigvar_varx_ic_select(endogenous, exogenous, max_ar_order, &
       max_exogenous_order, information_criterion, forecast_horizon, &
       contemporaneous, include_intercept) result(out)
-      ! Select least-squares VARX lag orders by AIC or BIC.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      integer, intent(in) :: max_ar_order, max_exogenous_order
-      integer, intent(in) :: information_criterion
-      integer, intent(in), optional :: forecast_horizon
-      logical, intent(in), optional :: contemporaneous
-      logical, intent(in), optional :: include_intercept
+      !! Select least-squares VARX lag orders by AIC or BIC.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      integer, intent(in) :: max_ar_order !! Maximum autoregressive order.
+      integer, intent(in) :: max_exogenous_order !! Maximum exogenous order.
+      integer, intent(in) :: information_criterion !! Information criterion.
+      integer, intent(in), optional :: forecast_horizon !! Forecast horizon.
+      logical, intent(in), optional :: contemporaneous !! Flag controlling contemporaneous.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_ic_search_t) :: out
       type(bigvar_ls_varx_fit_t) :: candidate
       real(dp) :: best_value
@@ -3891,10 +4083,11 @@ contains
 
    pure function bigvar_ls_varx_forecast(fit, endogenous_history, &
       exogenous_values, horizon) result(out)
-      ! Forecast a least-squares VARX fit recursively or at its direct horizon.
-      type(bigvar_ls_varx_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: endogenous_history(:, :), exogenous_values(:, :)
-      integer, intent(in) :: horizon
+      !! Forecast a least-squares VARX fit recursively or at its direct horizon.
+      type(bigvar_ls_varx_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: endogenous_history(:, :) !! Endogenous history.
+      real(dp), intent(in) :: exogenous_values(:, :) !! Exogenous values.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(bigtime_forecast_t) :: out
       real(dp), allocatable :: working(:, :)
       integer :: observations, variables, x_variables, step, lag, target
@@ -3982,15 +4175,20 @@ contains
       max_ar_order, max_exogenous_order, information_criterion, first_origin, &
       last_origin, horizon, iterated, loss_type, delta, contemporaneous, &
       include_intercept) result(out)
-      ! Evaluate rolling forecasts from AIC- or BIC-selected VARX models.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      integer, intent(in) :: max_ar_order, max_exogenous_order
-      integer, intent(in) :: information_criterion, first_origin, last_origin
-      integer, intent(in) :: horizon
-      logical, intent(in), optional :: iterated, contemporaneous
-      logical, intent(in), optional :: include_intercept
-      integer, intent(in), optional :: loss_type
-      real(dp), intent(in), optional :: delta
+      !! Evaluate rolling forecasts from AIC- or BIC-selected VARX models.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      integer, intent(in) :: max_ar_order !! Maximum autoregressive order.
+      integer, intent(in) :: max_exogenous_order !! Maximum exogenous order.
+      integer, intent(in) :: information_criterion !! Information criterion.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: last_origin !! Last origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      logical, intent(in), optional :: iterated !! Flag controlling iterated.
+      logical, intent(in), optional :: contemporaneous !! Flag controlling contemporaneous.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
       type(bigvar_ic_evaluation_t) :: out
       type(bigvar_ic_search_t) :: search
       type(bigtime_forecast_t) :: forecast
@@ -4058,11 +4256,14 @@ contains
 
    pure function bigvar_mean_benchmark(series, first_origin, last_origin, &
       horizon, loss_type, delta, window_size) result(out)
-      ! Evaluate expanding- or fixed-window unconditional-mean forecasts.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: first_origin, last_origin, horizon
-      integer, intent(in), optional :: loss_type, window_size
-      real(dp), intent(in), optional :: delta
+      !! Evaluate expanding- or fixed-window unconditional-mean forecasts.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: last_origin !! Last origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      integer, intent(in), optional :: window_size !! Window size.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
       type(bigvar_benchmark_t) :: out
       real(dp) :: selected_delta
       integer :: selected_loss, selected_window, origins
@@ -4106,11 +4307,13 @@ contains
 
    pure function bigvar_random_walk_benchmark(series, first_origin, &
       last_origin, horizon, loss_type, delta) result(out)
-      ! Evaluate no-drift random-walk forecasts over a range of origins.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: first_origin, last_origin, horizon
-      integer, intent(in), optional :: loss_type
-      real(dp), intent(in), optional :: delta
+      !! Evaluate no-drift random-walk forecasts over a range of origins.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: last_origin !! Last origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
       type(bigvar_benchmark_t) :: out
       real(dp) :: selected_delta
       integer :: selected_loss, origins, index, origin
@@ -4148,16 +4351,25 @@ contains
       max_iterations, gamma, refit_fraction, horizon, recursive, &
       first_observation, last_observation, minnesota_target, &
       include_intercept) result(out)
-      ! Select structured VAR penalties by leave-one-out cross-validation.
-      real(dp), intent(in) :: series(:, :), lambdas(:)
-      integer, intent(in) :: lag_order, structure
-      integer, intent(in), optional :: loss_type, max_iterations, horizon
-      integer, intent(in), optional :: first_observation, last_observation
-      real(dp), intent(in), optional :: delta, alphas(:), tolerance, gamma
-      real(dp), intent(in), optional :: refit_fraction
-      logical, intent(in), optional :: one_standard_error, recursive
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Select structured VAR penalties by leave-one-out cross-validation.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: lambdas(:) !! Candidate penalty or shrinkage parameters.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      integer, intent(in), optional :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: first_observation !! First observation.
+      integer, intent(in), optional :: last_observation !! Last observation.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
+      real(dp), intent(in), optional :: alphas(:) !! Alphas.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: one_standard_error !! Flag controlling one standard error.
+      logical, intent(in), optional :: recursive !! Flag controlling recursive.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_validation_t) :: out
       type(bigvar_path_t) :: path
       real(dp), allocatable :: reduced(:, :), alpha_grid(:), prediction(:)
@@ -4275,16 +4487,27 @@ contains
       one_standard_error, alphas, tolerance, max_iterations, gamma, &
       refit_fraction, horizon, contemporaneous, first_observation, &
       last_observation, minnesota_target, include_intercept) result(out)
-      ! Select structured VARX penalties by leave-one-out cross-validation.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :), lambdas(:)
-      integer, intent(in) :: ar_order, exogenous_order, structure
-      integer, intent(in), optional :: loss_type, max_iterations, horizon
-      integer, intent(in), optional :: first_observation, last_observation
-      real(dp), intent(in), optional :: delta, alphas(:), tolerance, gamma
-      real(dp), intent(in), optional :: refit_fraction
-      logical, intent(in), optional :: one_standard_error, contemporaneous
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Select structured VARX penalties by leave-one-out cross-validation.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      real(dp), intent(in) :: lambdas(:) !! Candidate penalty or shrinkage parameters.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      integer, intent(in), optional :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: first_observation !! First observation.
+      integer, intent(in), optional :: last_observation !! Last observation.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
+      real(dp), intent(in), optional :: alphas(:) !! Alphas.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: one_standard_error !! Flag controlling one standard error.
+      logical, intent(in), optional :: contemporaneous !! Flag controlling contemporaneous.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_validation_t) :: out
       type(bigvar_varx_path_t) :: path
       real(dp), allocatable :: reduced_y(:, :), reduced_x(:, :)
@@ -4419,16 +4642,25 @@ contains
       tolerance, max_iterations, gamma, refit_fraction, horizon, recursive, &
       first_observation, last_observation, minnesota_target, &
       include_intercept) result(out)
-      ! Select response-specific VAR penalties by leave-one-out validation.
-      real(dp), intent(in) :: series(:, :), lambdas(:, :)
-      integer, intent(in) :: lag_order, structure
-      integer, intent(in), optional :: loss_type, max_iterations, horizon
-      integer, intent(in), optional :: first_observation, last_observation
-      real(dp), intent(in), optional :: delta, alpha, tolerance, gamma
-      real(dp), intent(in), optional :: refit_fraction
-      logical, intent(in), optional :: one_standard_error, recursive
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Select response-specific VAR penalties by leave-one-out validation.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: lambdas(:, :) !! Candidate penalty or shrinkage parameters.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      integer, intent(in), optional :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: first_observation !! First observation.
+      integer, intent(in), optional :: last_observation !! Last observation.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: one_standard_error !! Flag controlling one standard error.
+      logical, intent(in), optional :: recursive !! Flag controlling recursive.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_separate_validation_t) :: out
       type(bigvar_separate_path_t) :: path
       real(dp), allocatable :: reduced(:, :), prediction(:)
@@ -4553,15 +4785,26 @@ contains
       one_standard_error, window_size, tolerance, max_iterations, gamma, &
       refit_fraction, recursive, minnesota_target, include_intercept) &
       result(out)
-      ! Validate alpha-specific VAR lambda paths over rolling forecast origins.
-      real(dp), intent(in) :: series(:, :), lambdas(:, :), alphas(:)
-      integer, intent(in) :: lag_order, structure, first_origin, last_origin
-      integer, intent(in) :: horizon
-      integer, intent(in), optional :: loss_type, window_size, max_iterations
-      real(dp), intent(in), optional :: delta, tolerance, gamma, refit_fraction
-      logical, intent(in), optional :: one_standard_error, recursive
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Validate alpha-specific VAR lambda paths over rolling forecast origins.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: lambdas(:, :) !! Candidate penalty or shrinkage parameters.
+      real(dp), intent(in) :: alphas(:) !! Alphas.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: last_origin !! Last origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      integer, intent(in), optional :: window_size !! Window size.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: one_standard_error !! Flag controlling one standard error.
+      logical, intent(in), optional :: recursive !! Flag controlling recursive.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_validation_t) :: out
       type(bigvar_validation_t) :: partial
       logical :: use_one_se
@@ -4607,16 +4850,28 @@ contains
       horizon, loss_type, delta, one_standard_error, window_size, tolerance, &
       max_iterations, gamma, refit_fraction, contemporaneous, &
       minnesota_target, include_intercept) result(out)
-      ! Validate alpha-specific VARX lambda paths over rolling forecast origins.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      real(dp), intent(in) :: lambdas(:, :), alphas(:)
-      integer, intent(in) :: ar_order, exogenous_order, structure
-      integer, intent(in) :: first_origin, last_origin, horizon
-      integer, intent(in), optional :: loss_type, window_size, max_iterations
-      real(dp), intent(in), optional :: delta, tolerance, gamma, refit_fraction
-      logical, intent(in), optional :: one_standard_error, contemporaneous
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Validate alpha-specific VARX lambda paths over rolling forecast origins.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      real(dp), intent(in) :: lambdas(:, :) !! Candidate penalty or shrinkage parameters.
+      real(dp), intent(in) :: alphas(:) !! Alphas.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: last_origin !! Last origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      integer, intent(in), optional :: window_size !! Window size.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: one_standard_error !! Flag controlling one standard error.
+      logical, intent(in), optional :: contemporaneous !! Flag controlling contemporaneous.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_validation_t) :: out
       type(bigvar_validation_t) :: partial
       logical :: use_one_se
@@ -4662,15 +4917,25 @@ contains
       max_iterations, gamma, refit_fraction, horizon, recursive, &
       first_observation, last_observation, minnesota_target, &
       include_intercept) result(out)
-      ! Validate alpha-specific VAR lambda paths by leave-one-out selection.
-      real(dp), intent(in) :: series(:, :), lambdas(:, :), alphas(:)
-      integer, intent(in) :: lag_order, structure
-      integer, intent(in), optional :: loss_type, max_iterations, horizon
-      integer, intent(in), optional :: first_observation, last_observation
-      real(dp), intent(in), optional :: delta, tolerance, gamma, refit_fraction
-      logical, intent(in), optional :: one_standard_error, recursive
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Validate alpha-specific VAR lambda paths by leave-one-out selection.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: lambdas(:, :) !! Candidate penalty or shrinkage parameters.
+      real(dp), intent(in) :: alphas(:) !! Alphas.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      integer, intent(in), optional :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: first_observation !! First observation.
+      integer, intent(in), optional :: last_observation !! Last observation.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: one_standard_error !! Flag controlling one standard error.
+      logical, intent(in), optional :: recursive !! Flag controlling recursive.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_validation_t) :: out
       type(bigvar_validation_t) :: partial
       logical :: use_one_se
@@ -4717,16 +4982,27 @@ contains
       one_standard_error, tolerance, max_iterations, gamma, refit_fraction, &
       horizon, contemporaneous, first_observation, last_observation, &
       minnesota_target, include_intercept) result(out)
-      ! Validate alpha-specific VARX paths by leave-one-out selection.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      real(dp), intent(in) :: lambdas(:, :), alphas(:)
-      integer, intent(in) :: ar_order, exogenous_order, structure
-      integer, intent(in), optional :: loss_type, max_iterations, horizon
-      integer, intent(in), optional :: first_observation, last_observation
-      real(dp), intent(in), optional :: delta, tolerance, gamma, refit_fraction
-      logical, intent(in), optional :: one_standard_error, contemporaneous
-      real(dp), intent(in), optional :: minnesota_target(:)
-      logical, intent(in), optional :: include_intercept
+      !! Validate alpha-specific VARX paths by leave-one-out selection.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      real(dp), intent(in) :: lambdas(:, :) !! Candidate penalty or shrinkage parameters.
+      real(dp), intent(in) :: alphas(:) !! Alphas.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in), optional :: loss_type !! Loss type.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      integer, intent(in), optional :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: first_observation !! First observation.
+      integer, intent(in), optional :: last_observation !! Last observation.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in), optional :: refit_fraction !! Refit fraction.
+      logical, intent(in), optional :: one_standard_error !! Flag controlling one standard error.
+      logical, intent(in), optional :: contemporaneous !! Flag controlling contemporaneous.
+      real(dp), intent(in), optional :: minnesota_target(:) !! Minnesota target.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
       type(bigvar_validation_t) :: out
       type(bigvar_validation_t) :: partial
       logical :: use_one_se
@@ -4770,9 +5046,9 @@ contains
    end function bigvar_varx_validate_loo_dual
 
    pure function bigvar_stability(fit, margin) result(out)
-      ! Diagnose BigVAR companion roots through the shared bigtime routine.
-      type(bigvar_fit_t), intent(in) :: fit
-      real(dp), intent(in), optional :: margin
+      !! Diagnose BigVAR companion roots through the shared bigtime routine.
+      type(bigvar_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in), optional :: margin !! Margin.
       type(bigtime_stability_t) :: out
       real(dp) :: selected_margin
 
@@ -4786,9 +5062,9 @@ contains
    end function bigvar_stability
 
    pure function bigvar_var_to_companion(phi, lag_order) result(companion)
-      ! Convert lag-major VAR coefficients to multiple companion form.
-      real(dp), intent(in) :: phi(:, :)
-      integer, intent(in) :: lag_order
+      !! Convert lag-major VAR coefficients to multiple companion form.
+      real(dp), intent(in) :: phi(:, :) !! Autoregressive or model coefficient.
+      integer, intent(in) :: lag_order !! Model lag order.
       real(dp), allocatable :: companion(:, :)
       integer :: variables
 
@@ -4803,11 +5079,13 @@ contains
 
    pure function bigvar_var_simulate_from_innovations(phi, innovations, &
       burnin, intercept, initial_state, innovation_covariance) result(out)
-      ! Simulate a BigVAR recursion from supplied innovations.
-      real(dp), intent(in) :: phi(:, :), innovations(:, :)
-      integer, intent(in), optional :: burnin
-      real(dp), intent(in), optional :: intercept(:), initial_state(:)
-      real(dp), intent(in), optional :: innovation_covariance(:, :)
+      !! Simulate a BigVAR recursion from supplied innovations.
+      real(dp), intent(in) :: phi(:, :) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: innovations(:, :) !! Model innovations.
+      integer, intent(in), optional :: burnin !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: intercept(:) !! Model intercept.
+      real(dp), intent(in), optional :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in), optional :: innovation_covariance(:, :) !! Innovation covariance matrix.
       type(bigvar_simulation_t) :: out
       type(bigtime_simulation_t) :: shared
       real(dp), allocatable :: selected_intercept(:), selected_state(:)
@@ -4863,11 +5141,13 @@ contains
 
    function bigvar_var_simulate(phi, innovation_covariance, periods, burnin, &
       intercept, initial_state) result(out)
-      ! Simulate a stationary Gaussian VAR with BigVAR's default burn-in.
-      real(dp), intent(in) :: phi(:, :), innovation_covariance(:, :)
-      integer, intent(in) :: periods
-      integer, intent(in), optional :: burnin
-      real(dp), intent(in), optional :: intercept(:), initial_state(:)
+      !! Simulate a stationary Gaussian VAR with BigVAR's default burn-in.
+      real(dp), intent(in) :: phi(:, :) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: innovation_covariance(:, :) !! Innovation covariance matrix.
+      integer, intent(in) :: periods !! Periods.
+      integer, intent(in), optional :: burnin !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: intercept(:) !! Model intercept.
+      real(dp), intent(in), optional :: initial_state(:) !! Initial state vector.
       type(bigvar_simulation_t) :: out
       type(bigtime_stability_t) :: stability
       real(dp), allocatable :: innovations(:, :), zero(:)
@@ -4906,10 +5186,15 @@ contains
 
    pure subroutine initialize_validation(out, origins, candidates, variables, &
       first_origin, last_origin, horizon, loss_type)
-      ! Allocate and initialize a rolling validation result.
-      type(bigvar_validation_t), intent(out) :: out
-      integer, intent(in) :: origins, candidates, variables
-      integer, intent(in) :: first_origin, last_origin, horizon, loss_type
+      !! Allocate and initialize a rolling validation result.
+      type(bigvar_validation_t), intent(out) :: out !! Procedure result.
+      integer, intent(in) :: origins !! Origins.
+      integer, intent(in) :: candidates !! Candidates.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: last_origin !! Last origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: loss_type !! Loss type.
 
       allocate(out%loss(origins, candidates))
       allocate(out%forecasts(origins, candidates, variables))
@@ -4933,11 +5218,15 @@ contains
 
    pure subroutine initialize_reselection(out, first_origin, last_origin, &
       horizon, validation_first_origin, variables, selections, loss_type)
-      ! Allocate a rolling-reselection result and initialize its metadata.
-      type(bigvar_reselection_t), intent(out) :: out
-      integer, intent(in) :: first_origin, last_origin, horizon
-      integer, intent(in) :: validation_first_origin, variables, selections
-      integer, intent(in), optional :: loss_type
+      !! Allocate a rolling-reselection result and initialize its metadata.
+      type(bigvar_reselection_t), intent(out) :: out !! Procedure result.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: last_origin !! Last origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: validation_first_origin !! Validation first origin.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: selections !! Selections.
+      integer, intent(in), optional :: loss_type !! Loss type.
       integer :: origins
 
       origins = last_origin - first_origin + 1
@@ -4977,10 +5266,11 @@ contains
    end subroutine initialize_reselection
 
    pure subroutine store_joint_reselection(out, index, selection, evaluation)
-      ! Store one jointly selected penalty and its evaluation forecast.
-      type(bigvar_reselection_t), intent(inout) :: out
-      integer, intent(in) :: index
-      type(bigvar_validation_t), intent(in) :: selection, evaluation
+      !! Store one jointly selected penalty and its evaluation forecast.
+      type(bigvar_reselection_t), intent(inout) :: out !! Procedure result, updated in place.
+      integer, intent(in) :: index !! Element or observation index.
+      type(bigvar_validation_t), intent(in) :: selection !! Selection.
+      type(bigvar_validation_t), intent(in) :: evaluation !! Evaluation.
 
       if (.not. allocated(evaluation%valid)) return
       if (.not. evaluation%valid(1, 1)) return
@@ -4998,8 +5288,8 @@ contains
    end subroutine store_joint_reselection
 
    pure subroutine finalize_reselection(out)
-      ! Set the aggregate status after all rolling-reselection origins.
-      type(bigvar_reselection_t), intent(inout) :: out
+      !! Set the aggregate status after all rolling-reselection origins.
+      type(bigvar_reselection_t), intent(inout) :: out !! Procedure result, updated in place.
 
       if (.not. any(out%valid)) then
          out%info = 2
@@ -5011,9 +5301,10 @@ contains
    end subroutine finalize_reselection
 
    pure subroutine initialize_benchmark(out, origins, variables)
-      ! Allocate benchmark forecasts and losses while retaining metadata.
-      type(bigvar_benchmark_t), intent(inout) :: out
-      integer, intent(in) :: origins, variables
+      !! Allocate benchmark forecasts and losses while retaining metadata.
+      type(bigvar_benchmark_t), intent(inout) :: out !! Procedure result, updated in place.
+      integer, intent(in) :: origins !! Origins.
+      integer, intent(in) :: variables !! Number or indices of variables.
 
       allocate(out%loss(origins), out%forecasts(origins, variables))
       allocate(out%valid(origins))
@@ -5023,8 +5314,8 @@ contains
    end subroutine initialize_benchmark
 
    pure subroutine summarize_benchmark(out)
-      ! Compute the mean loss and its standard error over valid origins.
-      type(bigvar_benchmark_t), intent(inout) :: out
+      !! Compute the mean loss and its standard error over valid origins.
+      type(bigvar_benchmark_t), intent(inout) :: out !! Procedure result, updated in place.
       real(dp) :: sum_squares
       integer :: valid_count, index
 
@@ -5054,9 +5345,10 @@ contains
    end subroutine summarize_benchmark
 
    pure subroutine fill_candidate_grid(out, lambdas, alphas)
-      ! Store candidates with lambda varying fastest within each alpha.
-      type(bigvar_validation_t), intent(inout) :: out
-      real(dp), intent(in) :: lambdas(:), alphas(:)
+      !! Store candidates with lambda varying fastest within each alpha.
+      type(bigvar_validation_t), intent(inout) :: out !! Procedure result, updated in place.
+      real(dp), intent(in) :: lambdas(:) !! Candidate penalty or shrinkage parameters.
+      real(dp), intent(in) :: alphas(:) !! Alphas.
       integer :: alpha_index, lambda_index, candidate
 
       do alpha_index = 1, size(alphas)
@@ -5069,9 +5361,10 @@ contains
    end subroutine fill_candidate_grid
 
    pure subroutine configure_dual_grid(out, lambdas, alphas)
-      ! Store an alpha-specific lambda matrix and its flattened candidates.
-      type(bigvar_validation_t), intent(inout) :: out
-      real(dp), intent(in) :: lambdas(:, :), alphas(:)
+      !! Store an alpha-specific lambda matrix and its flattened candidates.
+      type(bigvar_validation_t), intent(inout) :: out !! Procedure result, updated in place.
+      real(dp), intent(in) :: lambdas(:, :) !! Candidate penalty or shrinkage parameters.
+      real(dp), intent(in) :: alphas(:) !! Alphas.
       integer :: alpha_index, lambda_index, candidate
 
       allocate(out%lambda_grid(size(lambdas, 1), size(lambdas, 2)))
@@ -5091,10 +5384,11 @@ contains
 
    pure subroutine copy_validation_candidates(out, partial, first_candidate, &
       last_candidate)
-      ! Copy one alpha column of validation results into a combined surface.
-      type(bigvar_validation_t), intent(inout) :: out
-      type(bigvar_validation_t), intent(in) :: partial
-      integer, intent(in) :: first_candidate, last_candidate
+      !! Copy one alpha column of validation results into a combined surface.
+      type(bigvar_validation_t), intent(inout) :: out !! Procedure result, updated in place.
+      type(bigvar_validation_t), intent(in) :: partial !! Partial.
+      integer, intent(in) :: first_candidate !! First candidate.
+      integer, intent(in) :: last_candidate !! Last candidate.
 
       out%loss(:, first_candidate:last_candidate) = partial%loss
       out%forecasts(:, first_candidate:last_candidate, :) = partial%forecasts
@@ -5103,9 +5397,9 @@ contains
    end subroutine copy_validation_candidates
 
    pure subroutine summarize_dual_validation(out, use_one_se)
-      ! Summarize a flattened dual grid and recover its surface indices.
-      type(bigvar_validation_t), intent(inout) :: out
-      logical, intent(in) :: use_one_se
+      !! Summarize a flattened dual grid and recover its surface indices.
+      type(bigvar_validation_t), intent(inout) :: out !! Procedure result, updated in place.
+      logical, intent(in) :: use_one_se !! Whether to use the one se.
       integer :: lambda_count
 
       call summarize_validation(out, use_one_se)
@@ -5125,9 +5419,11 @@ contains
 
    pure subroutine split_candidate_index(candidate, lambda_count, lambda_index, &
       alpha_index)
-      ! Convert a lambda-fast candidate index into two surface indices.
-      integer, intent(in) :: candidate, lambda_count
-      integer, intent(out) :: lambda_index, alpha_index
+      !! Convert a lambda-fast candidate index into two surface indices.
+      integer, intent(in) :: candidate !! Candidate.
+      integer, intent(in) :: lambda_count !! Number of lambda.
+      integer, intent(out) :: lambda_index !! Index of lambda.
+      integer, intent(out) :: alpha_index !! Index of alpha.
 
       lambda_index = modulo(candidate - 1, lambda_count) + 1
       alpha_index = (candidate - 1)/lambda_count + 1
@@ -5135,9 +5431,10 @@ contains
 
    pure logical function valid_dual_grid(lambdas, alphas, structure) &
       result(value)
-      ! Check dimensions and parameter ranges for alpha-specific lambda grids.
-      real(dp), intent(in) :: lambdas(:, :), alphas(:)
-      integer, intent(in) :: structure
+      !! Check dimensions and parameter ranges for alpha-specific lambda grids.
+      real(dp), intent(in) :: lambdas(:, :) !! Candidate penalty or shrinkage parameters.
+      real(dp), intent(in) :: alphas(:) !! Alphas.
+      integer, intent(in) :: structure !! Model-structure specification.
 
       value = size(lambdas, 1) > 0 .and. &
          size(lambdas, 2) == size(alphas) .and. size(alphas) > 0 .and. &
@@ -5146,10 +5443,11 @@ contains
    end function valid_dual_grid
 
    pure subroutine fill_lambda_grid(values, maximum_lambda, grid_ratio, linear)
-      ! Fill a descending lambda grid with linear or geometric spacing.
-      real(dp), intent(out) :: values(:)
-      real(dp), intent(in) :: maximum_lambda, grid_ratio
-      logical, intent(in) :: linear
+      !! Fill a descending lambda grid with linear or geometric spacing.
+      real(dp), intent(out) :: values(:) !! Input values.
+      real(dp), intent(in) :: maximum_lambda !! Maximum lambda.
+      real(dp), intent(in) :: grid_ratio !! Grid ratio.
+      logical, intent(in) :: linear !! Flag controlling linear.
       real(dp) :: fraction, minimum_lambda
       integer :: index
 
@@ -5170,9 +5468,9 @@ contains
    end subroutine fill_lambda_grid
 
    pure subroutine summarize_validation(out, use_one_se)
-      ! Compute validation summaries and BigVAR's one-standard-error choice.
-      type(bigvar_validation_t), intent(inout) :: out
-      logical, intent(in) :: use_one_se
+      !! Compute validation summaries and BigVAR's one-standard-error choice.
+      type(bigvar_validation_t), intent(inout) :: out !! Procedure result, updated in place.
+      logical, intent(in) :: use_one_se !! Whether to use the one se.
       real(dp) :: mean_value, sum_squares, pooled_mean, threshold
       real(dp) :: minimum_loss, tie_tolerance
       integer :: candidate, observation, valid_count, pooled_count
@@ -5245,9 +5543,9 @@ contains
    end subroutine summarize_validation
 
    pure subroutine summarize_separate_validation(out, use_one_se)
-      ! Summarize and select each response's rolling penalty independently.
-      type(bigvar_separate_validation_t), intent(inout) :: out
-      logical, intent(in) :: use_one_se
+      !! Summarize and select each response's rolling penalty independently.
+      type(bigvar_separate_validation_t), intent(inout) :: out !! Procedure result, updated in place.
+      logical, intent(in) :: use_one_se !! Whether to use the one se.
       real(dp) :: mean_value, sum_squares, minimum_loss, threshold
       real(dp) :: tie_tolerance
       integer :: response, candidate, observation, valid_count
@@ -5312,10 +5610,15 @@ contains
 
    pure function varx_prox(values, threshold, structure, variables, ar_order, &
       x_variables, exogenous_order, alpha) result(out)
-      ! Apply BigVAR's joint endogenous and exogenous VARX proximal operator.
-      real(dp), intent(in) :: values(:, :), threshold, alpha
-      integer, intent(in) :: structure, variables, ar_order
-      integer, intent(in) :: x_variables, exogenous_order
+      !! Apply BigVAR's joint endogenous and exogenous VARX proximal operator.
+      real(dp), intent(in) :: values(:, :) !! Input values.
+      real(dp), intent(in) :: threshold !! Decision or truncation threshold.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: x_variables !! X variables.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
       real(dp) :: out(size(values, 1), size(values, 2))
       real(dp) :: group_norm, group_threshold
       integer :: ar_predictors, column
@@ -5355,11 +5658,15 @@ contains
 
    pure real(dp) function varx_penalty(phi, beta, structure, variables, &
       ar_order, x_variables, exogenous_order, alpha) result(value)
-      ! Evaluate BigVAR's joint VARX structured penalty.
-      real(dp), intent(in) :: phi(:, :), beta(:, :)
-      integer, intent(in) :: structure, variables, ar_order
-      integer, intent(in) :: x_variables, exogenous_order
-      real(dp), intent(in) :: alpha
+      !! Evaluate BigVAR's joint VARX structured penalty.
+      real(dp), intent(in) :: phi(:, :) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: beta(:, :) !! Regression or model coefficients.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: x_variables !! X variables.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
       real(dp) :: x_weight
       integer :: column
 
@@ -5390,9 +5697,13 @@ contains
 
    pure real(dp) function efx_penalty(phi, beta, variables, ar_order, &
       x_variables, exogenous_order) result(value)
-      ! Evaluate BigVAR's endogenous-first nested VARX penalty.
-      real(dp), intent(in) :: phi(:, :), beta(:, :)
-      integer, intent(in) :: variables, ar_order, x_variables, exogenous_order
+      !! Evaluate BigVAR's endogenous-first nested VARX penalty.
+      real(dp), intent(in) :: phi(:, :) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: beta(:, :) !! Regression or model coefficients.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: x_variables !! X variables.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
       real(dp) :: joint_norm
       integer :: response, lag, ar_first, ar_last, x_first, x_last
 
@@ -5417,8 +5728,8 @@ contains
    end function efx_penalty
 
    pure integer function count_active_x_groups(beta) result(value)
-      ! Count active response-vector groups in an exogenous coefficient block.
-      real(dp), intent(in) :: beta(:, :)
+      !! Count active response-vector groups in an exogenous coefficient block.
+      real(dp), intent(in) :: beta(:, :) !! Regression or model coefficients.
       real(dp), parameter :: threshold = 100.0_dp*epsilon(1.0_dp)
       integer :: column
 
@@ -5430,9 +5741,13 @@ contains
 
    pure integer function count_active_efx_groups(phi, beta, variables, &
       ar_order, x_variables, exogenous_order) result(value)
-      ! Count active nested groups in an EFX coefficient estimate.
-      real(dp), intent(in) :: phi(:, :), beta(:, :)
-      integer, intent(in) :: variables, ar_order, x_variables, exogenous_order
+      !! Count active nested groups in an EFX coefficient estimate.
+      real(dp), intent(in) :: phi(:, :) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: beta(:, :) !! Regression or model coefficients.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: x_variables !! X variables.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
       real(dp), parameter :: threshold = 100.0_dp*epsilon(1.0_dp)
       integer :: response, lag, ar_first, ar_last, x_first, x_last
 
@@ -5459,10 +5774,14 @@ contains
 
    pure real(dp) function varx_zero_model_bound(gradient, structure, variables, &
       ar_order, x_variables, exogenous_order, alpha) result(value)
-      ! Find the smallest joint VARX penalty producing an all-zero update.
-      real(dp), intent(in) :: gradient(:, :), alpha
-      integer, intent(in) :: structure, variables, ar_order
-      integer, intent(in) :: x_variables, exogenous_order
+      !! Find the smallest joint VARX penalty producing an all-zero update.
+      real(dp), intent(in) :: gradient(:, :) !! Gradient.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: x_variables !! X variables.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
       real(dp) :: lower, upper, midpoint
       integer :: iteration
 
@@ -5486,10 +5805,15 @@ contains
 
    pure logical function varx_prox_is_zero(values, threshold, structure, &
       variables, ar_order, x_variables, exogenous_order, alpha) result(value)
-      ! Test whether a joint VARX proximal update is identically zero.
-      real(dp), intent(in) :: values(:, :), threshold, alpha
-      integer, intent(in) :: structure, variables, ar_order
-      integer, intent(in) :: x_variables, exogenous_order
+      !! Test whether a joint VARX proximal update is identically zero.
+      real(dp), intent(in) :: values(:, :) !! Input values.
+      real(dp), intent(in) :: threshold !! Decision or truncation threshold.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: x_variables !! X variables.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
       real(dp) :: transformed(size(values, 1), size(values, 2))
 
       transformed = varx_prox(values, threshold, structure, variables, &
@@ -5499,9 +5823,10 @@ contains
    end function varx_prox_is_zero
 
    pure subroutine shrink_block(block, threshold, block_norm)
-      ! Shrink one nonoverlapping coefficient block toward zero.
-      real(dp), intent(inout) :: block(:, :)
-      real(dp), intent(in) :: threshold, block_norm
+      !! Shrink one nonoverlapping coefficient block toward zero.
+      real(dp), intent(inout) :: block(:, :) !! Block, updated in place.
+      real(dp), intent(in) :: threshold !! Decision or truncation threshold.
+      real(dp), intent(in) :: block_norm !! Block norm.
       real(dp) :: shrinkage
 
       if (block_norm <= threshold) then
@@ -5514,8 +5839,10 @@ contains
 
    pure function relaxed_coefficients(response, design, coefficient) &
       result(out)
-      ! Refit each response on its selected coefficient support.
-      real(dp), intent(in) :: response(:, :), design(:, :), coefficient(:, :)
+      !! Refit each response on its selected coefficient support.
+      real(dp), intent(in) :: response(:, :) !! Response observations.
+      real(dp), intent(in) :: design(:, :) !! Design.
+      real(dp), intent(in) :: coefficient(:, :) !! Coefficient.
       real(dp) :: out(size(coefficient, 1), size(coefficient, 2))
       real(dp), allocatable :: selected_design(:, :), normal_matrix(:, :)
       real(dp), allocatable :: inverse(:, :), right_hand_side(:), estimate(:)
@@ -5551,13 +5878,17 @@ contains
    pure subroutine nonconvex_coordinate_descent(response, design, coefficient, &
       lambda, gamma, structure, tolerance, max_iterations, iterations, &
       converged)
-      ! Fit MCP or SCAD coefficients by cyclic coordinate descent.
-      real(dp), intent(in) :: response(:, :), design(:, :)
-      real(dp), intent(inout) :: coefficient(:, :)
-      real(dp), intent(in) :: lambda, gamma, tolerance
-      integer, intent(in) :: structure, max_iterations
-      integer, intent(out) :: iterations
-      logical, intent(out) :: converged
+      !! Fit MCP or SCAD coefficients by cyclic coordinate descent.
+      real(dp), intent(in) :: response(:, :) !! Response observations.
+      real(dp), intent(in) :: design(:, :) !! Design.
+      real(dp), intent(inout) :: coefficient(:, :) !! Coefficient, updated in place.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      integer, intent(out) :: iterations !! Number of algorithm iterations.
+      logical, intent(out) :: converged !! Flag controlling converged.
       real(dp), allocatable :: residual(:), curvature(:)
       real(dp) :: score, old_value, new_value, shift, maximum_shift
       real(dp) :: response_scale
@@ -5613,13 +5944,17 @@ contains
    pure subroutine nonconvex_coordinate_descent_separate(response, design, &
       coefficient, lambdas, gamma, structure, tolerance, max_iterations, &
       iterations, converged)
-      ! Fit MCP or SCAD with a distinct coordinate penalty per response.
-      real(dp), intent(in) :: response(:, :), design(:, :), lambdas(:)
-      real(dp), intent(inout) :: coefficient(:, :)
-      real(dp), intent(in) :: gamma, tolerance
-      integer, intent(in) :: structure, max_iterations
-      integer, intent(out) :: iterations
-      logical, intent(out) :: converged
+      !! Fit MCP or SCAD with a distinct coordinate penalty per response.
+      real(dp), intent(in) :: response(:, :) !! Response observations.
+      real(dp), intent(in) :: design(:, :) !! Design.
+      real(dp), intent(in) :: lambdas(:) !! Candidate penalty or shrinkage parameters.
+      real(dp), intent(inout) :: coefficient(:, :) !! Coefficient, updated in place.
+      real(dp), intent(in) :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      integer, intent(out) :: iterations !! Number of algorithm iterations.
+      logical, intent(out) :: converged !! Flag controlling converged.
       real(dp), allocatable :: residual(:), curvature(:)
       real(dp) :: score, old_value, new_value, shift, maximum_shift
       real(dp) :: response_scale
@@ -5674,9 +6009,13 @@ contains
 
    pure function separate_response_prox(values, thresholds, structure, &
       variables, lag_order, alpha) result(out)
-      ! Apply row-specific thresholds to a response-separable VAR penalty.
-      real(dp), intent(in) :: values(:, :), thresholds(:), alpha
-      integer, intent(in) :: structure, variables, lag_order
+      !! Apply row-specific thresholds to a response-separable VAR penalty.
+      real(dp), intent(in) :: values(:, :) !! Input values.
+      real(dp), intent(in) :: thresholds(:) !! Thresholds.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: lag_order !! Model lag order.
       real(dp) :: out(size(values, 1), size(values, 2))
       real(dp) :: work(size(values, 1), size(values, 2))
       integer :: response
@@ -5693,10 +6032,15 @@ contains
 
    pure real(dp) function separate_penalized_objective(residuals, phi, &
       lambdas, structure, variables, lag_order, alpha, gamma) result(value)
-      ! Evaluate an objective with a distinct penalty for each response.
-      real(dp), intent(in) :: residuals(:, :), phi(:, :), lambdas(:)
-      real(dp), intent(in) :: alpha, gamma
-      integer, intent(in) :: structure, variables, lag_order
+      !! Evaluate an objective with a distinct penalty for each response.
+      real(dp), intent(in) :: residuals(:, :) !! Model residuals.
+      real(dp), intent(in) :: phi(:, :) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: lambdas(:) !! Candidate penalty or shrinkage parameters.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in) :: gamma !! Model coefficient or scale parameter.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: lag_order !! Model lag order.
       real(dp) :: work(size(phi, 1), size(phi, 2))
       integer :: response
 
@@ -5721,10 +6065,12 @@ contains
 
    pure real(dp) function nonconvex_objective(residuals, phi, lambda, gamma, &
       structure) result(value)
-      ! Evaluate a diagnostic MCP or SCAD penalized mean-square criterion.
-      real(dp), intent(in) :: residuals(:, :), phi(:, :)
-      real(dp), intent(in) :: lambda, gamma
-      integer, intent(in) :: structure
+      !! Evaluate a diagnostic MCP or SCAD penalized mean-square criterion.
+      real(dp), intent(in) :: residuals(:, :) !! Model residuals.
+      real(dp), intent(in) :: phi(:, :) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: gamma !! Model coefficient or scale parameter.
+      integer, intent(in) :: structure !! Model-structure specification.
 
       value = 0.5_dp*sum(residuals**2)/real(size(residuals, 1), dp) + &
          0.5_dp*lambda*sum(phi**2)
@@ -5737,8 +6083,10 @@ contains
 
    pure elemental real(dp) function mcp_penalty_value(coefficient, lambda, &
       gamma) result(value)
-      ! Evaluate the scalar minimax concave penalty.
-      real(dp), intent(in) :: coefficient, lambda, gamma
+      !! Evaluate the scalar minimax concave penalty.
+      real(dp), intent(in) :: coefficient !! Coefficient.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: gamma !! Model coefficient or scale parameter.
       real(dp) :: magnitude
 
       magnitude = abs(coefficient)
@@ -5751,8 +6099,10 @@ contains
 
    pure elemental real(dp) function scad_penalty_value(coefficient, lambda, &
       gamma) result(value)
-      ! Evaluate the scalar smoothly clipped absolute-deviation penalty.
-      real(dp), intent(in) :: coefficient, lambda, gamma
+      !! Evaluate the scalar smoothly clipped absolute-deviation penalty.
+      real(dp), intent(in) :: coefficient !! Coefficient.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: gamma !! Model coefficient or scale parameter.
       real(dp) :: magnitude
 
       magnitude = abs(coefficient)
@@ -5767,9 +6117,10 @@ contains
    end function scad_penalty_value
 
    pure subroutine shrink_vector(vector, threshold, vector_norm)
-      ! Shrink one vector group toward zero.
-      real(dp), intent(inout) :: vector(:)
-      real(dp), intent(in) :: threshold, vector_norm
+      !! Shrink one vector group toward zero.
+      real(dp), intent(inout) :: vector(:) !! Vector, updated in place.
+      real(dp), intent(in) :: threshold !! Decision or truncation threshold.
+      real(dp), intent(in) :: vector_norm !! Vector norm.
       real(dp) :: shrinkage
 
       if (vector_norm <= threshold) then
@@ -5782,10 +6133,13 @@ contains
 
    pure subroutine shrink_own_other_suffix(vector, threshold, squared_norm, &
       first_column, response, last_column)
-      ! Shrink an Own/Other suffix while preserving its current own lag.
-      real(dp), intent(inout) :: vector(:)
-      real(dp), intent(in) :: threshold, squared_norm
-      integer, intent(in) :: first_column, response, last_column
+      !! Shrink an Own/Other suffix while preserving its current own lag.
+      real(dp), intent(inout) :: vector(:) !! Vector, updated in place.
+      real(dp), intent(in) :: threshold !! Decision or truncation threshold.
+      real(dp), intent(in) :: squared_norm !! Squared norm.
+      integer, intent(in) :: first_column !! First column.
+      integer, intent(in) :: response !! Response observations.
+      integer, intent(in) :: last_column !! Last column.
       real(dp) :: shrinkage
       integer :: own_column
 
@@ -5804,10 +6158,14 @@ contains
 
    pure subroutine shrink_lag_suffix(vector, threshold, squared_norm, &
       predictor, first_lag, last_lag, variables)
-      ! Shrink one predictor's coefficient suffix across successive lags.
-      real(dp), intent(inout) :: vector(:)
-      real(dp), intent(in) :: threshold, squared_norm
-      integer, intent(in) :: predictor, first_lag, last_lag, variables
+      !! Shrink one predictor's coefficient suffix across successive lags.
+      real(dp), intent(inout) :: vector(:) !! Vector, updated in place.
+      real(dp), intent(in) :: threshold !! Decision or truncation threshold.
+      real(dp), intent(in) :: squared_norm !! Squared norm.
+      integer, intent(in) :: predictor !! Predictor.
+      integer, intent(in) :: first_lag !! First lag.
+      integer, intent(in) :: last_lag !! Last lag.
+      integer, intent(in) :: variables !! Number or indices of variables.
       real(dp) :: shrinkage
       integer :: lag, column
 
@@ -5825,11 +6183,13 @@ contains
    pure real(dp) function structured_penalty(phi, structure, variables, &
       lag_order, alpha, gamma) &
       result(value)
-      ! Evaluate a BigVAR group or sparse-group penalty.
-      real(dp), intent(in) :: phi(:, :)
-      integer, intent(in) :: structure, variables, lag_order
-      real(dp), intent(in) :: alpha
-      real(dp), intent(in) :: gamma
+      !! Evaluate a BigVAR group or sparse-group penalty.
+      real(dp), intent(in) :: phi(:, :) !! Autoregressive or model coefficient.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: lag_order !! Model lag order.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in) :: gamma !! Model coefficient or scale parameter.
       real(dp) :: diagonal_norm, other_norm
       real(dp) :: group_weight
       integer :: group_structure, lag, suffix_lag, first_column
@@ -5923,9 +6283,11 @@ contains
 
    pure integer function count_active_groups(phi, structure, variables, &
       lag_order) result(value)
-      ! Count nonzero groups in a structured coefficient matrix.
-      real(dp), intent(in) :: phi(:, :)
-      integer, intent(in) :: structure, variables, lag_order
+      !! Count nonzero groups in a structured coefficient matrix.
+      real(dp), intent(in) :: phi(:, :) !! Autoregressive or model coefficient.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: lag_order !! Model lag order.
       real(dp), parameter :: threshold = 100.0_dp*epsilon(1.0_dp)
       real(dp) :: other_norm
       integer :: lag, first_column, predictor, response, suffix_lag
@@ -5991,10 +6353,12 @@ contains
 
    pure real(dp) function zero_model_bound(gradient, structure, variables, &
       lag_order, alpha) result(value)
-      ! Find the smallest penalty that satisfies every zero-group condition.
-      real(dp), intent(in) :: gradient(:, :)
-      integer, intent(in) :: structure, variables, lag_order
-      real(dp), intent(in) :: alpha
+      !! Find the smallest penalty that satisfies every zero-group condition.
+      real(dp), intent(in) :: gradient(:, :) !! Gradient.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: lag_order !! Model lag order.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
       real(dp) :: lower, upper, midpoint
       integer :: iteration
 
@@ -6022,9 +6386,13 @@ contains
 
    pure logical function prox_is_zero(values, threshold, structure, variables, &
       lag_order, alpha) result(value)
-      ! Test whether a structured proximal update is identically zero.
-      real(dp), intent(in) :: values(:, :), threshold, alpha
-      integer, intent(in) :: structure, variables, lag_order
+      !! Test whether a structured proximal update is identically zero.
+      real(dp), intent(in) :: values(:, :) !! Input values.
+      real(dp), intent(in) :: threshold !! Decision or truncation threshold.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      integer, intent(in) :: structure !! Model-structure specification.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: lag_order !! Model lag order.
       real(dp) :: transformed(size(values, 1), size(values, 2))
 
       transformed = bigvar_group_prox(values, threshold, structure, variables, &
@@ -6034,8 +6402,8 @@ contains
    end function prox_is_zero
 
    pure elemental logical function is_sparse_structure(structure) result(value)
-      ! Identify structures that combine elementwise and group penalties.
-      integer, intent(in) :: structure
+      !! Identify structures that combine elementwise and group penalties.
+      integer, intent(in) :: structure !! Model-structure specification.
 
       value = structure == bigvar_structure_sparse_lag .or. &
          structure == bigvar_structure_sparse_own_other
@@ -6043,8 +6411,8 @@ contains
 
    pure elemental logical function is_supported_structure(structure) &
       result(value)
-      ! Identify the BigVAR structures implemented by this module.
-      integer, intent(in) :: structure
+      !! Identify the BigVAR structures implemented by this module.
+      integer, intent(in) :: structure !! Model-structure specification.
 
       value = (structure >= bigvar_structure_lag .and. &
          structure <= bigvar_structure_scad) .or. &
@@ -6054,8 +6422,8 @@ contains
 
    pure elemental logical function supports_separate_lambdas(structure) &
       result(value)
-      ! Identify BigVAR penalties that separate across response equations.
-      integer, intent(in) :: structure
+      !! Identify BigVAR penalties that separate across response equations.
+      integer, intent(in) :: structure !! Model-structure specification.
 
       value = structure == bigvar_structure_basic .or. &
          structure == bigvar_structure_basic_en .or. &
@@ -6068,16 +6436,16 @@ contains
 
    pure elemental logical function is_nonconvex_structure(structure) &
       result(value)
-      ! Identify structures estimated by non-convex coordinate descent.
-      integer, intent(in) :: structure
+      !! Identify structures estimated by non-convex coordinate descent.
+      integer, intent(in) :: structure !! Model-structure specification.
 
       value = structure == bigvar_structure_mcp .or. &
          structure == bigvar_structure_scad
    end function is_nonconvex_structure
 
    pure elemental logical function is_varx_structure(structure) result(value)
-      ! Identify BigVAR structures that support exogenous predictors.
-      integer, intent(in) :: structure
+      !! Identify BigVAR structures that support exogenous predictors.
+      integer, intent(in) :: structure !! Model-structure specification.
 
       value = structure == bigvar_structure_lag .or. &
          structure == bigvar_structure_own_other .or. &
@@ -6092,8 +6460,8 @@ contains
 
    pure elemental logical function supports_transfer_function(structure) &
       result(value)
-      ! Identify penalties supported by BigVAR transfer-function models.
-      integer, intent(in) :: structure
+      !! Identify penalties supported by BigVAR transfer-function models.
+      integer, intent(in) :: structure !! Model-structure specification.
 
       value = structure == bigvar_structure_basic .or. &
          structure == bigvar_structure_basic_en .or. &
@@ -6102,8 +6470,8 @@ contains
    end function supports_transfer_function
 
    pure elemental logical function uses_alpha(structure) result(value)
-      ! Identify structures with an additional mixing or taper parameter.
-      integer, intent(in) :: structure
+      !! Identify structures with an additional mixing or taper parameter.
+      integer, intent(in) :: structure !! Model-structure specification.
 
       value = is_sparse_structure(structure) .or. &
          structure == bigvar_structure_basic_en .or. &
@@ -6112,8 +6480,8 @@ contains
 
    pure elemental integer function base_group_structure(structure) &
       result(value)
-      ! Map a sparse-group structure to its underlying group layout.
-      integer, intent(in) :: structure
+      !! Map a sparse-group structure to its underlying group layout.
+      integer, intent(in) :: structure !! Model-structure specification.
 
       select case (structure)
       case (bigvar_structure_sparse_lag)
@@ -6126,9 +6494,9 @@ contains
    end function base_group_structure
 
    pure function univariate_ar_scales(series, lag_order) result(scales)
-      ! Estimate BGR prior scales from separate univariate AR regressions.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: lag_order
+      !! Estimate BGR prior scales from separate univariate AR regressions.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: lag_order !! Model lag order.
       real(dp), allocatable :: scales(:)
       real(dp), allocatable :: response(:, :), lag_design(:, :), design(:, :)
       real(dp), allocatable :: normal_matrix(:, :), inverse(:, :)
@@ -6176,9 +6544,9 @@ contains
    end function univariate_ar_scales
 
    pure function matrix_without_row(values, omitted) result(out)
-      ! Return a matrix with one row removed while preserving row order.
-      real(dp), intent(in) :: values(:, :)
-      integer, intent(in) :: omitted
+      !! Return a matrix with one row removed while preserving row order.
+      real(dp), intent(in) :: values(:, :) !! Input values.
+      integer, intent(in) :: omitted !! Omitted.
       real(dp), allocatable :: out(:, :)
 
       allocate(out(size(values, 1) - 1, size(values, 2)))
@@ -6189,9 +6557,9 @@ contains
    end function matrix_without_row
 
    pure subroutine set_minnesota_target(matrix, target)
-      ! Place per-series targets on the endogenous first-lag diagonal.
-      real(dp), intent(inout) :: matrix(:, :)
-      real(dp), intent(in) :: target(:)
+      !! Place per-series targets on the endogenous first-lag diagonal.
+      real(dp), intent(inout) :: matrix(:, :) !! Input matrix, updated in place.
+      real(dp), intent(in) :: target(:) !! Target.
       integer :: variable
 
       do variable = 1, size(target)
@@ -6201,10 +6569,13 @@ contains
 
    pure function predict_var_coefficients(phi, intercept, lag_order, history, &
       horizon, recursive) result(prediction)
-      ! Forecast VAR coefficients recursively or at one direct horizon.
-      real(dp), intent(in) :: phi(:, :), intercept(:), history(:, :)
-      integer, intent(in) :: lag_order, horizon
-      logical, intent(in) :: recursive
+      !! Forecast VAR coefficients recursively or at one direct horizon.
+      real(dp), intent(in) :: phi(:, :) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: intercept(:) !! Model intercept.
+      real(dp), intent(in) :: history(:, :) !! History.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      logical, intent(in) :: recursive !! Flag controlling recursive.
       real(dp), allocatable :: prediction(:)
       real(dp), allocatable :: working(:, :)
       integer :: observations, variables, step, lag, target
@@ -6238,11 +6609,16 @@ contains
    pure function predict_varx_coefficients(phi, beta, intercept, ar_order, &
       exogenous_order, contemporaneous, history, exogenous, horizon) &
       result(prediction)
-      ! Forecast VARX coefficients using the supplied exogenous path.
-      real(dp), intent(in) :: phi(:, :), beta(:, :), intercept(:)
-      real(dp), intent(in) :: history(:, :), exogenous(:, :)
-      integer, intent(in) :: ar_order, exogenous_order, horizon
-      logical, intent(in) :: contemporaneous
+      !! Forecast VARX coefficients using the supplied exogenous path.
+      real(dp), intent(in) :: phi(:, :) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: beta(:, :) !! Regression or model coefficients.
+      real(dp), intent(in) :: intercept(:) !! Model intercept.
+      real(dp), intent(in) :: history(:, :) !! History.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      logical, intent(in) :: contemporaneous !! Flag controlling contemporaneous.
       real(dp), allocatable :: prediction(:)
       real(dp), allocatable :: working(:, :)
       integer :: observations, variables, x_variables
@@ -6274,30 +6650,14 @@ contains
       prediction = working(observations + horizon, :)
    end function predict_varx_coefficients
 
-   pure subroutine build_var_data(series, lag_order, response, design)
-      ! Construct lag-major response and predictor matrices.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: lag_order
-      real(dp), allocatable, intent(out) :: response(:, :), design(:, :)
-      integer :: observations, variables, lag
-
-      observations = size(series, 1)
-      variables = size(series, 2)
-      allocate(response(observations - lag_order, variables))
-      allocate(design(observations - lag_order, variables*lag_order))
-      response = series(lag_order + 1:observations, :)
-      do lag = 1, lag_order
-         design(:, (lag - 1)*variables + 1:lag*variables) = &
-            series(lag_order + 1 - lag:observations - lag, :)
-      end do
-   end subroutine build_var_data
-
    pure subroutine build_var_direct_data(series, lag_order, horizon, response, &
       design)
-      ! Align lagged predictors with responses at a specified direct horizon.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: lag_order, horizon
-      real(dp), allocatable, intent(out) :: response(:, :), design(:, :)
+      !! Align lagged predictors with responses at a specified direct horizon.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), allocatable, intent(out) :: response(:, :) !! Response observations.
+      real(dp), allocatable, intent(out) :: design(:, :) !! Design.
       integer :: observations, variables, cases, lag
 
       observations = size(series, 1)
@@ -6314,11 +6674,15 @@ contains
 
    pure subroutine build_ls_varx_data(endogenous, exogenous, ar_order, &
       exogenous_order, horizon, contemporaneous, response, predictors)
-      ! Align least-squares VARX predictors with direct-horizon responses.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      integer, intent(in) :: ar_order, exogenous_order, horizon
-      logical, intent(in) :: contemporaneous
-      real(dp), allocatable, intent(out) :: response(:, :), predictors(:, :)
+      !! Align least-squares VARX predictors with direct-horizon responses.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      logical, intent(in) :: contemporaneous !! Flag controlling contemporaneous.
+      real(dp), allocatable, intent(out) :: response(:, :) !! Response observations.
+      real(dp), allocatable, intent(out) :: predictors(:, :) !! Predictor matrix.
       integer :: observations, variables, x_variables, leading, cases
       integer :: lag, block, x_blocks, ar_predictors
 
@@ -6357,45 +6721,5 @@ contains
          end if
       end do
    end subroutine build_ls_varx_data
-
-   pure subroutine build_varx_data(endogenous, exogenous, ar_order, &
-      exogenous_order, response, ar_design, x_design, contemporaneous)
-      ! Construct aligned VARX data with an optional current exogenous block.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      integer, intent(in) :: ar_order, exogenous_order
-      real(dp), allocatable, intent(out) :: response(:, :)
-      real(dp), allocatable, intent(out) :: ar_design(:, :), x_design(:, :)
-      logical, intent(in), optional :: contemporaneous
-      integer :: observations, variables, x_variables, leading, lag
-      integer :: x_blocks, block
-      logical :: use_contemporaneous
-
-      observations = size(endogenous, 1)
-      variables = size(endogenous, 2)
-      x_variables = size(exogenous, 2)
-      use_contemporaneous = .false.
-      if (present(contemporaneous)) use_contemporaneous = contemporaneous
-      leading = max(ar_order, exogenous_order)
-      x_blocks = exogenous_order
-      if (use_contemporaneous) x_blocks = x_blocks + 1
-      allocate(response(observations - leading, variables))
-      allocate(ar_design(observations - leading, variables*ar_order))
-      allocate(x_design(observations - leading, x_variables*x_blocks))
-      response = endogenous(leading + 1:observations, :)
-      do lag = 1, ar_order
-         ar_design(:, (lag - 1)*variables + 1:lag*variables) = &
-            endogenous(leading + 1 - lag:observations - lag, :)
-      end do
-      if (use_contemporaneous) then
-         x_design(:, 1:x_variables) = &
-            exogenous(leading + 1:observations, :)
-      end if
-      do lag = 1, exogenous_order
-         block = lag
-         if (use_contemporaneous) block = block + 1
-         x_design(:, (block - 1)*x_variables + 1:block*x_variables) = &
-            exogenous(leading + 1 - lag:observations - lag, :)
-      end do
-   end subroutine build_varx_data
 
 end module bigvar_mod

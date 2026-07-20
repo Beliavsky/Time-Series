@@ -2,7 +2,7 @@
 ! SPDX-FileComment: Date utilities adapted from the DataFrame Fortran project.
 ! Gregorian date utilities adapted from DataFrame/date_mod.f90.
 ! Copyright (c) 2025 Beliavsky. Distributed under the MIT license.
-module time_series_calendar_mod
+module calendar_mod
    implicit none
    private
 
@@ -59,8 +59,8 @@ module time_series_calendar_mod
 contains
 
    pure function date_to_string(this) result(string)
-      ! Format a date as ISO yyyy-mm-dd text.
-      class(date_t), intent(in) :: this
+      !! Format a date as ISO yyyy-mm-dd text.
+      class(date_t), intent(in) :: this !! This.
       character(len=10) :: string
 
       string = zero_pad_4(this%year)//'-'//zero_pad_2(this%month)//'-'// &
@@ -68,8 +68,8 @@ contains
    end function date_to_string
 
    pure elemental logical function date_valid(value) result(valid)
-      ! Report whether a value is a valid Gregorian date.
-      type(date_t), intent(in) :: value
+      !! Report whether a value is a valid Gregorian date.
+      type(date_t), intent(in) :: value !! Input value.
 
       valid = .false.
       if (value%month < 1 .or. value%month > 12) return
@@ -79,16 +79,17 @@ contains
    end function date_valid
 
    pure elemental logical function date_is_leap_year(year) result(leap)
-      ! Report whether a Gregorian year contains February 29.
-      integer, intent(in) :: year
+      !! Report whether a Gregorian year contains February 29.
+      integer, intent(in) :: year !! Year.
 
       leap = (mod(year, 4) == 0 .and. mod(year, 100) /= 0) .or. &
          mod(year, 400) == 0
    end function date_is_leap_year
 
    pure elemental integer function date_days_in_month(year, month) result(days)
-      ! Return the number of days in a Gregorian month.
-      integer, intent(in) :: year, month
+      !! Return the number of days in a Gregorian month.
+      integer, intent(in) :: year !! Year.
+      integer, intent(in) :: month !! Month.
 
       select case (month)
       case (1, 3, 5, 7, 8, 10, 12)
@@ -103,8 +104,8 @@ contains
    end function date_days_in_month
 
    pure function date_from_iso(string) result(value)
-      ! Parse yyyy-mm-dd text, returning a zero date on syntax failure.
-      character(len=*), intent(in) :: string
+      !! Parse yyyy-mm-dd text, returning a zero date on syntax failure.
+      character(len=*), intent(in) :: string !! String.
       type(date_t) :: value
       character(len=len(string)) :: text
       integer :: year, month, day
@@ -122,8 +123,8 @@ contains
    end function date_from_iso
 
    pure function date_from_basic(string) result(value)
-      ! Parse yyyymmdd text, returning a zero date on syntax failure.
-      character(len=*), intent(in) :: string
+      !! Parse yyyymmdd text, returning a zero date on syntax failure.
+      character(len=*), intent(in) :: string !! String.
       type(date_t) :: value
       character(len=len(string)) :: text
       integer :: year, month, day
@@ -140,9 +141,9 @@ contains
    end function date_from_basic
 
    pure elemental type(date_t) function add_days_right(value, days) result(sum_date)
-      ! Add an integer number of days to a valid date.
-      type(date_t), intent(in) :: value
-      integer, intent(in) :: days
+      !! Add an integer number of days to a valid date.
+      type(date_t), intent(in) :: value !! Input value.
+      integer, intent(in) :: days !! Days.
 
       if (.not. date_valid(value)) then
          sum_date = date_t(0, 0, 0)
@@ -152,24 +153,25 @@ contains
    end function add_days_right
 
    pure elemental type(date_t) function add_days_left(days, value) result(sum_date)
-      ! Add a valid date to an integer number of days.
-      integer, intent(in) :: days
-      type(date_t), intent(in) :: value
+      !! Add a valid date to an integer number of days.
+      integer, intent(in) :: days !! Days.
+      type(date_t), intent(in) :: value !! Input value.
 
       sum_date = add_days_right(value, days)
    end function add_days_left
 
    pure elemental type(date_t) function subtract_days(value, days) result(difference)
-      ! Subtract an integer number of days from a valid date.
-      type(date_t), intent(in) :: value
-      integer, intent(in) :: days
+      !! Subtract an integer number of days from a valid date.
+      type(date_t), intent(in) :: value !! Input value.
+      integer, intent(in) :: days !! Days.
 
       difference = add_days_right(value, -days)
    end function subtract_days
 
    pure elemental integer function difference_days(left, right) result(difference)
-      ! Return signed elapsed days between two valid dates.
-      type(date_t), intent(in) :: left, right
+      !! Return signed elapsed days between two valid dates.
+      type(date_t), intent(in) :: left !! Left.
+      type(date_t), intent(in) :: right !! Right.
 
       if (.not. date_valid(left) .or. .not. date_valid(right)) then
          difference = 0
@@ -179,23 +181,26 @@ contains
    end function difference_days
 
    pure elemental logical function equal_dates(left, right) result(equal)
-      ! Test two dates for component equality.
-      type(date_t), intent(in) :: left, right
+      !! Test two dates for component equality.
+      type(date_t), intent(in) :: left !! Left.
+      type(date_t), intent(in) :: right !! Right.
 
       equal = left%year == right%year .and. left%month == right%month .and. &
          left%day == right%day
    end function equal_dates
 
    pure elemental logical function unequal_dates(left, right) result(unequal)
-      ! Test two dates for inequality.
-      type(date_t), intent(in) :: left, right
+      !! Test two dates for inequality.
+      type(date_t), intent(in) :: left !! Left.
+      type(date_t), intent(in) :: right !! Right.
 
       unequal = .not. equal_dates(left, right)
    end function unequal_dates
 
    pure elemental logical function earlier_date(left, right) result(earlier)
-      ! Test whether the left date precedes the right date.
-      type(date_t), intent(in) :: left, right
+      !! Test whether the left date precedes the right date.
+      type(date_t), intent(in) :: left !! Left.
+      type(date_t), intent(in) :: right !! Right.
 
       earlier = left%year < right%year .or. &
          (left%year == right%year .and. &
@@ -204,29 +209,32 @@ contains
    end function earlier_date
 
    pure elemental logical function earlier_or_equal_date(left, right) result(earlier)
-      ! Test whether the left date precedes or equals the right date.
-      type(date_t), intent(in) :: left, right
+      !! Test whether the left date precedes or equals the right date.
+      type(date_t), intent(in) :: left !! Left.
+      type(date_t), intent(in) :: right !! Right.
 
       earlier = earlier_date(left, right) .or. equal_dates(left, right)
    end function earlier_or_equal_date
 
    pure elemental logical function later_date(left, right) result(later)
-      ! Test whether the left date follows the right date.
-      type(date_t), intent(in) :: left, right
+      !! Test whether the left date follows the right date.
+      type(date_t), intent(in) :: left !! Left.
+      type(date_t), intent(in) :: right !! Right.
 
       later = .not. earlier_or_equal_date(left, right)
    end function later_date
 
    pure elemental logical function later_or_equal_date(left, right) result(later)
-      ! Test whether the left date follows or equals the right date.
-      type(date_t), intent(in) :: left, right
+      !! Test whether the left date follows or equals the right date.
+      type(date_t), intent(in) :: left !! Left.
+      type(date_t), intent(in) :: right !! Right.
 
       later = .not. earlier_date(left, right)
    end function later_or_equal_date
 
    pure elemental integer function date_day_number(value) result(number)
-      ! Convert a Gregorian date to days relative to 1970-01-01.
-      type(date_t), intent(in) :: value
+      !! Convert a Gregorian date to days relative to 1970-01-01.
+      type(date_t), intent(in) :: value !! Input value.
       integer :: year, month, day, era, year_of_era, day_of_year, day_of_era
       integer :: shifted_month
 
@@ -247,8 +255,8 @@ contains
    end function date_day_number
 
    pure elemental type(date_t) function date_from_day_number(number) result(value)
-      ! Convert days relative to 1970-01-01 to a Gregorian date.
-      integer, intent(in) :: number
+      !! Convert days relative to 1970-01-01 to a Gregorian date.
+      integer, intent(in) :: number !! Number.
       integer :: shifted, era, day_of_era, year_of_era, year, day_of_year
       integer :: shifted_month, month, day
 
@@ -272,8 +280,8 @@ contains
    end function date_from_day_number
 
    pure elemental integer function date_day_of_week(value) result(weekday)
-      ! Return ISO weekday number, Monday one through Sunday seven.
-      type(date_t), intent(in) :: value
+      !! Return ISO weekday number, Monday one through Sunday seven.
+      type(date_t), intent(in) :: value !! Input value.
 
       if (.not. date_valid(value)) then
          weekday = 0
@@ -283,8 +291,8 @@ contains
    end function date_day_of_week
 
    pure elemental integer function date_day_of_year(value) result(ordinal)
-      ! Return a date's one-origin ordinal day within its year.
-      type(date_t), intent(in) :: value
+      !! Return a date's one-origin ordinal day within its year.
+      type(date_t), intent(in) :: value !! Input value.
 
       if (.not. date_valid(value)) then
          ordinal = 0
@@ -295,8 +303,8 @@ contains
    end function date_day_of_year
 
    pure elemental type(date_t) function date_easter(year) result(value)
-      ! Return Gregorian Easter Sunday using the Meeus algorithm.
-      integer, intent(in) :: year
+      !! Return Gregorian Easter Sunday using the Meeus algorithm.
+      integer, intent(in) :: year !! Year.
       integer :: a, b, c, d, e, f, g, h, i, k, l, m, month, day
 
       if (year < 1583) then
@@ -321,16 +329,17 @@ contains
    end function date_easter
 
    pure elemental integer function floor_divide(numerator, denominator) result(quotient)
-      ! Return floor division for a positive denominator.
-      integer, intent(in) :: numerator, denominator
+      !! Return floor division for a positive denominator.
+      integer, intent(in) :: numerator !! Numerator polynomial coefficients.
+      integer, intent(in) :: denominator !! Denominator polynomial coefficients.
 
       quotient = numerator/denominator
       if (mod(numerator, denominator) < 0) quotient = quotient - 1
    end function floor_divide
 
    pure function zero_pad_2(number) result(string)
-      ! Format a two-digit nonnegative integer with leading zeroes.
-      integer, intent(in) :: number
+      !! Format a two-digit nonnegative integer with leading zeroes.
+      integer, intent(in) :: number !! Number.
       character(len=2) :: string
 
       if (number < 0 .or. number > 99) then
@@ -342,8 +351,8 @@ contains
    end function zero_pad_2
 
    pure function zero_pad_4(number) result(string)
-      ! Format a four-digit nonnegative integer with leading zeroes.
-      integer, intent(in) :: number
+      !! Format a four-digit nonnegative integer with leading zeroes.
+      integer, intent(in) :: number !! Number.
       character(len=4) :: string
       integer :: remaining
 
@@ -362,10 +371,10 @@ contains
    end function zero_pad_4
 
    pure subroutine parse_unsigned_integer(string, number, valid)
-      ! Parse a nonnegative decimal integer without formatted I/O.
-      character(len=*), intent(in) :: string
-      integer, intent(out) :: number
-      logical, intent(out) :: valid
+      !! Parse a nonnegative decimal integer without formatted I/O.
+      character(len=*), intent(in) :: string !! String.
+      integer, intent(out) :: number !! Number.
+      logical, intent(out) :: valid !! Flag controlling valid.
       character(len=len(string)) :: text
       integer :: i, length, digit
 
@@ -382,4 +391,4 @@ contains
       valid = .true.
    end subroutine parse_unsigned_integer
 
-end module time_series_calendar_mod
+end module calendar_mod

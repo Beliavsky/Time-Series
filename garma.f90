@@ -3,11 +3,11 @@
 ! Gegenbauer ARMA algorithms translated from garma.
 module garma_mod
    use kind_mod, only: dp
-   use time_series_fourier_mod, only: fft_transform
-   use time_series_linalg_mod, only: invert_matrix
-   use time_series_optimization_mod, only: optimization_result_t, &
+   use fourier_mod, only: fft_transform
+   use linalg_mod, only: invert_matrix
+   use optimization_mod, only: optimization_result_t, &
       nelder_mead_minimize, finite_difference_hessian
-   use time_series_stats_mod, only: ols_fit
+   use stats_mod, only: ols_fit, sorted, variance_of => variance
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
    implicit none
    private
@@ -98,9 +98,10 @@ module garma_mod
 contains
 
    pure function garma_gegenbauer_coefficients(n, d, u) result(coefficients)
-      ! Expand the Gegenbauer filter through n coefficients.
-      integer, intent(in) :: n
-      real(dp), intent(in) :: d, u
+      !! Expand the Gegenbauer filter through n coefficients.
+      integer, intent(in) :: n !! Number of observations or elements.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: u !! Input vector or random variate.
       real(dp), allocatable :: coefficients(:)
       integer :: j
 
@@ -119,8 +120,8 @@ contains
    end function garma_gegenbauer_coefficients
 
    pure function garma_periodogram(series) result(out)
-      ! Compute garma's linearly detrended, unsmoothed raw periodogram.
-      real(dp), intent(in) :: series(:)
+      !! Compute garma's linearly detrended, unsmoothed raw periodogram.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
       type(garma_periodogram_t) :: out
       complex(dp), allocatable :: transformed(:), padded(:)
       real(dp), allocatable :: detrended(:)
@@ -150,10 +151,13 @@ contains
 
    pure function garma_semiparametric(series, periods, factor_count, alpha, &
       method, peak_bandwidth) result(out)
-      ! Estimate Gegenbauer poles and exponents by GSP or log-periodogram regression.
-      real(dp), intent(in) :: series(:)
-      real(dp), intent(in), optional :: periods(:), alpha
-      integer, intent(in), optional :: factor_count, method, peak_bandwidth
+      !! Estimate Gegenbauer poles and exponents by GSP or log-periodogram regression.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in), optional :: periods(:) !! Periods.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      integer, intent(in), optional :: factor_count !! Number of factor.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      integer, intent(in), optional :: peak_bandwidth !! Peak bandwidth.
       type(garma_factors_t) :: out
       type(garma_periodogram_t) :: pgram
       real(dp), allocatable :: work(:)
@@ -217,8 +221,12 @@ contains
    end function garma_semiparametric
 
    pure function garma_spectral_inverse(frequency, u, d, ar, ma) result(inverse)
-      ! Evaluate the GARMA spectrum denominator without the innovation scale.
-      real(dp), intent(in) :: frequency(:), u(:), d(:), ar(:), ma(:)
+      !! Evaluate the GARMA spectrum denominator without the innovation scale.
+      real(dp), intent(in) :: frequency(:) !! Number of observations per seasonal cycle.
+      real(dp), intent(in) :: u(:) !! Input vector or random variate.
+      real(dp), intent(in) :: d(:) !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
       real(dp), allocatable :: inverse(:)
       real(dp) :: omega, ar_real, ar_imag, ma_real, ma_imag
       integer :: i, j
@@ -250,8 +258,12 @@ contains
    end function garma_spectral_inverse
 
    pure function garma_css_residuals(series, u, d, ar, ma) result(residuals)
-      ! Filter observations through the short-memory and Gegenbauer denominators.
-      real(dp), intent(in) :: series(:), u(:), d(:), ar(:), ma(:)
+      !! Filter observations through the short-memory and Gegenbauer denominators.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: u(:) !! Input vector or random variate.
+      real(dp), intent(in) :: d(:) !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
       real(dp), allocatable :: residuals(:)
       real(dp), allocatable :: numerator(:), denominator(:), work(:)
       integer :: factor
@@ -276,8 +288,10 @@ contains
    end function garma_css_residuals
 
    pure function garma_extract_arma(series, u, d) result(short_memory)
-      ! Remove all Gegenbauer long-memory factors from a series.
-      real(dp), intent(in) :: series(:), u(:), d(:)
+      !! Remove all Gegenbauer long-memory factors from a series.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: u(:) !! Input vector or random variate.
+      real(dp), intent(in) :: d(:) !! Fractional-differencing parameter or differencing order.
       real(dp), allocatable :: short_memory(:), denominator(:)
       integer :: factor
 
@@ -294,9 +308,13 @@ contains
 
    pure real(dp) function garma_whittle_objective(series, u, d, ar, ma, &
       include_log_term) result(value)
-      ! Evaluate garma's short or full Whittle spectral objective.
-      real(dp), intent(in) :: series(:), u(:), d(:), ar(:), ma(:)
-      logical, intent(in), optional :: include_log_term
+      !! Evaluate garma's short or full Whittle spectral objective.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: u(:) !! Input vector or random variate.
+      real(dp), intent(in) :: d(:) !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      logical, intent(in), optional :: include_log_term !! Whether to include the log term.
       type(garma_periodogram_t) :: pgram
       real(dp), allocatable :: inverse(:)
       logical :: full
@@ -316,8 +334,13 @@ contains
    end function garma_whittle_objective
 
    pure real(dp) function garma_wll_objective(series, u, d, ar, ma, variance) result(value)
-      ! Evaluate Hunt-Peiris-Weber's Whittle-like-log objective.
-      real(dp), intent(in) :: series(:), u(:), d(:), ar(:), ma(:), variance
+      !! Evaluate Hunt-Peiris-Weber's Whittle-like-log objective.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: u(:) !! Input vector or random variate.
+      real(dp), intent(in) :: d(:) !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: variance !! Variance value or matrix.
       type(garma_periodogram_t) :: pgram
       real(dp), allocatable :: inverse(:), ratio(:)
 
@@ -337,12 +360,17 @@ contains
 
    pure function garma_fit(series, initial_u, initial_d, initial_ar, initial_ma, &
       method, estimate_frequencies, d_limits, max_iterations, tolerance) result(out)
-      ! Fit a GARMA model by CSS, Whittle, or WLL with derivative-free optimization.
-      real(dp), intent(in) :: series(:), initial_u(:), initial_d(:)
-      real(dp), intent(in) :: initial_ar(:), initial_ma(:)
-      integer, intent(in), optional :: method, max_iterations
-      logical, intent(in), optional :: estimate_frequencies
-      real(dp), intent(in), optional :: d_limits(:), tolerance
+      !! Fit a GARMA model by CSS, Whittle, or WLL with derivative-free optimization.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: initial_u(:) !! Initial u.
+      real(dp), intent(in) :: initial_d(:) !! Initial d.
+      real(dp), intent(in) :: initial_ar(:) !! Initial autoregressive.
+      real(dp), intent(in) :: initial_ma(:) !! Initial moving-average.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: estimate_frequencies !! Whether to estimate the frequencies.
+      real(dp), intent(in), optional :: d_limits(:) !! D limits.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(garma_fit_t) :: out
       type(optimization_result_t) :: optimized
       real(dp), allocatable :: initial(:), covariance(:, :)
@@ -373,7 +401,7 @@ contains
          out%info = 1
          return
       end if
-      variance = sample_variance(series)
+      variance = variance_of(series)
       initial = encode_fit(initial_u, initial_d, initial_ar, initial_ma, estimate_u, &
          lower_d, upper_d, variance, selected_method == garma_method_wll)
       optimized = nelder_mead_minimize(objective, initial, limit, selected_tolerance)
@@ -428,8 +456,8 @@ contains
    contains
 
       pure function objective(parameters) result(value)
-         ! Decode and evaluate the selected GARMA fit objective.
-         real(dp), intent(in) :: parameters(:)
+         !! Decode and evaluate the selected GARMA fit objective.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: value, candidate_variance
          real(dp), allocatable :: u(:), d(:), ar(:), ma(:), residual(:)
 
@@ -449,8 +477,12 @@ contains
    end function garma_fit
 
    pure function garma_fitted(series, u, d, ar, ma) result(fitted)
-      ! Return fitted values from GARMA conditional residuals.
-      real(dp), intent(in) :: series(:), u(:), d(:), ar(:), ma(:)
+      !! Return fitted values from GARMA conditional residuals.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: u(:) !! Input vector or random variate.
+      real(dp), intent(in) :: d(:) !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
       real(dp), allocatable :: fitted(:), residual(:)
 
       residual = garma_css_residuals(series, u, d, ar, ma)
@@ -458,9 +490,13 @@ contains
    end function garma_fitted
 
    pure function garma_forecast(series, u, d, ar, ma, horizon) result(out)
-      ! Forecast a GARMA process from its truncated infinite-AR representation.
-      real(dp), intent(in) :: series(:), u(:), d(:), ar(:), ma(:)
-      integer, intent(in) :: horizon
+      !! Forecast a GARMA process from its truncated infinite-AR representation.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: u(:) !! Input vector or random variate.
+      real(dp), intent(in) :: d(:) !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(garma_forecast_t) :: out
       real(dp), allocatable :: operator(:), factor(:), denominator(:), history(:)
       integer :: n, j, h
@@ -497,12 +533,21 @@ contains
    pure function garma_regression_fit(series, initial_u, initial_d, initial_ar, &
       initial_ma, regressors, include_mean, include_drift, difference_order, method, &
       estimate_frequencies, d_limits, max_iterations, tolerance) result(out)
-      ! Fit deterministic regression first, then GARMA dynamics to differenced residuals.
-      real(dp), intent(in) :: series(:), initial_u(:), initial_d(:)
-      real(dp), intent(in) :: initial_ar(:), initial_ma(:)
-      real(dp), intent(in), optional :: regressors(:, :), d_limits(:), tolerance
-      logical, intent(in), optional :: include_mean, include_drift, estimate_frequencies
-      integer, intent(in), optional :: difference_order, method, max_iterations
+      !! Fit deterministic regression first, then GARMA dynamics to differenced residuals.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: initial_u(:) !! Initial u.
+      real(dp), intent(in) :: initial_d(:) !! Initial d.
+      real(dp), intent(in) :: initial_ar(:) !! Initial autoregressive.
+      real(dp), intent(in) :: initial_ma(:) !! Initial moving-average.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: d_limits(:) !! D limits.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      logical, intent(in), optional :: include_drift !! Whether to include the drift.
+      logical, intent(in), optional :: estimate_frequencies !! Whether to estimate the frequencies.
+      integer, intent(in), optional :: difference_order !! Difference order.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(garma_regression_fit_t) :: out
       real(dp), allocatable :: design(:, :), regression_fitted(:), beta(:), se(:)
       real(dp), allocatable :: regression_residual(:), dynamic_fitted(:), covariance(:, :)
@@ -570,10 +615,10 @@ contains
    end function garma_regression_fit
 
    pure function garma_regression_forecast(fit, future_regressors, horizon) result(out)
-      ! Forecast a regression GARMA fit and restore integration and deterministic terms.
-      type(garma_regression_fit_t), intent(in) :: fit
-      real(dp), intent(in), optional :: future_regressors(:, :)
-      integer, intent(in) :: horizon
+      !! Forecast a regression GARMA fit and restore integration and deterministic terms.
+      type(garma_regression_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in), optional :: future_regressors(:, :) !! Future regressors.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(garma_forecast_t) :: out
       type(garma_forecast_t) :: dynamic_forecast
       real(dp), allocatable :: design(:, :), restored(:)
@@ -607,9 +652,11 @@ contains
    end function garma_regression_forecast
 
    pure function garma_accuracy(actual, predicted, training, seasonal_lag) result(out)
-      ! Compute forecast package point-accuracy measures.
-      real(dp), intent(in) :: actual(:), predicted(:), training(:)
-      integer, intent(in), optional :: seasonal_lag
+      !! Compute forecast package point-accuracy measures.
+      real(dp), intent(in) :: actual(:) !! Observed values used for evaluation.
+      real(dp), intent(in) :: predicted(:) !! Predicted values.
+      real(dp), intent(in) :: training(:) !! Training observations.
+      integer, intent(in), optional :: seasonal_lag !! Seasonal lag.
       type(garma_accuracy_t) :: out
       real(dp), allocatable :: error(:), scaled_difference(:)
       real(dp) :: center_error, denominator
@@ -647,8 +694,8 @@ contains
    end function garma_accuracy
 
    pure function garma_goodness_of_fit(residuals) result(out)
-      ! Apply garma's sequential Bartlett periodogram white-noise diagnostic.
-      real(dp), intent(in) :: residuals(:)
+      !! Apply garma's sequential Bartlett periodogram white-noise diagnostic.
+      real(dp), intent(in) :: residuals(:) !! Model residuals.
       type(garma_gof_t) :: out
       type(garma_periodogram_t) :: pgram
       real(dp), allocatable :: sorted_full(:), sorted_prefix(:)
@@ -661,10 +708,10 @@ contains
          out%info = 1
          return
       end if
-      sorted_full = sorted_values(pgram%spectrum)
+      sorted_full = sorted(pgram%spectrum)
       allocate(out%statistic(frequencies - 1), out%p_value(frequencies - 1))
       do prefix = 2, frequencies
-         sorted_prefix = sorted_values(pgram%spectrum(:prefix))
+         sorted_prefix = sorted(pgram%spectrum(:prefix))
          d_plus = 0.0_dp
          d_minus = 0.0_dp
          do i = 1, prefix
@@ -692,8 +739,8 @@ contains
    end function garma_goodness_of_fit
 
    pure function undetrended_periodogram(series) result(out)
-      ! Compute the raw periodogram used by the residual Bartlett diagnostic.
-      real(dp), intent(in) :: series(:)
+      !! Compute the raw periodogram used by the residual Bartlett diagnostic.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
       type(garma_periodogram_t) :: out
       complex(dp), allocatable :: transformed(:)
       integer :: n, i
@@ -711,29 +758,11 @@ contains
       end do
    end function undetrended_periodogram
 
-   pure function sorted_values(values) result(sorted)
-      ! Return values in ascending order.
-      real(dp), intent(in) :: values(:)
-      real(dp) :: sorted(size(values)), saved
-      integer :: i, j
-
-      sorted = values
-      do i = 2, size(sorted)
-         saved = sorted(i)
-         j = i - 1
-         do while (j >= 1)
-            if (sorted(j) <= saved) exit
-            sorted(j + 1) = sorted(j)
-            j = j - 1
-         end do
-         sorted(j + 1) = saved
-      end do
-   end function sorted_values
-
    pure function gsp_estimate(pgram, pole_index, bandwidth) result(estimate)
-      ! Minimize Arteche's Gaussian semiparametric criterion by golden search.
-      type(garma_periodogram_t), intent(in) :: pgram
-      integer, intent(in) :: pole_index, bandwidth
+      !! Minimize Arteche's Gaussian semiparametric criterion by golden search.
+      type(garma_periodogram_t), intent(in) :: pgram !! Periodogram values and frequencies.
+      integer, intent(in) :: pole_index !! Index of pole.
+      integer, intent(in) :: bandwidth !! Smoothing or spectral bandwidth.
       real(dp) :: estimate, lower, upper, first, second, f_first, f_second
       real(dp), parameter :: ratio = 0.6180339887498948482_dp
       integer :: iteration
@@ -763,10 +792,11 @@ contains
    end function gsp_estimate
 
    pure real(dp) function gsp_criterion(d, pgram, pole_index, bandwidth) result(value)
-      ! Evaluate the local Gaussian semiparametric criterion.
-      real(dp), intent(in) :: d
-      type(garma_periodogram_t), intent(in) :: pgram
-      integer, intent(in) :: pole_index, bandwidth
+      !! Evaluate the local Gaussian semiparametric criterion.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      type(garma_periodogram_t), intent(in) :: pgram !! Periodogram values and frequencies.
+      integer, intent(in) :: pole_index !! Index of pole.
+      integer, intent(in) :: bandwidth !! Smoothing or spectral bandwidth.
       real(dp) :: omega(bandwidth), spectrum(bandwidth)
       integer :: i, index, total
 
@@ -783,9 +813,10 @@ contains
    end function gsp_criterion
 
    pure real(dp) function lpr_estimate(pgram, pole_index, bandwidth) result(estimate)
-      ! Compute the local symmetric log-periodogram regression estimate.
-      type(garma_periodogram_t), intent(in) :: pgram
-      integer, intent(in) :: pole_index, bandwidth
+      !! Compute the local symmetric log-periodogram regression estimate.
+      type(garma_periodogram_t), intent(in) :: pgram !! Periodogram values and frequencies.
+      integer, intent(in) :: pole_index !! Index of pole.
+      integer, intent(in) :: bandwidth !! Smoothing or spectral bandwidth.
       real(dp), allocatable :: centered_log(:)
       real(dp) :: denominator, numerator
       integer :: i, plus_index, minus_index, total
@@ -812,8 +843,9 @@ contains
    end function lpr_estimate
 
    pure elemental integer function reflected_spectrum_index(index, total) result(reflected)
-      ! Reflect a periodogram index across zero and the Nyquist frequency.
-      integer, intent(in) :: index, total
+      !! Reflect a periodogram index across zero and the Nyquist frequency.
+      integer, intent(in) :: index !! Element or observation index.
+      integer, intent(in) :: total !! Total.
 
       reflected = index
       if (reflected < 1) reflected = 2 - reflected
@@ -822,8 +854,10 @@ contains
    end function reflected_spectrum_index
 
    pure function rational_filter(series, numerator, denominator) result(filtered)
-      ! Apply a causal rational lag filter with unit-leading denominator.
-      real(dp), intent(in) :: series(:), numerator(0:), denominator(0:)
+      !! Apply a causal rational lag filter with unit-leading denominator.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: numerator(0:) !! Numerator polynomial coefficients.
+      real(dp), intent(in) :: denominator(0:) !! Denominator polynomial coefficients.
       real(dp), allocatable :: filtered(:)
       integer :: t, lag
 
@@ -841,8 +875,8 @@ contains
    end function rational_filter
 
    pure function discrete_transform(values) result(transformed)
-      ! Use the radix-2 FFT when possible and an exact DFT otherwise.
-      complex(dp), intent(in) :: values(:)
+      !! Use the radix-2 FFT when possible and an exact DFT otherwise.
+      complex(dp), intent(in) :: values(:) !! Input values.
       complex(dp), allocatable :: transformed(:)
       real(dp) :: angle
       integer :: n, k, j
@@ -865,9 +899,16 @@ contains
 
    pure function encode_fit(u, d, ar, ma, estimate_u, lower_d, upper_d, variance, &
       include_variance) result(parameters)
-      ! Map bounded GARMA parameters into unconstrained coordinates.
-      real(dp), intent(in) :: u(:), d(:), ar(:), ma(:), lower_d, upper_d, variance
-      logical, intent(in) :: estimate_u, include_variance
+      !! Map bounded GARMA parameters into unconstrained coordinates.
+      real(dp), intent(in) :: u(:) !! Input vector or random variate.
+      real(dp), intent(in) :: d(:) !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: lower_d !! Lower bound for d.
+      real(dp), intent(in) :: upper_d !! Upper bound for d.
+      real(dp), intent(in) :: variance !! Variance value or matrix.
+      logical, intent(in) :: estimate_u !! Whether to estimate the u.
+      logical, intent(in) :: include_variance !! Whether to include the variance.
       real(dp), allocatable :: parameters(:)
       real(dp) :: scaled
       integer :: factor, offset
@@ -897,12 +938,20 @@ contains
 
    pure subroutine decode_fit(parameters, fixed_u, estimate_u, lower_d, upper_d, p, q, &
       include_variance, u, d, ar, ma, variance)
-      ! Recover bounded GARMA parameters from optimizer coordinates.
-      real(dp), intent(in) :: parameters(:), fixed_u(:), lower_d, upper_d
-      logical, intent(in) :: estimate_u, include_variance
-      integer, intent(in) :: p, q
-      real(dp), allocatable, intent(out) :: u(:), d(:), ar(:), ma(:)
-      real(dp), intent(out) :: variance
+      !! Recover bounded GARMA parameters from optimizer coordinates.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(in) :: fixed_u(:) !! Fixed u.
+      real(dp), intent(in) :: lower_d !! Lower bound for d.
+      real(dp), intent(in) :: upper_d !! Upper bound for d.
+      logical, intent(in) :: estimate_u !! Whether to estimate the u.
+      logical, intent(in) :: include_variance !! Whether to include the variance.
+      integer, intent(in) :: p !! Autoregressive order or model dimension.
+      integer, intent(in) :: q !! Model order, dimension, or parameter.
+      real(dp), allocatable, intent(out) :: u(:) !! Input vector or random variate.
+      real(dp), allocatable, intent(out) :: d(:) !! Fractional-differencing parameter or differencing order.
+      real(dp), allocatable, intent(out) :: ar(:) !! Autoregressive coefficients.
+      real(dp), allocatable, intent(out) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(out) :: variance !! Variance value or matrix.
       integer :: factor, offset
 
       allocate(u(size(fixed_u)), d(size(fixed_u)), ar(p), ma(q))
@@ -927,8 +976,9 @@ contains
    end subroutine decode_fit
 
    pure subroutine sort_pairs(u, d)
-      ! Sort pole locations while retaining their paired exponents.
-      real(dp), intent(inout) :: u(:), d(:)
+      !! Sort pole locations while retaining their paired exponents.
+      real(dp), intent(inout) :: u(:) !! Input vector or random variate, updated in place.
+      real(dp), intent(inout) :: d(:) !! Fractional-differencing parameter or differencing order, updated in place.
       real(dp) :: saved_u, saved_d
       integer :: i, j
 
@@ -948,12 +998,12 @@ contains
    end subroutine sort_pairs
 
    pure subroutine spectral_covariance(fit, series, estimate_u, covariance, info)
-      ! Estimate Whittle covariance from frequency-domain score products.
-      type(garma_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: series(:)
-      logical, intent(in) :: estimate_u
-      real(dp), allocatable, intent(out) :: covariance(:, :)
-      integer, intent(out) :: info
+      !! Estimate Whittle covariance from frequency-domain score products.
+      type(garma_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      logical, intent(in) :: estimate_u !! Whether to estimate the u.
+      real(dp), allocatable, intent(out) :: covariance(:, :) !! Covariance matrix.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       type(garma_periodogram_t) :: pgram
       real(dp), allocatable :: physical(:), plus(:), minus(:), score(:, :), omega(:, :)
       real(dp) :: step
@@ -990,12 +1040,12 @@ contains
    end subroutine spectral_covariance
 
    pure subroutine css_covariance(fit, series, estimate_u, covariance, info)
-      ! Estimate CSS covariance from the physical-parameter objective Hessian.
-      type(garma_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: series(:)
-      logical, intent(in) :: estimate_u
-      real(dp), allocatable, intent(out) :: covariance(:, :)
-      integer, intent(out) :: info
+      !! Estimate CSS covariance from the physical-parameter objective Hessian.
+      type(garma_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      logical, intent(in) :: estimate_u !! Whether to estimate the u.
+      real(dp), allocatable, intent(out) :: covariance(:, :) !! Covariance matrix.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: parameters(:), hessian(:, :), inverse(:, :)
 
       parameters = pack_physical(fit, estimate_u)
@@ -1016,8 +1066,8 @@ contains
    contains
 
       pure function objective(parameters) result(value)
-         ! Evaluate CSS at a packed physical parameter vector.
-         real(dp), intent(in) :: parameters(:)
+         !! Evaluate CSS at a packed physical parameter vector.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: value
          real(dp), allocatable :: u(:), d(:), ar(:), ma(:), residual(:)
 
@@ -1029,10 +1079,10 @@ contains
    end subroutine css_covariance
 
    pure subroutine set_wll_standard_errors(fit, series, estimate_u)
-      ! Set the specialized WLL standard errors available for Gegenbauer exponents.
-      type(garma_fit_t), intent(inout) :: fit
-      real(dp), intent(in) :: series(:)
-      logical, intent(in) :: estimate_u
+      !! Set the specialized WLL standard errors available for Gegenbauer exponents.
+      type(garma_fit_t), intent(inout) :: fit !! Previously fitted model, updated in place.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      logical, intent(in) :: estimate_u !! Whether to estimate the u.
       type(garma_periodogram_t) :: pgram
       real(dp), allocatable :: score(:)
       integer :: factor, index
@@ -1049,11 +1099,14 @@ contains
    end subroutine set_wll_standard_errors
 
    pure subroutine unpack_physical(parameters, fit, estimate_u, u, d, ar, ma)
-      ! Unpack package-ordered physical parameters using a fit as the shape template.
-      real(dp), intent(in) :: parameters(:)
-      type(garma_fit_t), intent(in) :: fit
-      logical, intent(in) :: estimate_u
-      real(dp), allocatable, intent(out) :: u(:), d(:), ar(:), ma(:)
+      !! Unpack package-ordered physical parameters using a fit as the shape template.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      type(garma_fit_t), intent(in) :: fit !! Previously fitted model.
+      logical, intent(in) :: estimate_u !! Whether to estimate the u.
+      real(dp), allocatable, intent(out) :: u(:) !! Input vector or random variate.
+      real(dp), allocatable, intent(out) :: d(:) !! Fractional-differencing parameter or differencing order.
+      real(dp), allocatable, intent(out) :: ar(:) !! Autoregressive coefficients.
+      real(dp), allocatable, intent(out) :: ma(:) !! Moving-average coefficients.
       integer :: factor, offset
 
       allocate(u(size(fit%u)), d(size(fit%d)), ar(size(fit%ar)), ma(size(fit%ma)))
@@ -1073,9 +1126,9 @@ contains
    end subroutine unpack_physical
 
    pure function pack_physical(fit, estimate_u) result(parameters)
-      ! Pack GARMA parameters in package coefficient order.
-      type(garma_fit_t), intent(in) :: fit
-      logical, intent(in) :: estimate_u
+      !! Pack GARMA parameters in package coefficient order.
+      type(garma_fit_t), intent(in) :: fit !! Previously fitted model.
+      logical, intent(in) :: estimate_u !! Whether to estimate the u.
       real(dp), allocatable :: parameters(:)
       integer :: factor, offset
 
@@ -1096,10 +1149,11 @@ contains
    end function pack_physical
 
    pure function spectral_from_physical(frequency, parameters, fit, estimate_u) result(values)
-      ! Evaluate spectral inverse from a packed physical parameter vector.
-      real(dp), intent(in) :: frequency(:), parameters(:)
-      type(garma_fit_t), intent(in) :: fit
-      logical, intent(in) :: estimate_u
+      !! Evaluate spectral inverse from a packed physical parameter vector.
+      real(dp), intent(in) :: frequency(:) !! Number of observations per seasonal cycle.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      type(garma_fit_t), intent(in) :: fit !! Previously fitted model.
+      logical, intent(in) :: estimate_u !! Whether to estimate the u.
       real(dp), allocatable :: values(:), u(:), d(:), ar(:), ma(:)
       integer :: factor, offset
 
@@ -1108,9 +1162,10 @@ contains
    end function spectral_from_physical
 
    pure function polynomial_product(first, second, max_degree) result(product)
-      ! Multiply two zero-origin polynomials with truncation.
-      real(dp), intent(in) :: first(0:), second(:)
-      integer, intent(in) :: max_degree
+      !! Multiply two zero-origin polynomials with truncation.
+      real(dp), intent(in) :: first(0:) !! First operand.
+      real(dp), intent(in) :: second(:) !! Second operand.
+      integer, intent(in) :: max_degree !! Maximum degree.
       real(dp), allocatable :: product(:)
       integer :: i, j
 
@@ -1124,9 +1179,10 @@ contains
    end function polynomial_product
 
    pure function polynomial_division(numerator, denominator, max_degree) result(quotient)
-      ! Divide zero-origin lag polynomials through a requested degree.
-      real(dp), intent(in) :: numerator(0:), denominator(0:)
-      integer, intent(in) :: max_degree
+      !! Divide zero-origin lag polynomials through a requested degree.
+      real(dp), intent(in) :: numerator(0:) !! Numerator polynomial coefficients.
+      real(dp), intent(in) :: denominator(0:) !! Denominator polynomial coefficients.
+      integer, intent(in) :: max_degree !! Maximum degree.
       real(dp), allocatable :: quotient(:)
       integer :: degree, lag
 
@@ -1143,10 +1199,12 @@ contains
 
    pure function regression_design(observations, regressors, include_mean, &
       include_drift, time_offset) result(design)
-      ! Build external, intercept, and drift columns in package regression order.
-      integer, intent(in) :: observations, time_offset
-      real(dp), intent(in), optional :: regressors(:, :)
-      logical, intent(in) :: include_mean, include_drift
+      !! Build external, intercept, and drift columns in package regression order.
+      integer, intent(in) :: observations !! Observed time-series values.
+      integer, intent(in) :: time_offset !! Time offset.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      logical, intent(in) :: include_mean !! Whether to include a mean term.
+      logical, intent(in) :: include_drift !! Whether to include the drift.
       real(dp), allocatable :: design(:, :)
       integer :: columns, offset, i
 
@@ -1168,9 +1226,9 @@ contains
    end function regression_design
 
    pure function repeated_difference(series, order) result(differenced)
-      ! Apply ordinary differencing repeatedly.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: order
+      !! Apply ordinary differencing repeatedly.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
       real(dp), allocatable :: differenced(:), next(:)
       integer :: iteration
 
@@ -1182,9 +1240,10 @@ contains
    end function repeated_difference
 
    pure function reintegrate_fitted(fitted_difference, original, order) result(fitted)
-      ! Restore fitted differences using leading observed initial conditions.
-      real(dp), intent(in) :: fitted_difference(:), original(:)
-      integer, intent(in) :: order
+      !! Restore fitted differences using leading observed initial conditions.
+      real(dp), intent(in) :: fitted_difference(:) !! Fitted difference.
+      real(dp), intent(in) :: original(:) !! Original.
+      integer, intent(in) :: order !! Model or polynomial order.
       real(dp), allocatable :: fitted(:)
       integer :: t, lag
 
@@ -1204,9 +1263,10 @@ contains
    end function reintegrate_fitted
 
    pure function reintegrate_forecast(forecast_difference, history, order) result(forecast)
-      ! Restore future differences from the latest observed integration states.
-      real(dp), intent(in) :: forecast_difference(:), history(:)
-      integer, intent(in) :: order
+      !! Restore future differences from the latest observed integration states.
+      real(dp), intent(in) :: forecast_difference(:) !! Forecast difference.
+      real(dp), intent(in) :: history(:) !! History.
+      integer, intent(in) :: order !! Model or polynomial order.
       real(dp), allocatable :: forecast(:), states(:), differences(:)
       integer :: level, h, n
 
@@ -1233,8 +1293,9 @@ contains
    end function reintegrate_forecast
 
    pure elemental real(dp) function binomial_coefficient(n, k) result(value)
-      ! Return a small integer binomial coefficient in double precision.
-      integer, intent(in) :: n, k
+      !! Return a small integer binomial coefficient in double precision.
+      integer, intent(in) :: n !! Number of observations or elements.
+      integer, intent(in) :: k !! K.
       integer :: i
 
       value = 1.0_dp
@@ -1242,14 +1303,5 @@ contains
          value = value*real(n - i + 1, dp)/real(i, dp)
       end do
    end function binomial_coefficient
-
-   pure real(dp) function sample_variance(values) result(variance)
-      ! Return the ordinary sample variance.
-      real(dp), intent(in) :: values(:)
-      real(dp) :: center
-
-      center = sum(values)/real(size(values), dp)
-      variance = sum((values - center)**2)/real(max(1, size(values) - 1), dp)
-   end function sample_variance
 
 end module garma_mod

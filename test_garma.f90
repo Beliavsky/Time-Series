@@ -143,9 +143,9 @@ program test_garma
 contains
 
    subroutine check(condition, label)
-      ! Stop the test program when an assertion fails.
-      logical, intent(in) :: condition
-      character(*), intent(in) :: label
+      !! Stop the test program when an assertion fails.
+      logical, intent(in) :: condition !! Flag controlling condition.
+      character(*), intent(in) :: label !! Label.
 
       if (.not. condition) then
          write (*, '(a)') 'FAILED: '//label

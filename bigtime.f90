@@ -3,10 +3,11 @@
 ! Sparse large-VAR algorithms translated from the R bigtime package.
 module bigtime_mod
    use kind_mod, only: dp
-   use time_series_linalg_mod, only: symmetric_eigen, inverse_logdet
-   use time_series_linalg_mod, only: general_eigenvalues
-   use time_series_random_mod, only: random_uniform
-   use time_series_random_mod, only: random_standard_normal_matrix
+   use linalg_mod, only: symmetric_eigen, inverse_logdet
+   use linalg_mod, only: general_eigenvalues
+   use random_mod, only: random_uniform
+   use random_mod, only: random_standard_normal_matrix
+   use time_series_var_utils_mod, only: build_var_data, build_varx_data
    implicit none
    private
 
@@ -232,8 +233,9 @@ contains
 
    pure elemental real(dp) function bigtime_soft_threshold(value, threshold) &
       result(out)
-      ! Apply the scalar lasso proximal operator.
-      real(dp), intent(in) :: value, threshold
+      !! Apply the scalar lasso proximal operator.
+      real(dp), intent(in) :: value !! Input value.
+      real(dp), intent(in) :: threshold !! Decision or truncation threshold.
 
       if (value > threshold) then
          out = value - threshold
@@ -246,9 +248,11 @@ contains
 
    pure function bigtime_hlag_prox(values, threshold, variables, lag_order) &
       result(out)
-      ! Apply bigtime's elementwise hierarchical-lag proximal operator.
-      real(dp), intent(in) :: values(:), threshold
-      integer, intent(in) :: variables, lag_order
+      !! Apply bigtime's elementwise hierarchical-lag proximal operator.
+      real(dp), intent(in) :: values(:) !! Input values.
+      real(dp), intent(in) :: threshold !! Decision or truncation threshold.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: lag_order !! Model lag order.
       real(dp) :: out(size(values))
       real(dp) :: group_norm, shrinkage
       integer :: predictor, first_lag, lag
@@ -289,12 +293,14 @@ contains
 
    pure function bigtime_sparse_var(series, lag_order, lambda, penalty, &
       tolerance, max_iterations, initial_phi) result(out)
-      ! Estimate one sparse VAR by bigtime's row-wise accelerated proximal method.
-      real(dp), intent(in) :: series(:, :), lambda
-      integer, intent(in) :: lag_order, penalty
-      real(dp), intent(in), optional :: tolerance
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: initial_phi(:, :)
+      !! Estimate one sparse VAR by bigtime's row-wise accelerated proximal method.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: penalty !! Penalty.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: initial_phi(:, :) !! Initial phi.
       type(bigtime_var_fit_t) :: out
       real(dp), allocatable :: response(:, :), design(:, :)
       real(dp), allocatable :: centered_response(:, :), centered_design(:, :)
@@ -397,12 +403,14 @@ contains
 
    pure function bigtime_sparse_var_path(series, lag_order, lambdas, penalty, &
       tolerance, max_iterations, warm_start) result(out)
-      ! Estimate a sequence of sparse VARs, optionally using adjacent warm starts.
-      real(dp), intent(in) :: series(:, :), lambdas(:)
-      integer, intent(in) :: lag_order, penalty
-      real(dp), intent(in), optional :: tolerance
-      integer, intent(in), optional :: max_iterations
-      logical, intent(in), optional :: warm_start
+      !! Estimate a sequence of sparse VARs, optionally using adjacent warm starts.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: lambdas(:) !! Candidate penalty or shrinkage parameters.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: penalty !! Penalty.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: warm_start !! Flag controlling warm start.
       type(bigtime_var_path_t) :: out
       type(bigtime_var_fit_t) :: fit
       real(dp), allocatable :: starting_phi(:, :)
@@ -464,9 +472,12 @@ contains
 
    pure function bigtime_var_lambda_grid(series, lag_order, penalty, &
       grid_ratio, grid_size) result(lambdas)
-      ! Construct bigtime's descending geometric grid from an all-zero bound.
-      real(dp), intent(in) :: series(:, :), grid_ratio
-      integer, intent(in) :: lag_order, penalty, grid_size
+      !! Construct bigtime's descending geometric grid from an all-zero bound.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: grid_ratio !! Grid ratio.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: penalty !! Penalty.
+      integer, intent(in) :: grid_size !! Grid size.
       real(dp), allocatable :: lambdas(:)
       real(dp), allocatable :: response(:, :), design(:, :)
       real(dp), allocatable :: centered_response(:, :), centered_design(:, :)
@@ -539,13 +550,19 @@ contains
    pure function bigtime_sparse_varx(endogenous, exogenous, ar_order, &
       exogenous_order, lambda_phi, lambda_beta, penalty, alpha, tolerance, &
       max_iterations, initial_phi, initial_beta) result(out)
-      ! Estimate one sparse VARX by bigtime's joint accelerated proximal method.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      integer, intent(in) :: ar_order, exogenous_order, penalty
-      real(dp), intent(in) :: lambda_phi, lambda_beta
-      real(dp), intent(in), optional :: alpha, tolerance
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: initial_phi(:, :), initial_beta(:, :)
+      !! Estimate one sparse VARX by bigtime's joint accelerated proximal method.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: penalty !! Penalty.
+      real(dp), intent(in) :: lambda_phi !! Lambda phi.
+      real(dp), intent(in) :: lambda_beta !! Lambda beta.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: initial_phi(:, :) !! Initial phi.
+      real(dp), intent(in), optional :: initial_beta(:, :) !! Initial beta.
       type(bigtime_varx_fit_t) :: out
       real(dp), allocatable :: response(:, :), ar_design(:, :), x_design(:, :)
       real(dp), allocatable :: centered_response(:, :)
@@ -689,13 +706,18 @@ contains
    pure function bigtime_sparse_varx_path(endogenous, exogenous, ar_order, &
       exogenous_order, lambda_phi, lambda_beta, penalty, alpha, tolerance, &
       max_iterations, warm_start) result(out)
-      ! Estimate sparse VARX models over paired penalty values.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      integer, intent(in) :: ar_order, exogenous_order, penalty
-      real(dp), intent(in) :: lambda_phi(:), lambda_beta(:)
-      real(dp), intent(in), optional :: alpha, tolerance
-      integer, intent(in), optional :: max_iterations
-      logical, intent(in), optional :: warm_start
+      !! Estimate sparse VARX models over paired penalty values.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: penalty !! Penalty.
+      real(dp), intent(in) :: lambda_phi(:) !! Lambda phi.
+      real(dp), intent(in) :: lambda_beta(:) !! Lambda beta.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: warm_start !! Flag controlling warm start.
       type(bigtime_varx_path_t) :: out
       type(bigtime_varx_fit_t) :: fit
       real(dp), allocatable :: starting_phi(:, :), starting_beta(:, :)
@@ -780,11 +802,16 @@ contains
    pure function bigtime_varx_lambda_grid(endogenous, exogenous, ar_order, &
       exogenous_order, penalty, phi_ratio, phi_size, beta_ratio, beta_size) &
       result(out)
-      ! Construct separate bigtime penalty grids by joint zero-model searches.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      integer, intent(in) :: ar_order, exogenous_order, penalty
-      real(dp), intent(in) :: phi_ratio, beta_ratio
-      integer, intent(in) :: phi_size, beta_size
+      !! Construct separate bigtime penalty grids by joint zero-model searches.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: penalty !! Penalty.
+      real(dp), intent(in) :: phi_ratio !! Phi ratio.
+      real(dp), intent(in) :: beta_ratio !! Beta ratio.
+      integer, intent(in) :: phi_size !! Phi size.
+      integer, intent(in) :: beta_size !! Beta size.
       type(bigtime_varx_grid_t) :: out
       real(dp), allocatable :: response(:, :), ar_design(:, :), x_design(:, :)
       real(dp), allocatable :: centered_response(:, :)
@@ -877,9 +904,9 @@ contains
    end function bigtime_varx_lambda_grid
 
    pure function bigtime_varma_innovation_proxy(series, phase1) result(proxy)
-      ! Extend and demean Phase I residuals using bigtime's boundary convention.
-      real(dp), intent(in) :: series(:, :)
-      type(bigtime_var_fit_t), intent(in) :: phase1
+      !! Extend and demean Phase I residuals using bigtime's boundary convention.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      type(bigtime_var_fit_t), intent(in) :: phase1 !! Phase1.
       real(dp), allocatable :: proxy(:, :)
       integer :: observations, variables, leading
 
@@ -902,14 +929,21 @@ contains
       phase1_penalty, ar_order, ma_order, lambda_phi, lambda_theta, &
       phase2_penalty, innovations, alpha, tolerance, phase1_max_iterations, &
       phase2_max_iterations) result(out)
-      ! Estimate bigtime's two-stage sparse VARMA at fixed penalty values.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: phase1_order, phase1_penalty, ar_order, ma_order
-      real(dp), intent(in) :: phase1_lambda, lambda_phi, lambda_theta
-      integer, intent(in) :: phase2_penalty
-      real(dp), intent(in), optional :: innovations(:, :), alpha, tolerance
-      integer, intent(in), optional :: phase1_max_iterations
-      integer, intent(in), optional :: phase2_max_iterations
+      !! Estimate bigtime's two-stage sparse VARMA at fixed penalty values.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: phase1_order !! Phase1 order.
+      integer, intent(in) :: phase1_penalty !! Phase1 penalty.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      real(dp), intent(in) :: phase1_lambda !! Phase1 lambda.
+      real(dp), intent(in) :: lambda_phi !! Lambda phi.
+      real(dp), intent(in) :: lambda_theta !! Lambda theta.
+      integer, intent(in) :: phase2_penalty !! Phase2 penalty.
+      real(dp), intent(in), optional :: innovations(:, :) !! Model innovations.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: phase1_max_iterations !! Number of phase1 max iterations.
+      integer, intent(in), optional :: phase2_max_iterations !! Number of phase2 max iterations.
       type(bigtime_varma_fit_t) :: out
       real(dp) :: selected_alpha, selected_tolerance
       integer :: selected_phase1_iterations, selected_phase2_iterations
@@ -989,15 +1023,22 @@ contains
       phase1_lambda, phase1_penalty, ar_order, ma_order, lambda_phi, &
       lambda_theta, phase2_penalty, innovations, alpha, tolerance, &
       phase1_max_iterations, phase2_max_iterations, warm_start) result(out)
-      ! Estimate a Phase II VARMA path from one shared Phase I residual proxy.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: phase1_order, phase1_penalty, ar_order, ma_order
-      real(dp), intent(in) :: phase1_lambda, lambda_phi(:), lambda_theta(:)
-      integer, intent(in) :: phase2_penalty
-      real(dp), intent(in), optional :: innovations(:, :), alpha, tolerance
-      integer, intent(in), optional :: phase1_max_iterations
-      integer, intent(in), optional :: phase2_max_iterations
-      logical, intent(in), optional :: warm_start
+      !! Estimate a Phase II VARMA path from one shared Phase I residual proxy.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: phase1_order !! Phase1 order.
+      integer, intent(in) :: phase1_penalty !! Phase1 penalty.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      real(dp), intent(in) :: phase1_lambda !! Phase1 lambda.
+      real(dp), intent(in) :: lambda_phi(:) !! Lambda phi.
+      real(dp), intent(in) :: lambda_theta(:) !! Lambda theta.
+      integer, intent(in) :: phase2_penalty !! Phase2 penalty.
+      real(dp), intent(in), optional :: innovations(:, :) !! Model innovations.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: phase1_max_iterations !! Number of phase1 max iterations.
+      integer, intent(in), optional :: phase2_max_iterations !! Number of phase2 max iterations.
+      logical, intent(in), optional :: warm_start !! Flag controlling warm start.
       type(bigtime_varma_path_t) :: out
       real(dp) :: selected_alpha, selected_tolerance
       integer :: selected_phase1_iterations, selected_phase2_iterations
@@ -1069,11 +1110,14 @@ contains
 
    pure function bigtime_var_cv(series, lag_order, lambdas, penalty, &
       training_fraction, tolerance, max_iterations) result(out)
-      ! Select a sparse VAR penalty by expanding-window one-step forecasts.
-      real(dp), intent(in) :: series(:, :), lambdas(:)
-      integer, intent(in) :: lag_order, penalty
-      real(dp), intent(in), optional :: training_fraction, tolerance
-      integer, intent(in), optional :: max_iterations
+      !! Select a sparse VAR penalty by expanding-window one-step forecasts.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: lambdas(:) !! Candidate penalty or shrinkage parameters.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: penalty !! Penalty.
+      real(dp), intent(in), optional :: training_fraction !! Training fraction.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(bigtime_cv_result_t) :: out
       type(bigtime_var_path_t) :: path
       real(dp) :: selected_fraction, selected_tolerance
@@ -1131,12 +1175,18 @@ contains
    pure function bigtime_varx_cv(endogenous, exogenous, ar_order, &
       exogenous_order, lambda_phi, lambda_beta, penalty, alpha, &
       training_fraction, tolerance, max_iterations) result(out)
-      ! Select paired sparse VARX penalties by expanding-window forecasts.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      integer, intent(in) :: ar_order, exogenous_order, penalty
-      real(dp), intent(in) :: lambda_phi(:), lambda_beta(:)
-      real(dp), intent(in), optional :: alpha, training_fraction, tolerance
-      integer, intent(in), optional :: max_iterations
+      !! Select paired sparse VARX penalties by expanding-window forecasts.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: penalty !! Penalty.
+      real(dp), intent(in) :: lambda_phi(:) !! Lambda phi.
+      real(dp), intent(in) :: lambda_beta(:) !! Lambda beta.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in), optional :: training_fraction !! Training fraction.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(bigtime_cv_result_t) :: out
       type(bigtime_varx_path_t) :: path
       real(dp) :: selected_alpha, selected_fraction, selected_tolerance
@@ -1210,15 +1260,22 @@ contains
       phase1_penalty, ar_order, ma_order, lambda_phi, lambda_theta, &
       phase2_penalty, innovations, alpha, training_fraction, tolerance, &
       phase1_max_iterations, phase2_max_iterations) result(out)
-      ! Select Phase II VARMA penalties using one shared Phase I proxy.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: phase1_order, phase1_penalty, ar_order, ma_order
-      real(dp), intent(in) :: phase1_lambda, lambda_phi(:), lambda_theta(:)
-      integer, intent(in) :: phase2_penalty
-      real(dp), intent(in), optional :: innovations(:, :)
-      real(dp), intent(in), optional :: alpha, training_fraction, tolerance
-      integer, intent(in), optional :: phase1_max_iterations
-      integer, intent(in), optional :: phase2_max_iterations
+      !! Select Phase II VARMA penalties using one shared Phase I proxy.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: phase1_order !! Phase1 order.
+      integer, intent(in) :: phase1_penalty !! Phase1 penalty.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      real(dp), intent(in) :: phase1_lambda !! Phase1 lambda.
+      real(dp), intent(in) :: lambda_phi(:) !! Lambda phi.
+      real(dp), intent(in) :: lambda_theta(:) !! Lambda theta.
+      integer, intent(in) :: phase2_penalty !! Phase2 penalty.
+      real(dp), intent(in), optional :: innovations(:, :) !! Model innovations.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in), optional :: training_fraction !! Training fraction.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: phase1_max_iterations !! Number of phase1 max iterations.
+      integer, intent(in), optional :: phase2_max_iterations !! Number of phase2 max iterations.
       type(bigtime_varma_cv_t) :: out
       real(dp) :: selected_alpha, selected_fraction, selected_tolerance
       integer :: selected_phase1_iterations, selected_phase2_iterations
@@ -1269,9 +1326,9 @@ contains
    end function bigtime_varma_cv
 
    pure function bigtime_var_path_ic(series, path) result(out)
-      ! Compute AIC, BIC, and HQ for every sparse VAR path slice.
-      real(dp), intent(in) :: series(:, :)
-      type(bigtime_var_path_t), intent(in) :: path
+      !! Compute AIC, BIC, and HQ for every sparse VAR path slice.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      type(bigtime_var_path_t), intent(in) :: path !! Path.
       type(bigtime_ic_result_t) :: out
       real(dp), allocatable :: response(:, :), design(:, :), residuals(:, :)
       integer :: candidate, candidate_info
@@ -1300,9 +1357,10 @@ contains
    end function bigtime_var_path_ic
 
    pure function bigtime_varx_path_ic(endogenous, exogenous, path) result(out)
-      ! Compute AIC, BIC, and HQ for every sparse VARX path slice.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      type(bigtime_varx_path_t), intent(in) :: path
+      !! Compute AIC, BIC, and HQ for every sparse VARX path slice.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      type(bigtime_varx_path_t), intent(in) :: path !! Path.
       type(bigtime_ic_result_t) :: out
       real(dp), allocatable :: response(:, :), ar_design(:, :), x_design(:, :)
       real(dp), allocatable :: residuals(:, :)
@@ -1336,9 +1394,9 @@ contains
    end function bigtime_varx_path_ic
 
    pure function bigtime_varma_path_ic(series, path) result(out)
-      ! Compute information criteria for the Phase II sparse VARMA path.
-      real(dp), intent(in) :: series(:, :)
-      type(bigtime_varma_path_t), intent(in) :: path
+      !! Compute information criteria for the Phase II sparse VARMA path.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      type(bigtime_varma_path_t), intent(in) :: path !! Path.
       type(bigtime_ic_result_t) :: out
 
       if (.not. allocated(path%innovations)) then
@@ -1349,10 +1407,10 @@ contains
    end function bigtime_varma_path_ic
 
    pure function bigtime_select_var_path(series, path, index) result(out)
-      ! Materialize one fitted sparse VAR from a regularization path.
-      real(dp), intent(in) :: series(:, :)
-      type(bigtime_var_path_t), intent(in) :: path
-      integer, intent(in) :: index
+      !! Materialize one fitted sparse VAR from a regularization path.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      type(bigtime_var_path_t), intent(in) :: path !! Path.
+      integer, intent(in) :: index !! Element or observation index.
       type(bigtime_var_fit_t) :: out
       real(dp), allocatable :: response(:, :), design(:, :)
 
@@ -1382,10 +1440,11 @@ contains
 
    pure function bigtime_select_varx_path(endogenous, exogenous, path, index) &
       result(out)
-      ! Materialize one fitted sparse VARX from a paired regularization path.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      type(bigtime_varx_path_t), intent(in) :: path
-      integer, intent(in) :: index
+      !! Materialize one fitted sparse VARX from a paired regularization path.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      type(bigtime_varx_path_t), intent(in) :: path !! Path.
+      integer, intent(in) :: index !! Element or observation index.
       type(bigtime_varx_fit_t) :: out
       real(dp), allocatable :: response(:, :), ar_design(:, :), x_design(:, :)
 
@@ -1422,10 +1481,10 @@ contains
    end function bigtime_select_varx_path
 
    pure function bigtime_var_forecast(fit, history, horizon) result(out)
-      ! Recursively forecast a sparse VAR from its latest observations.
-      type(bigtime_var_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: history(:, :)
-      integer, intent(in) :: horizon
+      !! Recursively forecast a sparse VAR from its latest observations.
+      type(bigtime_var_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: history(:, :) !! History.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(bigtime_forecast_t) :: out
       real(dp), allocatable :: extended(:, :)
       integer :: observations, variables, step, lag, target
@@ -1460,10 +1519,10 @@ contains
    end function bigtime_var_forecast
 
    pure function bigtime_var_path_forecast(path, history, horizon) result(out)
-      ! Recursively forecast every sparse VAR regularization-path slice.
-      type(bigtime_var_path_t), intent(in) :: path
-      real(dp), intent(in) :: history(:, :)
-      integer, intent(in) :: horizon
+      !! Recursively forecast every sparse VAR regularization-path slice.
+      type(bigtime_var_path_t), intent(in) :: path !! Path.
+      real(dp), intent(in) :: history(:, :) !! History.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(bigtime_path_forecast_t) :: out
       type(bigtime_var_fit_t) :: fit
       type(bigtime_forecast_t) :: forecast
@@ -1494,10 +1553,11 @@ contains
 
    pure function bigtime_varx_forecast(fit, endogenous_history, &
       exogenous_values, horizon) result(out)
-      ! Recursively forecast a sparse VARX using aligned exogenous values.
-      type(bigtime_varx_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: endogenous_history(:, :), exogenous_values(:, :)
-      integer, intent(in) :: horizon
+      !! Recursively forecast a sparse VARX using aligned exogenous values.
+      type(bigtime_varx_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: endogenous_history(:, :) !! Endogenous history.
+      real(dp), intent(in) :: exogenous_values(:, :) !! Exogenous values.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(bigtime_forecast_t) :: out
       real(dp), allocatable :: extended(:, :)
       integer :: observations, variables, x_variables, step, lag, target
@@ -1544,11 +1604,11 @@ contains
 
    pure function bigtime_varx_path_forecast(path, endogenous_history, &
       exogenous_values, horizon) result(out)
-      ! Recursively forecast every sparse VARX regularization-path slice.
-      type(bigtime_varx_path_t), intent(in) :: path
-      real(dp), intent(in) :: endogenous_history(:, :)
-      real(dp), intent(in) :: exogenous_values(:, :)
-      integer, intent(in) :: horizon
+      !! Recursively forecast every sparse VARX regularization-path slice.
+      type(bigtime_varx_path_t), intent(in) :: path !! Path.
+      real(dp), intent(in) :: endogenous_history(:, :) !! Endogenous history.
+      real(dp), intent(in) :: exogenous_values(:, :) !! Exogenous values.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(bigtime_path_forecast_t) :: out
       type(bigtime_varx_fit_t) :: fit
       type(bigtime_forecast_t) :: forecast
@@ -1583,10 +1643,10 @@ contains
    end function bigtime_varx_path_forecast
 
    pure function bigtime_varma_forecast(fit, history, horizon) result(out)
-      ! Recursively forecast sparse VARMA levels under zero future innovations.
-      type(bigtime_varma_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: history(:, :)
-      integer, intent(in) :: horizon
+      !! Recursively forecast sparse VARMA levels under zero future innovations.
+      type(bigtime_varma_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: history(:, :) !! History.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(bigtime_forecast_t) :: out
       real(dp), allocatable :: extended(:, :), innovation(:)
       integer :: observations, variables, step, lag, target, innovation_index
@@ -1636,10 +1696,10 @@ contains
    end function bigtime_varma_forecast
 
    pure function bigtime_var_stability(phi, lag_order, margin) result(out)
-      ! Diagnose VAR stability from the companion-matrix root moduli.
-      real(dp), intent(in) :: phi(:, :)
-      integer, intent(in) :: lag_order
-      real(dp), intent(in), optional :: margin
+      !! Diagnose VAR stability from the companion-matrix root moduli.
+      real(dp), intent(in) :: phi(:, :) !! Autoregressive or model coefficient.
+      integer, intent(in) :: lag_order !! Model lag order.
+      real(dp), intent(in), optional :: margin !! Margin.
       type(bigtime_stability_t) :: out
       real(dp), allocatable :: companion(:, :), perturbed(:, :)
       real(dp) :: selected_margin, perturbation
@@ -1685,11 +1745,13 @@ contains
    pure function bigtime_active_lags(primary, primary_predictors, &
       primary_order, secondary, secondary_predictors, secondary_order) &
       result(out)
-      ! Report each response-predictor pair's largest nonzero lag.
-      real(dp), intent(in) :: primary(:, :)
-      integer, intent(in) :: primary_predictors, primary_order
-      real(dp), intent(in), optional :: secondary(:, :)
-      integer, intent(in), optional :: secondary_predictors, secondary_order
+      !! Report each response-predictor pair's largest nonzero lag.
+      real(dp), intent(in) :: primary(:, :) !! Primary.
+      integer, intent(in) :: primary_predictors !! Primary predictors.
+      integer, intent(in) :: primary_order !! Primary order.
+      real(dp), intent(in), optional :: secondary(:, :) !! Secondary.
+      integer, intent(in), optional :: secondary_predictors !! Secondary predictors.
+      integer, intent(in), optional :: secondary_order !! Secondary order.
       type(bigtime_lag_order_t) :: out
       integer :: response, predictor, lag, responses
       real(dp), parameter :: zero_tolerance = 100.0_dp*epsilon(1.0_dp)
@@ -1746,13 +1808,15 @@ contains
    pure function bigtime_var_coefficients_from_draws(draws, lag_order, &
       maximum_modulus, sparsity, decay, zero_indices, trailing_zeros, &
       zero_self) result(out)
-      ! Build and stabilize sparse VAR coefficients from supplied Gaussian draws.
-      real(dp), intent(in) :: draws(:, :)
-      integer, intent(in) :: lag_order, sparsity
-      real(dp), intent(in) :: maximum_modulus, decay
-      integer, intent(in), optional :: zero_indices(:)
-      integer, intent(in), optional :: trailing_zeros(:, :)
-      logical, intent(in), optional :: zero_self
+      !! Build and stabilize sparse VAR coefficients from supplied Gaussian draws.
+      real(dp), intent(in) :: draws(:, :) !! Draws.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: sparsity !! Sparsity.
+      real(dp), intent(in) :: maximum_modulus !! Maximum modulus.
+      real(dp), intent(in) :: decay !! Decay.
+      integer, intent(in), optional :: zero_indices(:) !! Zero indices.
+      integer, intent(in), optional :: trailing_zeros(:, :) !! Trailing zeros.
+      logical, intent(in), optional :: zero_self !! Flag controlling zero self.
       type(bigtime_coefficient_t) :: out
       type(bigtime_stability_t) :: stability
       logical :: allow_self_zeros
@@ -1840,11 +1904,16 @@ contains
    function bigtime_random_var_coefficients(variables, lag_order, &
       maximum_modulus, sparsity, decay, zero_count, zero_min, zero_max, &
       zero_self) result(out)
-      ! Randomly generate and stabilize bigtime-style sparse VAR coefficients.
-      integer, intent(in) :: variables, lag_order, sparsity
-      real(dp), intent(in) :: maximum_modulus, decay
-      integer, intent(in), optional :: zero_count, zero_min, zero_max
-      logical, intent(in), optional :: zero_self
+      !! Randomly generate and stabilize bigtime-style sparse VAR coefficients.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: sparsity !! Sparsity.
+      real(dp), intent(in) :: maximum_modulus !! Maximum modulus.
+      real(dp), intent(in) :: decay !! Decay.
+      integer, intent(in), optional :: zero_count !! Number of zero.
+      integer, intent(in), optional :: zero_min !! Zero min.
+      integer, intent(in), optional :: zero_max !! Zero max.
+      logical, intent(in), optional :: zero_self !! Flag controlling zero self.
       type(bigtime_coefficient_t) :: out
       real(dp), allocatable :: draws(:, :)
       integer, allocatable :: indices(:), selected(:), trailing(:, :)
@@ -1910,10 +1979,12 @@ contains
 
    pure function bigtime_var_simulate_from_innovations(phi, intercept, &
       innovations, initial_state, burnin) result(out)
-      ! Simulate a VAR recursion from supplied innovations and companion state.
-      real(dp), intent(in) :: phi(:, :), intercept(:), innovations(:, :)
-      real(dp), intent(in) :: initial_state(:)
-      integer, intent(in) :: burnin
+      !! Simulate a VAR recursion from supplied innovations and companion state.
+      real(dp), intent(in) :: phi(:, :) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: intercept(:) !! Model intercept.
+      real(dp), intent(in) :: innovations(:, :) !! Model innovations.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      integer, intent(in) :: burnin !! Number of initial simulation draws to discard.
       type(bigtime_simulation_t) :: out
       real(dp), allocatable :: companion(:, :), state(:), constant(:)
       integer :: variables, lag_order, states, total, periods, time
@@ -1954,10 +2025,13 @@ contains
 
    function bigtime_var_simulate(phi, intercept, periods, burnin, &
       initial_state, innovation_scale) result(out)
-      ! Simulate a Gaussian VAR using the shared random-number stream.
-      real(dp), intent(in) :: phi(:, :), intercept(:)
-      integer, intent(in) :: periods, burnin
-      real(dp), intent(in), optional :: initial_state(:), innovation_scale
+      !! Simulate a Gaussian VAR using the shared random-number stream.
+      real(dp), intent(in) :: phi(:, :) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: intercept(:) !! Model intercept.
+      integer, intent(in) :: periods !! Periods.
+      integer, intent(in) :: burnin !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in), optional :: innovation_scale !! Innovation scale.
       type(bigtime_simulation_t) :: out
       real(dp), allocatable :: innovations(:, :), state(:)
       real(dp) :: scale
@@ -1993,9 +2067,9 @@ contains
    end function bigtime_var_simulate
 
    pure function bigtime_companion_matrix(phi, lag_order) result(companion)
-      ! Construct the block companion matrix for lag-major VAR coefficients.
-      real(dp), intent(in) :: phi(:, :)
-      integer, intent(in) :: lag_order
+      !! Construct the block companion matrix for lag-major VAR coefficients.
+      real(dp), intent(in) :: phi(:, :) !! Autoregressive or model coefficient.
+      integer, intent(in) :: lag_order !! Model lag order.
       real(dp) :: companion(size(phi, 1)*lag_order, &
          size(phi, 1)*lag_order)
       integer :: variables, row
@@ -2009,9 +2083,10 @@ contains
    end function bigtime_companion_matrix
 
    pure subroutine summarize_cv(out, lambda_phi, lambda_beta)
-      ! Summarize fold errors and apply bigtime's one-standard-error rule.
-      type(bigtime_cv_result_t), intent(inout) :: out
-      real(dp), intent(in), optional :: lambda_phi(:), lambda_beta(:)
+      !! Summarize fold errors and apply bigtime's one-standard-error rule.
+      type(bigtime_cv_result_t), intent(inout) :: out !! Procedure result, updated in place.
+      real(dp), intent(in), optional :: lambda_phi(:) !! Lambda phi.
+      real(dp), intent(in), optional :: lambda_beta(:) !! Lambda beta.
       real(dp) :: threshold, mean_value
       integer :: candidates, folds, candidate
       logical, allocatable :: eligible(:)
@@ -2057,11 +2132,12 @@ contains
 
    pure subroutine information_criteria(residuals, observations, degrees, &
       values, info)
-      ! Evaluate bigtime's covariance-determinant AIC, BIC, and HQ formulas.
-      real(dp), intent(in) :: residuals(:, :)
-      integer, intent(in) :: observations, degrees
-      real(dp), intent(out) :: values(3)
-      integer, intent(out) :: info
+      !! Evaluate bigtime's covariance-determinant AIC, BIC, and HQ formulas.
+      real(dp), intent(in) :: residuals(:, :) !! Model residuals.
+      integer, intent(in) :: observations !! Observed time-series values.
+      integer, intent(in) :: degrees !! Degrees.
+      real(dp), intent(out) :: values(3) !! Input values.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: centered(:, :), covariance(:, :), inverse(:, :)
       real(dp) :: logdet, sample_size
       integer :: residual_count, variables
@@ -2095,8 +2171,8 @@ contains
    end subroutine information_criteria
 
    pure elemental subroutine select_information_criteria(out)
-      ! Record the minimizing path index for each information criterion.
-      type(bigtime_ic_result_t), intent(inout) :: out
+      !! Record the minimizing path index for each information criterion.
+      type(bigtime_ic_result_t), intent(inout) :: out !! Procedure result, updated in place.
       integer :: criterion
 
       do criterion = 1, 3
@@ -2105,68 +2181,23 @@ contains
       out%info = 0
    end subroutine select_information_criteria
 
-   pure subroutine build_var_data(series, lag_order, response, design)
-      ! Form the response and lag-major design matrices used by bigtime.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: lag_order
-      real(dp), allocatable, intent(out) :: response(:, :), design(:, :)
-      integer :: observations, variables, effective, row, lag
-
-      observations = size(series, 1)
-      variables = size(series, 2)
-      effective = observations - lag_order
-      allocate(response(effective, variables))
-      allocate(design(effective, variables*lag_order))
-      response = series(lag_order + 1:, :)
-      do row = 1, effective
-         do lag = 1, lag_order
-            design(row, (lag - 1)*variables + 1:lag*variables) = &
-               series(lag_order + row - lag, :)
-         end do
-      end do
-   end subroutine build_var_data
-
-   pure subroutine build_varx_data(endogenous, exogenous, ar_order, &
-      exogenous_order, response, ar_design, x_design)
-      ! Align a VARX response with lag-major endogenous and exogenous designs.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      integer, intent(in) :: ar_order, exogenous_order
-      real(dp), allocatable, intent(out) :: response(:, :)
-      real(dp), allocatable, intent(out) :: ar_design(:, :), x_design(:, :)
-      integer :: observations, variables, x_variables, maximum_order
-      integer :: effective, row, lag
-
-      observations = size(endogenous, 1)
-      variables = size(endogenous, 2)
-      x_variables = size(exogenous, 2)
-      maximum_order = max(ar_order, exogenous_order)
-      effective = observations - maximum_order
-      allocate(response(effective, variables))
-      allocate(ar_design(effective, variables*ar_order))
-      allocate(x_design(effective, x_variables*exogenous_order))
-      response = endogenous(maximum_order + 1:, :)
-      do row = 1, effective
-         do lag = 1, ar_order
-            ar_design(row, (lag - 1)*variables + 1:lag*variables) = &
-               endogenous(maximum_order + row - lag, :)
-         end do
-         do lag = 1, exogenous_order
-            x_design(row, (lag - 1)*x_variables + 1:lag*x_variables) = &
-               exogenous(maximum_order + row - lag, :)
-         end do
-      end do
-   end subroutine build_varx_data
-
    pure subroutine sparse_var_row(response, design, initial, lambda, penalty, &
       variables, lag_order, step, tolerance, max_iterations, coefficient, &
       iterations, converged)
-      ! Run one response row of bigtime's accelerated proximal iteration.
-      real(dp), intent(in) :: response(:), design(:, :), initial(:)
-      real(dp), intent(in) :: lambda, step, tolerance
-      integer, intent(in) :: penalty, variables, lag_order, max_iterations
-      real(dp), intent(out) :: coefficient(:)
-      integer, intent(out) :: iterations
-      logical, intent(out) :: converged
+      !! Run one response row of bigtime's accelerated proximal iteration.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: design(:, :) !! Design.
+      real(dp), intent(in) :: initial(:) !! Initial value.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: step !! Step.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in) :: penalty !! Penalty.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(out) :: coefficient(:) !! Coefficient.
+      integer, intent(out) :: iterations !! Number of algorithm iterations.
+      logical, intent(out) :: converged !! Flag controlling converged.
       real(dp) :: previous(size(initial)), older(size(initial))
       real(dp) :: extrapolated(size(initial)), gradient(size(initial))
       real(dp) :: acceleration
@@ -2195,15 +2226,27 @@ contains
       initial_beta, lambda_phi, lambda_beta, penalty, variables, ar_order, &
       x_variables, exogenous_order, step, alpha, tolerance, max_iterations, &
       phi, beta, iterations, converged)
-      ! Run one joint endogenous-exogenous proximal iteration.
-      real(dp), intent(in) :: response(:), ar_design(:, :), x_design(:, :)
-      real(dp), intent(in) :: initial_phi(:), initial_beta(:)
-      real(dp), intent(in) :: lambda_phi, lambda_beta, step, alpha, tolerance
-      integer, intent(in) :: penalty, variables, ar_order, x_variables
-      integer, intent(in) :: exogenous_order, max_iterations
-      real(dp), intent(out) :: phi(:), beta(:)
-      integer, intent(out) :: iterations
-      logical, intent(out) :: converged
+      !! Run one joint endogenous-exogenous proximal iteration.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: ar_design(:, :) !! Autoregressive design.
+      real(dp), intent(in) :: x_design(:, :) !! X design.
+      real(dp), intent(in) :: initial_phi(:) !! Initial phi.
+      real(dp), intent(in) :: initial_beta(:) !! Initial beta.
+      real(dp), intent(in) :: lambda_phi !! Lambda phi.
+      real(dp), intent(in) :: lambda_beta !! Lambda beta.
+      real(dp), intent(in) :: step !! Step.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in) :: penalty !! Penalty.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: x_variables !! X variables.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(out) :: phi(:) !! Autoregressive or model coefficient.
+      real(dp), intent(out) :: beta(:) !! Regression or model coefficients.
+      integer, intent(out) :: iterations !! Number of algorithm iterations.
+      logical, intent(out) :: converged !! Flag controlling converged.
       real(dp) :: phi_previous(size(initial_phi)), phi_older(size(initial_phi))
       real(dp) :: beta_previous(size(initial_beta))
       real(dp) :: beta_older(size(initial_beta))
@@ -2248,9 +2291,12 @@ contains
 
    pure function apply_penalty_prox(values, threshold, penalty, variables, &
       lag_order) result(out)
-      ! Dispatch to the lasso or hierarchical-lag proximal operator.
-      real(dp), intent(in) :: values(:), threshold
-      integer, intent(in) :: penalty, variables, lag_order
+      !! Dispatch to the lasso or hierarchical-lag proximal operator.
+      real(dp), intent(in) :: values(:) !! Input values.
+      real(dp), intent(in) :: threshold !! Decision or truncation threshold.
+      integer, intent(in) :: penalty !! Penalty.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: lag_order !! Model lag order.
       real(dp) :: out(size(values))
 
       if (penalty == bigtime_penalty_hlag) then
@@ -2262,9 +2308,11 @@ contains
 
    pure real(dp) function penalty_value(phi, penalty, variables, lag_order) &
       result(value)
-      ! Evaluate the lasso or nested hierarchical-lag penalty.
-      real(dp), intent(in) :: phi(:, :)
-      integer, intent(in) :: penalty, variables, lag_order
+      !! Evaluate the lasso or nested hierarchical-lag penalty.
+      real(dp), intent(in) :: phi(:, :) !! Autoregressive or model coefficient.
+      integer, intent(in) :: penalty !! Penalty.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: lag_order !! Model lag order.
       integer :: equation, predictor, first_lag, lag
       real(dp) :: group_norm
 

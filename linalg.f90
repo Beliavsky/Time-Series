@@ -1,34 +1,39 @@
 ! SPDX-License-Identifier: MIT
 ! SPDX-FileComment: Original linear-algebra infrastructure for this Fortran library.
 ! Shared dense linear-algebra helpers for small and medium time-series models.
-module time_series_linalg_mod
+module linalg_mod
    use kind_mod, only: dp
    implicit none
    private
    public :: invert_matrix, inverse_logdet, cholesky_lower, symmetric_eigen
+   public :: cholesky_lower_semidefinite
    public :: general_eigenvalues
    public :: symmetric_pseudoinverse
-   public :: symmetrize, outer_product, diagonal_part, identity_matrix, matrix_rank
+   public :: symmetrize, outer_product, diagonal_part, diagonal_matrix
+   public :: identity_matrix, matrix_rank
+   public :: solve_matrix, solve_upper_matrix, solve_complex_system
+   public :: kronecker_product
 
 contains
 
    pure function symmetrize(a) result(s)
-      ! Remove numerical asymmetry from a square matrix.
-      real(dp), intent(in) :: a(:, :)
+      !! Remove numerical asymmetry from a square matrix.
+      real(dp), intent(in) :: a(:, :) !! A.
       real(dp) :: s(size(a, 1), size(a, 2))
       s = 0.5_dp*(a + transpose(a))
    end function symmetrize
 
    pure function outer_product(a, b) result(product)
-      ! Form the matrix outer product of two vectors.
-      real(dp), intent(in) :: a(:), b(:)
+      !! Form the matrix outer product of two vectors.
+      real(dp), intent(in) :: a(:) !! A.
+      real(dp), intent(in) :: b(:) !! B.
       real(dp) :: product(size(a), size(b))
       product = spread(a, 2, size(b))*spread(b, 1, size(a))
    end function outer_product
 
    pure function diagonal_part(a) result(diagonal)
-      ! Return a matrix containing only the input diagonal.
-      real(dp), intent(in) :: a(:, :)
+      !! Return a matrix containing only the input diagonal.
+      real(dp), intent(in) :: a(:, :) !! A.
       real(dp) :: diagonal(size(a, 1), size(a, 2))
       integer :: i
       diagonal = 0.0_dp
@@ -37,9 +42,21 @@ contains
       end do
    end function diagonal_part
 
+   pure function diagonal_matrix(diagonal) result(matrix)
+      !! Construct a square matrix with the supplied diagonal.
+      real(dp), intent(in) :: diagonal(:) !! Diagonal elements.
+      real(dp) :: matrix(size(diagonal), size(diagonal))
+      integer :: i
+
+      matrix = 0.0_dp
+      do i = 1, size(diagonal)
+         matrix(i, i) = diagonal(i)
+      end do
+   end function diagonal_matrix
+
    pure function identity_matrix(n) result(identity)
-      ! Construct a square identity matrix.
-      integer, intent(in) :: n
+      !! Construct a square identity matrix.
+      integer, intent(in) :: n !! Number of observations or elements.
       real(dp) :: identity(n, n)
       integer :: i
       identity = 0.0_dp
@@ -48,9 +65,131 @@ contains
       end do
    end function identity_matrix
 
+   pure function kronecker_product(left, right) result(product)
+      !! Form the Kronecker product of two real matrices.
+      real(dp), intent(in) :: left(:, :) !! Left.
+      real(dp), intent(in) :: right(:, :) !! Right.
+      real(dp) :: product(size(left, 1)*size(right, 1), size(left, 2)*size(right, 2))
+      integer :: row, column, right_rows, right_columns
+
+      right_rows = size(right, 1)
+      right_columns = size(right, 2)
+      do column = 1, size(left, 2)
+         do row = 1, size(left, 1)
+            product((row - 1)*right_rows + 1:row*right_rows, &
+               (column - 1)*right_columns + 1:column*right_columns) = left(row, column)*right
+         end do
+      end do
+   end function kronecker_product
+
+   pure subroutine solve_matrix(matrix, right, solution, info)
+      !! Solve a real dense system with multiple right-hand sides.
+      real(dp), intent(in) :: matrix(:, :) !! Input matrix.
+      real(dp), intent(in) :: right(:, :) !! Right.
+      real(dp), intent(out) :: solution(:, :) !! Solution.
+      integer, intent(out) :: info !! Status code; zero indicates success.
+      real(dp) :: augmented(size(matrix, 1), size(matrix, 2) + size(right, 2))
+      real(dp) :: held(size(augmented, 2)), pivot_value
+      integer :: i, j, pivot, n
+
+      n = size(matrix, 1)
+      if (size(matrix, 2) /= n .or. size(right, 1) /= n .or. &
+         size(solution, 1) /= n .or. size(solution, 2) /= size(right, 2)) then
+         info = 1
+         return
+      end if
+      augmented(:, :n) = matrix
+      augmented(:, n + 1:) = right
+      info = 0
+      do i = 1, n
+         pivot = i - 1 + maxloc(abs(augmented(i:, i)), dim=1)
+         if (abs(augmented(pivot, i)) <= tiny(1.0_dp)) then
+            info = i
+            solution = 0.0_dp
+            return
+         end if
+         if (pivot /= i) then
+            held = augmented(i, :)
+            augmented(i, :) = augmented(pivot, :)
+            augmented(pivot, :) = held
+         end if
+         pivot_value = augmented(i, i)
+         augmented(i, :) = augmented(i, :)/pivot_value
+         do j = 1, n
+            if (j /= i) augmented(j, :) = augmented(j, :) - augmented(j, i)*augmented(i, :)
+         end do
+      end do
+      solution = augmented(:, n + 1:)
+   end subroutine solve_matrix
+
+   pure subroutine solve_upper_matrix(upper, right, solution, info)
+      !! Solve an upper-triangular system with multiple right-hand sides.
+      real(dp), intent(in) :: upper(:, :) !! Upper.
+      real(dp), intent(in) :: right(:, :) !! Right.
+      real(dp), allocatable, intent(out) :: solution(:, :) !! Solution.
+      integer, intent(out) :: info !! Status code; zero indicates success.
+      integer :: n, row
+
+      n = size(upper, 1)
+      allocate(solution(n, size(right, 2)))
+      solution = right
+      info = 0
+      do row = n, 1, -1
+         if (abs(upper(row, row)) <= tiny(1.0_dp)) then
+            info = row
+            return
+         end if
+         if (row < n) solution(row, :) = solution(row, :) - &
+            matmul(upper(row, row + 1:n), solution(row + 1:n, :))
+         solution(row, :) = solution(row, :)/upper(row, row)
+      end do
+   end subroutine solve_upper_matrix
+
+   pure subroutine solve_complex_system(a, b, x, info)
+      !! Solve a dense complex system by partial-pivot elimination.
+      complex(dp), intent(in) :: a(:, :) !! A.
+      complex(dp), intent(in) :: b(:) !! B.
+      complex(dp), intent(out) :: x(:) !! Input data or predictor values.
+      integer, intent(out) :: info !! Status code; zero indicates success.
+      complex(dp), allocatable :: work(:, :), row(:)
+      complex(dp) :: factor
+      integer :: n, column, pivot, target
+
+      n = size(b)
+      allocate(work(n, n + 1), row(n + 1))
+      work(:, :n) = a
+      work(:, n + 1) = b
+      info = 0
+      do column = 1, n
+         pivot = column - 1 + maxloc(abs(work(column:, column)), dim=1)
+         if (abs(work(pivot, column)) <= tiny(1.0_dp)) then
+            info = column
+            return
+         end if
+         if (pivot /= column) then
+            row = work(column, :)
+            work(column, :) = work(pivot, :)
+            work(pivot, :) = row
+         end if
+         do target = column + 1, n
+            factor = work(target, column)/work(column, column)
+            work(target, column:n + 1) = work(target, column:n + 1) - &
+               factor*work(column, column:n + 1)
+         end do
+      end do
+      x = cmplx(0.0_dp, 0.0_dp, dp)
+      do column = n, 1, -1
+         x(column) = work(column, n + 1)
+         if (column < n) x(column) = x(column) - &
+            sum(work(column, column + 1:n)*x(column + 1:n))
+         x(column) = x(column)/work(column, column)
+      end do
+   end subroutine solve_complex_system
+
    pure integer function matrix_rank(a, tolerance) result(rank)
-      ! Estimate matrix rank by tolerance-scaled Gaussian elimination.
-      real(dp), intent(in) :: a(:, :), tolerance
+      !! Estimate matrix rank by tolerance-scaled Gaussian elimination.
+      real(dp), intent(in) :: a(:, :) !! A.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
       real(dp), allocatable :: work(:, :), row(:)
       integer :: column, pivot_row, active, nrow, ncol
       nrow = size(a, 1)
@@ -75,10 +214,10 @@ contains
    end function matrix_rank
 
    pure subroutine invert_matrix(a, inverse, info)
-      ! Invert a square matrix using partial-pivot Gauss-Jordan elimination.
-      real(dp), intent(in) :: a(:, :)
-      real(dp), allocatable, intent(out) :: inverse(:, :)
-      integer, intent(out) :: info
+      !! Invert a square matrix using partial-pivot Gauss-Jordan elimination.
+      real(dp), intent(in) :: a(:, :) !! A.
+      real(dp), allocatable, intent(out) :: inverse(:, :) !! Inverse.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: work(:, :), row(:)
       integer :: i, j, pivot_row, n
       n = size(a, 1)
@@ -110,10 +249,12 @@ contains
    end subroutine invert_matrix
 
    pure subroutine inverse_logdet(a, inverse, logdet, info, tolerance)
-      ! Invert a positive-definite matrix and compute its log determinant.
-      real(dp), intent(in) :: a(:, :), tolerance
-      real(dp), intent(out) :: inverse(:, :), logdet
-      integer, intent(out) :: info
+      !! Invert a positive-definite matrix and compute its log determinant.
+      real(dp), intent(in) :: a(:, :) !! A.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(out) :: inverse(:, :) !! Inverse.
+      real(dp), intent(out) :: logdet !! Logdet.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: work(:, :), row(:)
       real(dp) :: pivot
       integer :: i, j, n, pivot_row
@@ -150,10 +291,10 @@ contains
    end subroutine inverse_logdet
 
    pure subroutine cholesky_lower(a, lower, info)
-      ! Compute an unpivoted lower Cholesky factor.
-      real(dp), intent(in) :: a(:, :)
-      real(dp), allocatable, intent(out) :: lower(:, :)
-      integer, intent(out) :: info
+      !! Compute an unpivoted lower Cholesky factor.
+      real(dp), intent(in) :: a(:, :) !! A.
+      real(dp), allocatable, intent(out) :: lower(:, :) !! Lower.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp) :: value
       integer :: i, j, n
       n = size(a, 1)
@@ -177,11 +318,39 @@ contains
       end do
    end subroutine cholesky_lower
 
+   pure subroutine cholesky_lower_semidefinite(matrix, lower, info)
+      !! Compute a lower Cholesky factor allowing zero diagonal pivots.
+      real(dp), intent(in) :: matrix(:, :) !! Input matrix.
+      real(dp), allocatable, intent(out) :: lower(:, :) !! Lower.
+      integer, intent(out) :: info !! Status code; zero indicates success.
+      real(dp) :: value
+      integer :: i, j
+
+      allocate(lower(size(matrix, 1), size(matrix, 2)))
+      lower = 0.0_dp
+      info = 0
+      do i = 1, size(matrix, 1)
+         do j = 1, i
+            value = matrix(i, j) - dot_product(lower(i, 1:j - 1), lower(j, 1:j - 1))
+            if (i == j) then
+               if (value < -sqrt(epsilon(1.0_dp))) then
+                  info = i
+                  return
+               end if
+               lower(i, j) = sqrt(max(value, 0.0_dp))
+            else if (lower(j, j) > tiny(1.0_dp)) then
+               lower(i, j) = value/lower(j, j)
+            end if
+         end do
+      end do
+   end subroutine cholesky_lower_semidefinite
+
    pure subroutine symmetric_eigen(a, values, vectors, info)
-      ! Compute descending eigenpairs of a symmetric matrix by Jacobi rotations.
-      real(dp), intent(in) :: a(:, :)
-      real(dp), allocatable, intent(out) :: values(:), vectors(:, :)
-      integer, intent(out) :: info
+      !! Compute descending eigenpairs of a symmetric matrix by Jacobi rotations.
+      real(dp), intent(in) :: a(:, :) !! A.
+      real(dp), allocatable, intent(out) :: values(:) !! Input values.
+      real(dp), allocatable, intent(out) :: vectors(:, :) !! Vectors.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: work(:, :), swap(:)
       real(dp) :: app, aqq, apq, tau, tangent, c, s, temp, threshold
       integer :: i, j, p, q, n, iteration, max_iterations, selected
@@ -252,10 +421,10 @@ contains
    end subroutine symmetric_eigen
 
    pure subroutine general_eigenvalues(a, values, info)
-      ! Compute general real-matrix eigenvalues by shifted complex QR deflation.
-      real(dp), intent(in) :: a(:, :)
-      complex(dp), allocatable, intent(out) :: values(:)
-      integer, intent(out) :: info
+      !! Compute general real-matrix eigenvalues by shifted complex QR deflation.
+      real(dp), intent(in) :: a(:, :) !! A.
+      complex(dp), allocatable, intent(out) :: values(:) !! Input values.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       complex(dp), allocatable :: work(:, :), q(:, :), r(:, :), shifted(:, :)
       real(dp), allocatable :: hessenberg(:, :)
       complex(dp) :: trace_value, determinant, discriminant, shift
@@ -315,9 +484,9 @@ contains
    end subroutine general_eigenvalues
 
    pure subroutine upper_hessenberg(a, hessenberg)
-      ! Reduce a real square matrix by Householder similarity transformations.
-      real(dp), intent(in) :: a(:, :)
-      real(dp), allocatable, intent(out) :: hessenberg(:, :)
+      !! Reduce a real square matrix by Householder similarity transformations.
+      real(dp), intent(in) :: a(:, :) !! A.
+      real(dp), allocatable, intent(out) :: hessenberg(:, :) !! Hessenberg.
       real(dp), allocatable :: vector(:), product(:)
       real(dp) :: norm_value, reflector_norm
       integer :: n, column, rows
@@ -358,10 +527,11 @@ contains
    end subroutine upper_hessenberg
 
    pure subroutine complex_qr(a, q, r, info)
-      ! Compute a square complex QR factorization by modified Gram-Schmidt.
-      complex(dp), intent(in) :: a(:, :)
-      complex(dp), allocatable, intent(out) :: q(:, :), r(:, :)
-      integer, intent(out) :: info
+      !! Compute a square complex QR factorization by modified Gram-Schmidt.
+      complex(dp), intent(in) :: a(:, :) !! A.
+      complex(dp), allocatable, intent(out) :: q(:, :) !! Model order, dimension, or parameter.
+      complex(dp), allocatable, intent(out) :: r(:, :) !! R.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       complex(dp), allocatable :: vector(:)
       real(dp) :: norm_value
       integer :: n, column, previous
@@ -388,11 +558,11 @@ contains
    end subroutine complex_qr
 
    pure subroutine symmetric_pseudoinverse(matrix, inverse, info, tolerance)
-      ! Form a spectral pseudoinverse of a positive-semidefinite matrix.
-      real(dp), intent(in) :: matrix(:, :)
-      real(dp), intent(out) :: inverse(:, :)
-      integer, intent(out) :: info
-      real(dp), intent(in), optional :: tolerance
+      !! Form a spectral pseudoinverse of a positive-semidefinite matrix.
+      real(dp), intent(in) :: matrix(:, :) !! Input matrix.
+      real(dp), intent(out) :: inverse(:, :) !! Inverse.
+      integer, intent(out) :: info !! Status code; zero indicates success.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       real(dp), allocatable :: values(:), vectors(:, :), reciprocal(:)
       real(dp) :: threshold
       integer :: n
@@ -418,4 +588,4 @@ contains
       inverse = symmetrize(inverse)
       info = 0
    end subroutine symmetric_pseudoinverse
-end module time_series_linalg_mod
+end module linalg_mod

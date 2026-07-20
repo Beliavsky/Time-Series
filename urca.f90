@@ -3,9 +3,9 @@
 ! Unit-root and stationarity tests translated from the R package urca.
 module urca_mod
    use kind_mod, only: dp
-   use time_series_utils_mod, only: lowercase
-   use time_series_linalg_mod, only: invert_matrix, cholesky_lower, symmetric_eigen
-   use time_series_stats_mod, only: ols_fit, regression_rss
+   use utils_mod, only: lowercase
+   use linalg_mod, only: invert_matrix, cholesky_lower, symmetric_eigen
+   use stats_mod, only: ols_fit, regression_rss
    use, intrinsic :: ieee_arithmetic, only: ieee_value, ieee_quiet_nan
    implicit none
    private
@@ -80,10 +80,11 @@ module urca_mod
 contains
 
    pure function adf_test(y, model, lags, select_lags) result(out)
-      ! Perform the urca augmented Dickey-Fuller test.
-      real(dp), intent(in) :: y(:)
-      character(len=*), intent(in), optional :: model, select_lags
-      integer, intent(in), optional :: lags
+      !! Perform the urca augmented Dickey-Fuller test.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      character(len=*), intent(in), optional :: model !! Model specification.
+      character(len=*), intent(in), optional :: select_lags !! Select lags.
+      integer, intent(in), optional :: lags !! Lags.
       type(adf_result_t) :: out
       real(dp), allocatable :: dy(:), dependent(:), x(:, :), beta(:), se(:), residuals(:)
       real(dp), allocatable :: xr(:, :), criteria(:)
@@ -168,10 +169,11 @@ contains
    end function adf_test
 
    pure function kpss_test(y, model, lag_rule, use_lag) result(out)
-      ! Perform the urca KPSS level- or trend-stationarity test.
-      real(dp), intent(in) :: y(:)
-      character(len=*), intent(in), optional :: model, lag_rule
-      integer, intent(in), optional :: use_lag
+      !! Perform the urca KPSS level- or trend-stationarity test.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      character(len=*), intent(in), optional :: model !! Model specification.
+      character(len=*), intent(in), optional :: lag_rule !! Lag rule.
+      integer, intent(in), optional :: use_lag !! Whether to use the lag.
       type(kpss_result_t) :: out
       real(dp), allocatable :: x(:, :), beta(:), se(:), partial(:), residuals(:)
       real(dp) :: rss, numerator, denominator, covariance, weight
@@ -241,10 +243,12 @@ contains
    end function kpss_test
 
    pure function pp_test(x, statistic_type, model, lag_rule, use_lag) result(out)
-      ! Perform the urca Phillips-Perron Z-tau or Z-alpha test.
-      real(dp), intent(in) :: x(:)
-      character(len=*), intent(in), optional :: statistic_type, model, lag_rule
-      integer, intent(in), optional :: use_lag
+      !! Perform the urca Phillips-Perron Z-tau or Z-alpha test.
+      real(dp), intent(in) :: x(:) !! Input data or predictor values.
+      character(len=*), intent(in), optional :: statistic_type !! Statistic type.
+      character(len=*), intent(in), optional :: model !! Model specification.
+      character(len=*), intent(in), optional :: lag_rule !! Lag rule.
+      integer, intent(in), optional :: use_lag !! Whether to use the lag.
       type(pp_result_t) :: out
       real(dp), allocatable :: y(:), ylag(:), design(:, :), beta(:), se(:), residuals(:)
       real(dp) :: rss, s, sigma, lambda, lambda_prime, covariance, weight
@@ -361,10 +365,11 @@ contains
    end function pp_test
 
    pure function ers_test(y, statistic_type, model, lag_max) result(out)
-      ! Perform the Elliott-Rothenberg-Stock DF-GLS or point-optimal test.
-      real(dp), intent(in) :: y(:)
-      character(len=*), intent(in), optional :: statistic_type, model
-      integer, intent(in), optional :: lag_max
+      !! Perform the Elliott-Rothenberg-Stock DF-GLS or point-optimal test.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      character(len=*), intent(in), optional :: statistic_type !! Statistic type.
+      character(len=*), intent(in), optional :: model !! Model specification.
+      integer, intent(in), optional :: lag_max !! Lag max.
       type(ers_result_t) :: out
       real(dp), allocatable :: ya(:), zdet(:, :), beta(:), se(:), res(:), design(:, :), dependent(:)
       real(dp), allocatable :: null_res(:), criteria(:)
@@ -488,10 +493,10 @@ contains
    end function ers_test
 
    pure function za_test(y, model, lag) result(out)
-      ! Perform the Zivot-Andrews unit-root test with one endogenous break.
-      real(dp), intent(in) :: y(:)
-      character(len=*), intent(in), optional :: model
-      integer, intent(in), optional :: lag
+      !! Perform the Zivot-Andrews unit-root test with one endogenous break.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      character(len=*), intent(in), optional :: model !! Model specification.
+      integer, intent(in), optional :: lag !! Lag index or number of lags.
       type(za_result_t) :: out
       real(dp), allocatable :: design(:, :), dependent(:), beta(:), se(:), res(:)
       real(dp) :: rss, value
@@ -544,12 +549,14 @@ contains
    end function za_test
 
    pure function johansen_test(x, test_type, deterministic, lag, specification, season, exogenous) result(out)
-      ! Estimate the Johansen cointegration system used by urca ca.jo.
-      real(dp), intent(in) :: x(:, :)
-      character(len=*), intent(in), optional :: test_type, deterministic, specification
-      integer, intent(in), optional :: lag
-      integer, intent(in), optional :: season
-      real(dp), intent(in), optional :: exogenous(:, :)
+      !! Estimate the Johansen cointegration system used by urca ca.jo.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      character(len=*), intent(in), optional :: test_type !! Test type.
+      character(len=*), intent(in), optional :: deterministic !! Deterministic.
+      character(len=*), intent(in), optional :: specification !! Specification.
+      integer, intent(in), optional :: lag !! Lag index or number of lags.
+      integer, intent(in), optional :: season !! Season.
+      real(dp), intent(in), optional :: exogenous(:, :) !! Exogenous predictor observations.
       type(johansen_result_t) :: out
       real(dp), allocatable :: dx(:, :), z0(:, :), z1(:, :), z1base(:, :), zk(:, :)
       real(dp), allocatable :: seasonal(:, :)
@@ -739,12 +746,14 @@ contains
    end function johansen_test
 
    pure subroutine build_adf_matrix(y, dy, kind, max_lag, q, x, zlag_column)
-      ! Build an ADF regression on the common maximum-lag sample.
-      real(dp), intent(in) :: y(:), dy(:)
-      character(len=*), intent(in) :: kind
-      integer, intent(in) :: max_lag, q
-      real(dp), allocatable, intent(out) :: x(:, :)
-      integer, intent(out) :: zlag_column
+      !! Build an ADF regression on the common maximum-lag sample.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: dy(:) !! Dy.
+      character(len=*), intent(in) :: kind !! Kind.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      integer, intent(in) :: q !! Model order, dimension, or parameter.
+      real(dp), allocatable, intent(out) :: x(:, :) !! Input data or predictor values.
+      integer, intent(out) :: zlag_column !! Zlag column.
       integer :: i, nobs, column
 
       nobs = size(dy) - max_lag
@@ -774,11 +783,12 @@ contains
    end subroutine build_adf_matrix
 
    pure subroutine restricted_diff_matrix(dy, max_lag, q, intercept, x)
-      ! Build the restricted ADF regression used by the auxiliary phi tests.
-      real(dp), intent(in) :: dy(:)
-      integer, intent(in) :: max_lag, q
-      logical, intent(in) :: intercept
-      real(dp), allocatable, intent(out) :: x(:, :)
+      !! Build the restricted ADF regression used by the auxiliary phi tests.
+      real(dp), intent(in) :: dy(:) !! Dy.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      integer, intent(in) :: q !! Model order, dimension, or parameter.
+      logical, intent(in) :: intercept !! Model intercept.
+      real(dp), allocatable, intent(out) :: x(:, :) !! Input data or predictor values.
       integer :: i, offset, nobs
 
       nobs = size(dy) - max_lag
@@ -791,10 +801,11 @@ contains
    end subroutine restricted_diff_matrix
 
    pure subroutine build_ers_regression(y, q, design, dependent)
-      ! Build the no-intercept DF-GLS regression with q lagged differences.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: q
-      real(dp), allocatable, intent(out) :: design(:, :), dependent(:)
+      !! Build the no-intercept DF-GLS regression with q lagged differences.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: q !! Model order, dimension, or parameter.
+      real(dp), allocatable, intent(out) :: design(:, :) !! Design.
+      real(dp), allocatable, intent(out) :: dependent(:) !! Dependent.
       real(dp), allocatable :: dy(:)
       integer :: i, nobs
 
@@ -810,10 +821,11 @@ contains
    end subroutine build_ers_regression
 
    pure subroutine build_ers_level_regression(y, q, design, dependent)
-      ! Build the intercept, lagged-level, and lagged-difference ERS scale regression.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: q
-      real(dp), allocatable, intent(out) :: design(:, :), dependent(:)
+      !! Build the intercept, lagged-level, and lagged-difference ERS scale regression.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: q !! Model order, dimension, or parameter.
+      real(dp), allocatable, intent(out) :: design(:, :) !! Design.
+      real(dp), allocatable, intent(out) :: dependent(:) !! Dependent.
       real(dp), allocatable :: dy(:)
       integer :: i, nobs
 
@@ -830,11 +842,13 @@ contains
    end subroutine build_ers_level_regression
 
    pure subroutine build_za_regression(y, q, kind, break_at, design, dependent)
-      ! Build one complete-case Zivot-Andrews candidate-break regression.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: q, break_at
-      character(len=*), intent(in) :: kind
-      real(dp), allocatable, intent(out) :: design(:, :), dependent(:)
+      !! Build one complete-case Zivot-Andrews candidate-break regression.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: q !! Model order, dimension, or parameter.
+      integer, intent(in) :: break_at !! Break at.
+      character(len=*), intent(in) :: kind !! Kind.
+      real(dp), allocatable, intent(out) :: design(:, :) !! Design.
+      real(dp), allocatable, intent(out) :: dependent(:) !! Dependent.
       real(dp), allocatable :: dy(:)
       integer :: first, nobs, columns, i, t, column
 
@@ -871,9 +885,9 @@ contains
    end subroutine build_za_regression
 
    pure subroutine ers_trend_critical(row, values)
-      ! Return ERS DF-GLS trend critical values for one sample-size row.
-      integer, intent(in) :: row
-      real(dp), intent(out) :: values(3)
+      !! Return ERS DF-GLS trend critical values for one sample-size row.
+      integer, intent(in) :: row !! Row.
+      real(dp), intent(out) :: values(3) !! Input values.
       real(dp), parameter :: table(4, 3) = reshape([ &
                                                         -3.77_dp, -3.58_dp, -3.46_dp, -3.48_dp, &
                                                         -3.19_dp, -3.03_dp, -2.93_dp, -2.89_dp, &
@@ -882,10 +896,10 @@ contains
    end subroutine ers_trend_critical
 
    pure subroutine ers_p_critical(row, model, values)
-      ! Return ERS point-optimal critical values for model and sample size.
-      integer, intent(in) :: row
-      character(len=*), intent(in) :: model
-      real(dp), intent(out) :: values(3)
+      !! Return ERS point-optimal critical values for model and sample size.
+      integer, intent(in) :: row !! Row.
+      character(len=*), intent(in) :: model !! Model specification.
+      real(dp), intent(out) :: values(3) !! Input values.
       real(dp), parameter :: constant_table(4, 3) = reshape([ &
                                                                1.87_dp, 1.95_dp, 1.91_dp, 1.99_dp, &
                                                                2.97_dp, 3.11_dp, 3.17_dp, 3.26_dp, &
@@ -904,10 +918,11 @@ contains
 
 
    pure subroutine johansen_critical_values(p, deterministic, test_type, values)
-      ! Return the Osterwald-Lenum critical values embedded in urca ca.jo.
-      integer, intent(in) :: p
-      character(len=*), intent(in) :: deterministic, test_type
-      real(dp), intent(out) :: values(p, 3)
+      !! Return the Osterwald-Lenum critical values embedded in urca ca.jo.
+      integer, intent(in) :: p !! Autoregressive order or model dimension.
+      character(len=*), intent(in) :: deterministic !! Deterministic.
+      character(len=*), intent(in) :: test_type !! Test type.
+      real(dp), intent(out) :: values(p, 3) !! Input values.
       real(dp), parameter :: none_eigen(11, 3) = reshape([ &
                                            6.50, 12.91, 18.90, 24.78, 30.84, 36.25, 42.06, 48.43, 54.01, 59.00, 65.07, &
                                            8.18, 14.90, 21.07, 27.14, 33.32, 39.43, 44.91, 51.07, 57.00, 62.42, 68.27, &
@@ -953,18 +968,21 @@ contains
 
 
    pure elemental real(dp) function f_statistic(rss_restricted, rss_full, p_full, p_restricted, nobs) result(value)
-      ! Compute the nested-regression F statistic used by ur.df.
-      real(dp), intent(in) :: rss_restricted, rss_full
-      integer, intent(in) :: p_full, p_restricted, nobs
+      !! Compute the nested-regression F statistic used by ur.df.
+      real(dp), intent(in) :: rss_restricted !! Rss restricted.
+      real(dp), intent(in) :: rss_full !! Rss full.
+      integer, intent(in) :: p_full !! P full.
+      integer, intent(in) :: p_restricted !! P restricted.
+      integer, intent(in) :: nobs !! Nobs.
       value = ((rss_restricted - rss_full)/real(p_full - p_restricted, dp)) &
               /(rss_full/real(nobs - p_full, dp))
    end function f_statistic
 
    pure subroutine adf_critical_values(kind, n, values)
-      ! Select urca ADF critical values by model and effective sample size.
-      character(len=*), intent(in) :: kind
-      integer, intent(in) :: n
-      real(dp), allocatable, intent(out) :: values(:, :)
+      !! Select urca ADF critical values by model and effective sample size.
+      character(len=*), intent(in) :: kind !! Kind.
+      integer, intent(in) :: n !! Number of observations or elements.
+      real(dp), allocatable, intent(out) :: values(:, :) !! Input values.
       real(dp), parameter :: tau1(6, 3) = reshape([ &
                              -2.66_dp, -2.62_dp, -2.60_dp, -2.58_dp, -2.58_dp, -2.58_dp, &
                              -1.95_dp, -1.95_dp, -1.95_dp, -1.95_dp, -1.95_dp, -1.95_dp, &
@@ -1020,8 +1038,8 @@ contains
 
 
    pure elemental real(dp) function round_four(value) result(rounded)
-      ! Round a value to four decimal places as in ur.pp auxiliary output.
-      real(dp), intent(in) :: value
+      !! Round a value to four decimal places as in ur.pp auxiliary output.
+      real(dp), intent(in) :: value !! Input value.
       rounded = anint(10000.0_dp*value)/10000.0_dp
    end function round_four
 end module urca_mod

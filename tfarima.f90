@@ -4,19 +4,19 @@
 module tfarima_mod
    use kind_mod, only: dp
    use arima2_mod, only: arima2_roots_t, arma_polynomial_roots
-   use forecast_mod, only: acf_values, pacf_values, ccf_values
    use itsmr_mod, only: itsmr_arma_model_t, arma_acvf
    use kfas_mod, only: ssm_model_t, kfs_filter_t, kfs_smoother_t, &
       kfs_filter, kfs_filter_diffuse, kfs_smooth
-   use time_series_calendar_mod, only: date_t, date_valid, date_days_in_month, &
+   use calendar_mod, only: date_t, date_valid, date_days_in_month, &
       date_day_of_week, date_day_number, date_easter, operator(+), operator(-)
-   use time_series_linalg_mod, only: invert_matrix, cholesky_lower
-   use time_series_optimization_mod, only: optimization_result_t, &
+   use linalg_mod, only: invert_matrix, cholesky_lower, identity_matrix
+   use optimization_mod, only: optimization_result_t, &
       bfgs_minimize_fd, nelder_mead_minimize, finite_difference_hessian
-   use time_series_stats_mod, only: normal_quantile
+   use stats_mod, only: normal_quantile, standard_deviation
+   use time_series_stats_mod, only: acf_values, pacf_values, ccf_values
    use time_series_diagnostics_mod, only: weighted_box_test_t, &
       weighted_box_test, box_test_ljung_box, residual_raw
-   use time_series_random_mod, only: set_random_seed, random_standard_normal_matrix
+   use random_mod, only: set_random_seed, random_standard_normal_matrix
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
    implicit none
    private
@@ -482,9 +482,11 @@ contains
 
    pure function tfarima_ucarima_component(ar_polynomial, &
       difference_polynomial, ma_polynomial, innovation_variance) result(out)
-      ! Construct one normalized independent UCARIMA component.
-      real(dp), intent(in) :: ar_polynomial(:), difference_polynomial(:)
-      real(dp), intent(in) :: ma_polynomial(:), innovation_variance
+      !! Construct one normalized independent UCARIMA component.
+      real(dp), intent(in) :: ar_polynomial(:) !! Autoregressive polynomial coefficients.
+      real(dp), intent(in) :: difference_polynomial(:) !! Difference polynomial coefficients.
+      real(dp), intent(in) :: ma_polynomial(:) !! Moving-average polynomial coefficients.
+      real(dp), intent(in) :: innovation_variance !! Innovation variance.
       type(tfarima_ucarima_component_t) :: out
       real(dp) :: scale
 
@@ -514,10 +516,10 @@ contains
 
    pure function tfarima_build_ucarima(components, tolerance, max_iterations) &
       result(out)
-      ! Aggregate independent components by Cramer-Wold spectral factorization.
-      type(tfarima_ucarima_component_t), intent(in) :: components(:)
-      real(dp), intent(in), optional :: tolerance
-      integer, intent(in), optional :: max_iterations
+      !! Aggregate independent components by Cramer-Wold spectral factorization.
+      type(tfarima_ucarima_component_t), intent(in) :: components(:) !! Model components.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(tfarima_ucarima_model_t) :: out
       type(tfarima_ma_factor_t) :: factor
       real(dp), allocatable :: component_denominator(:), lifted(:), gcd(:)
@@ -637,10 +639,11 @@ contains
 
    pure function tfarima_wiener_kolmogorov_filter(model, component, max_lag, &
       tolerance) result(out)
-      ! Construct one component's symmetric Wiener-Kolmogorov filter.
-      type(tfarima_ucarima_model_t), intent(in) :: model
-      integer, intent(in) :: component, max_lag
-      real(dp), intent(in), optional :: tolerance
+      !! Construct one component's symmetric Wiener-Kolmogorov filter.
+      type(tfarima_ucarima_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: component !! Component.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(tfarima_wk_filter_t) :: out
       real(dp), allocatable :: lifted(:), impulse(:)
       real(dp) :: scale, tol
@@ -692,11 +695,11 @@ contains
 
    pure function tfarima_ucarima_decompose(series, model, max_lag, tolerance) &
       result(out)
-      ! Extract all UCARIMA components with endpoint-extended WK filters.
-      real(dp), intent(in) :: series(:)
-      type(tfarima_ucarima_model_t), intent(in) :: model
-      integer, intent(in), optional :: max_lag
-      real(dp), intent(in), optional :: tolerance
+      !! Extract all UCARIMA components with endpoint-extended WK filters.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(tfarima_ucarima_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in), optional :: max_lag !! Maximum lag to consider.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(tfarima_ucarima_decomposition_t) :: out
       type(tfarima_wk_filter_t) :: filter
       type(tfarima_forecast_t) :: forecast
@@ -766,9 +769,10 @@ contains
 
    pure function tfarima_extended_polynomial_gcd(first, second, tolerance) &
       result(out)
-      ! Compute a polynomial GCD together with normalized Bezout coefficients.
-      real(dp), intent(in) :: first(:), second(:)
-      real(dp), intent(in), optional :: tolerance
+      !! Compute a polynomial GCD together with normalized Bezout coefficients.
+      real(dp), intent(in) :: first(:) !! First operand.
+      real(dp), intent(in) :: second(:) !! Second operand.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(tfarima_bezout_t) :: out
       type(tfarima_polynomial_division_t) :: division
       real(dp), allocatable :: r0(:), r1(:), r2(:), s0(:), s1(:), s2(:)
@@ -826,10 +830,11 @@ contains
 
    pure function tfarima_partial_fractions(numerator, factors, factor_lengths, &
       tolerance) result(out)
-      ! Split a proper rational numerator over pairwise-coprime factors.
-      real(dp), intent(in) :: numerator(:), factors(:, :)
-      integer, intent(in) :: factor_lengths(:)
-      real(dp), intent(in), optional :: tolerance
+      !! Split a proper rational numerator over pairwise-coprime factors.
+      real(dp), intent(in) :: numerator(:) !! Numerator polynomial coefficients.
+      real(dp), intent(in) :: factors(:, :) !! Factors.
+      integer, intent(in) :: factor_lengths(:) !! Factor lengths.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(tfarima_partial_fraction_t) :: out
       type(tfarima_bezout_t) :: bezout
       real(dp), allocatable :: matrix(:, :), inverse(:, :), rhs(:), solution(:)
@@ -925,15 +930,17 @@ contains
       difference_polynomial, ma_polynomial, innovation_variance, factors, &
       factor_lengths, factor_is_ar, canonical, tolerance, max_iterations) &
       result(out)
-      ! Convert an aggregate ARIMA spectrum to independent UCARIMA components.
-      real(dp), intent(in) :: ar_polynomial(:), difference_polynomial(:)
-      real(dp), intent(in) :: ma_polynomial(:), innovation_variance
-      real(dp), intent(in) :: factors(:, :)
-      integer, intent(in) :: factor_lengths(:)
-      logical, intent(in) :: factor_is_ar(:)
-      logical, intent(in), optional :: canonical
-      real(dp), intent(in), optional :: tolerance
-      integer, intent(in), optional :: max_iterations
+      !! Convert an aggregate ARIMA spectrum to independent UCARIMA components.
+      real(dp), intent(in) :: ar_polynomial(:) !! Autoregressive polynomial coefficients.
+      real(dp), intent(in) :: difference_polynomial(:) !! Difference polynomial coefficients.
+      real(dp), intent(in) :: ma_polynomial(:) !! Moving-average polynomial coefficients.
+      real(dp), intent(in) :: innovation_variance !! Innovation variance.
+      real(dp), intent(in) :: factors(:, :) !! Factors.
+      integer, intent(in) :: factor_lengths(:) !! Factor lengths.
+      logical, intent(in) :: factor_is_ar(:) !! Flag controlling factor is autoregressive.
+      logical, intent(in), optional :: canonical !! Flag controlling canonical.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(tfarima_ucarima_conversion_t) :: out
       type(tfarima_polynomial_division_t) :: division
       type(tfarima_ma_factor_t) :: ma_factor
@@ -1143,10 +1150,10 @@ contains
 
    pure function tfarima_ucarima_state_space(series, ucarima, tolerance) &
       result(out)
-      ! Assemble independent UCARIMA components into one KFAS-compatible model.
-      real(dp), intent(in) :: series(:)
-      type(tfarima_ucarima_model_t), intent(in) :: ucarima
-      real(dp), intent(in), optional :: tolerance
+      !! Assemble independent UCARIMA components into one KFAS-compatible model.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(tfarima_ucarima_model_t), intent(in) :: ucarima !! Ucarima.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(tfarima_ucarima_ssm_t) :: out
       real(dp), allocatable :: denominator(:), ma_polynomial(:)
       real(dp), allocatable :: transition(:, :), loading(:)
@@ -1253,11 +1260,12 @@ contains
 
    pure function tfarima_ucarima_smooth(series, ucarima, forecast_horizon, &
       levels, tolerance) result(out)
-      ! Smooth UCARIMA components and propagate component forecast uncertainty.
-      real(dp), intent(in) :: series(:)
-      type(tfarima_ucarima_model_t), intent(in) :: ucarima
-      integer, intent(in), optional :: forecast_horizon
-      real(dp), intent(in), optional :: levels(:), tolerance
+      !! Smooth UCARIMA components and propagate component forecast uncertainty.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(tfarima_ucarima_model_t), intent(in) :: ucarima !! Ucarima.
+      integer, intent(in), optional :: forecast_horizon !! Forecast horizon.
+      real(dp), intent(in), optional :: levels(:) !! Levels.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(tfarima_ucarima_smoothing_t) :: out
       type(tfarima_ucarima_ssm_t) :: state_space
       type(kfs_filter_t) :: filtered
@@ -1355,14 +1363,16 @@ contains
    pure function tfarima_ucarima_fit(series, initial_model, estimate_ar, &
       estimate_ma, estimate_variance, regressors, initial_regression, &
       max_iterations, tolerance) result(out)
-      ! Estimate UCARIMA dynamics and variances by exact state-space likelihood.
-      real(dp), intent(in) :: series(:)
-      type(tfarima_ucarima_model_t), intent(in) :: initial_model
-      logical, intent(in), optional :: estimate_ar(:, :), estimate_ma(:, :)
-      logical, intent(in), optional :: estimate_variance(:)
-      real(dp), intent(in), optional :: regressors(:, :), initial_regression(:)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate UCARIMA dynamics and variances by exact state-space likelihood.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(tfarima_ucarima_model_t), intent(in) :: initial_model !! Initial model.
+      logical, intent(in), optional :: estimate_ar(:, :) !! Whether to estimate the autoregressive.
+      logical, intent(in), optional :: estimate_ma(:, :) !! Whether to estimate the moving-average.
+      logical, intent(in), optional :: estimate_variance(:) !! Whether to estimate the variance.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: initial_regression(:) !! Initial regression.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(tfarima_ucarima_fit_t) :: out
       type(optimization_result_t) :: warm_start, optimization
       type(kfs_filter_t) :: filtered
@@ -1556,8 +1566,8 @@ contains
    contains
 
       pure function objective(values) result(value)
-         ! Return the negative exact Gaussian likelihood for optimizer values.
-         real(dp), intent(in) :: values(:)
+         !! Return the negative exact Gaussian likelihood for optimizer values.
+         real(dp), intent(in) :: values(:) !! Input values.
          real(dp) :: value
          type(tfarima_ucarima_component_t), allocatable :: trial_components(:)
          type(kfs_filter_t) :: trial_filter
@@ -1576,12 +1586,13 @@ contains
 
       pure subroutine evaluate(values, components, regression, transformed, &
          filter_result, evaluation_status)
-         ! Decode parameters and run the shared ordinary or diffuse KFAS filter.
-         real(dp), intent(in) :: values(:)
-         type(tfarima_ucarima_component_t), allocatable, intent(out) :: components(:)
-         real(dp), allocatable, intent(out) :: regression(:), transformed(:)
-         type(kfs_filter_t), intent(out) :: filter_result
-         integer, intent(out) :: evaluation_status
+         !! Decode parameters and run the shared ordinary or diffuse KFAS filter.
+         real(dp), intent(in) :: values(:) !! Input values.
+         type(tfarima_ucarima_component_t), allocatable, intent(out) :: components(:) !! Model components.
+         real(dp), allocatable, intent(out) :: regression(:) !! Regression.
+         real(dp), allocatable, intent(out) :: transformed(:) !! Transformed.
+         type(kfs_filter_t), intent(out) :: filter_result !! Filter result.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          type(tfarima_ucarima_model_t) :: trial_model
          type(tfarima_ucarima_ssm_t) :: state_space
          real(dp), allocatable :: ar(:), ma(:)
@@ -1645,9 +1656,9 @@ contains
       end subroutine evaluate
 
       pure subroutine natural_parameters(values, natural)
-         ! Transform log-standard-deviation coordinates to component variances.
-         real(dp), intent(in) :: values(:)
-         real(dp), intent(out) :: natural(:)
+         !! Transform log-standard-deviation coordinates to component variances.
+         real(dp), intent(in) :: values(:) !! Input values.
+         real(dp), intent(out) :: natural(:) !! Natural.
          integer :: parameter
 
          natural = values
@@ -1660,8 +1671,9 @@ contains
    end function tfarima_ucarima_fit
 
    pure function tfarima_polynomial_multiply(first, second) result(product)
-      ! Multiply two increasing-lag coefficient vectors.
-      real(dp), intent(in) :: first(:), second(:)
+      !! Multiply two increasing-lag coefficient vectors.
+      real(dp), intent(in) :: first(:) !! First operand.
+      real(dp), intent(in) :: second(:) !! Second operand.
       real(dp), allocatable :: product(:)
       integer :: i, j
 
@@ -1680,9 +1692,10 @@ contains
 
    pure function tfarima_polynomial_divide(numerator, denominator, tolerance) &
       result(out)
-      ! Divide lag polynomials and return trimmed quotient and remainder.
-      real(dp), intent(in) :: numerator(:), denominator(:)
-      real(dp), intent(in), optional :: tolerance
+      !! Divide lag polynomials and return trimmed quotient and remainder.
+      real(dp), intent(in) :: numerator(:) !! Numerator polynomial coefficients.
+      real(dp), intent(in) :: denominator(:) !! Denominator polynomial coefficients.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(tfarima_polynomial_division_t) :: out
       real(dp), allocatable :: work(:), divisor(:), quotient(:)
       real(dp) :: tol, scale
@@ -1724,9 +1737,10 @@ contains
    end function tfarima_polynomial_divide
 
    pure function tfarima_polynomial_gcd(first, second, tolerance) result(gcd)
-      ! Compute the monic-at-lag-zero Euclidean polynomial GCD.
-      real(dp), intent(in) :: first(:), second(:)
-      real(dp), intent(in), optional :: tolerance
+      !! Compute the monic-at-lag-zero Euclidean polynomial GCD.
+      real(dp), intent(in) :: first(:) !! First operand.
+      real(dp), intent(in) :: second(:) !! Second operand.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       real(dp), allocatable :: gcd(:), left(:), right(:), swap(:)
       type(tfarima_polynomial_division_t) :: division
       real(dp) :: tol
@@ -1760,9 +1774,9 @@ contains
    end function tfarima_polynomial_gcd
 
    pure function tfarima_polynomial_power(polynomial, exponent) result(power)
-      ! Raise a lag polynomial to a nonnegative integer power.
-      real(dp), intent(in) :: polynomial(:)
-      integer, intent(in) :: exponent
+      !! Raise a lag polynomial to a nonnegative integer power.
+      real(dp), intent(in) :: polynomial(:) !! Polynomial.
+      integer, intent(in) :: exponent !! Exponent.
       real(dp), allocatable :: power(:), factor(:)
       integer :: i
 
@@ -1778,9 +1792,10 @@ contains
    end function tfarima_polynomial_power
 
    pure function tfarima_polynomial_ratio(numerator, denominator, degree) result(ratio)
-      ! Expand a rational lag polynomial through a requested degree.
-      real(dp), intent(in) :: numerator(:), denominator(:)
-      integer, intent(in) :: degree
+      !! Expand a rational lag polynomial through a requested degree.
+      real(dp), intent(in) :: numerator(:) !! Numerator polynomial coefficients.
+      real(dp), intent(in) :: denominator(:) !! Denominator polynomial coefficients.
+      integer, intent(in) :: degree !! Degree.
       real(dp), allocatable :: ratio(:)
       real(dp) :: value
       integer :: lag, j
@@ -1807,11 +1822,12 @@ contains
 
    pure function tfarima_combine_arima(first, second, subtract_second, &
       tolerance, max_iterations) result(out)
-      ! Add or subtract two ARIMA spectra and cancel common polynomial factors.
-      type(tfarima_ucarima_component_t), intent(in) :: first, second
-      logical, intent(in), optional :: subtract_second
-      real(dp), intent(in), optional :: tolerance
-      integer, intent(in), optional :: max_iterations
+      !! Add or subtract two ARIMA spectra and cancel common polynomial factors.
+      type(tfarima_ucarima_component_t), intent(in) :: first !! First operand.
+      type(tfarima_ucarima_component_t), intent(in) :: second !! Second operand.
+      logical, intent(in), optional :: subtract_second !! Flag controlling subtract second.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(tfarima_arima_algebra_t) :: out
       type(tfarima_polynomial_division_t) :: division
       real(dp), allocatable :: ar(:), difference(:), denominator(:)
@@ -1899,8 +1915,8 @@ contains
    contains
 
       pure logical function valid_component(component) result(valid)
-         ! Report whether a component has finite normalized polynomials.
-         type(tfarima_ucarima_component_t), intent(in) :: component
+         !! Report whether a component has finite normalized polynomials.
+         type(tfarima_ucarima_component_t), intent(in) :: component !! Component.
 
          valid = component%info == 0 .and. &
             allocated(component%ar_polynomial) .and. &
@@ -1915,8 +1931,10 @@ contains
       end function valid_component
 
       pure function polynomial_lcm(left, right, local_tolerance) result(lcm)
-         ! Form a normalized least-common multiple of two lag polynomials.
-         real(dp), intent(in) :: left(:), right(:), local_tolerance
+         !! Form a normalized least-common multiple of two lag polynomials.
+         real(dp), intent(in) :: left(:) !! Left.
+         real(dp), intent(in) :: right(:) !! Right.
+         real(dp), intent(in) :: local_tolerance !! Local tolerance.
          real(dp), allocatable :: lcm(:), common(:)
          type(tfarima_polynomial_division_t) :: quotient
 
@@ -1937,9 +1955,9 @@ contains
 
       pure logical function exact_division(quotient, local_tolerance) &
          result(exact)
-         ! Report whether polynomial division has a negligible remainder.
-         type(tfarima_polynomial_division_t), intent(in) :: quotient
-         real(dp), intent(in) :: local_tolerance
+         !! Report whether polynomial division has a negligible remainder.
+         type(tfarima_polynomial_division_t), intent(in) :: quotient !! Quotient.
+         real(dp), intent(in) :: local_tolerance !! Local tolerance.
 
          exact = quotient%info == 0 .and. allocated(quotient%remainder)
          if (exact) exact = maxval(abs(quotient%remainder)) <= local_tolerance
@@ -1947,10 +1965,10 @@ contains
 
       pure subroutine cancel_factor(numerator, denominator_polynomial, &
          local_tolerance)
-         ! Cancel a nonconstant common factor from numerator and denominator.
-         real(dp), allocatable, intent(inout) :: numerator(:)
-         real(dp), allocatable, intent(inout) :: denominator_polynomial(:)
-         real(dp), intent(in) :: local_tolerance
+         !! Cancel a nonconstant common factor from numerator and denominator.
+         real(dp), allocatable, intent(inout) :: numerator(:) !! Numerator polynomial coefficients, updated in place.
+         real(dp), allocatable, intent(inout) :: denominator_polynomial(:) !! Denominator polynomial coefficients, updated in place.
+         real(dp), intent(in) :: local_tolerance !! Local tolerance.
          real(dp), allocatable :: common(:)
          type(tfarima_polynomial_division_t) :: numerator_division
          type(tfarima_polynomial_division_t) :: denominator_division
@@ -1972,11 +1990,11 @@ contains
 
    pure function tfarima_psi_weights(model, max_lag, include_difference, &
       coefficient_covariance) result(out)
-      ! Expand finite ARIMA PSI weights with optional delta-method inference.
-      type(tfarima_ucarima_component_t), intent(in) :: model
-      integer, intent(in) :: max_lag
-      logical, intent(in), optional :: include_difference
-      real(dp), intent(in), optional :: coefficient_covariance(:, :)
+      !! Expand finite ARIMA PSI weights with optional delta-method inference.
+      type(tfarima_ucarima_component_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      logical, intent(in), optional :: include_difference !! Whether to include the difference.
+      real(dp), intent(in), optional :: coefficient_covariance(:, :) !! Coefficient covariance matrix.
       type(tfarima_weights_t) :: out
 
       if (present(coefficient_covariance)) then
@@ -1989,11 +2007,11 @@ contains
 
    pure function tfarima_pi_weights(model, max_lag, include_difference, &
       coefficient_covariance) result(out)
-      ! Expand finite ARIMA PI weights with optional delta-method inference.
-      type(tfarima_ucarima_component_t), intent(in) :: model
-      integer, intent(in) :: max_lag
-      logical, intent(in), optional :: include_difference
-      real(dp), intent(in), optional :: coefficient_covariance(:, :)
+      !! Expand finite ARIMA PI weights with optional delta-method inference.
+      type(tfarima_ucarima_component_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      logical, intent(in), optional :: include_difference !! Whether to include the difference.
+      real(dp), intent(in), optional :: coefficient_covariance(:, :) !! Coefficient covariance matrix.
       type(tfarima_weights_t) :: out
 
       if (present(coefficient_covariance)) then
@@ -2006,12 +2024,12 @@ contains
 
    pure function arima_weights(model, max_lag, include_difference, inverse, &
       coefficient_covariance) result(out)
-      ! Compute rational response weights and finite-difference delta inference.
-      type(tfarima_ucarima_component_t), intent(in) :: model
-      integer, intent(in) :: max_lag
-      logical, intent(in), optional :: include_difference
-      logical, intent(in) :: inverse
-      real(dp), intent(in), optional :: coefficient_covariance(:, :)
+      !! Compute rational response weights and finite-difference delta inference.
+      type(tfarima_ucarima_component_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      logical, intent(in), optional :: include_difference !! Whether to include the difference.
+      logical, intent(in) :: inverse !! Flag controlling inverse.
+      real(dp), intent(in), optional :: coefficient_covariance(:, :) !! Coefficient covariance matrix.
       type(tfarima_weights_t) :: out
       real(dp), allocatable :: ar(:), ma(:), numerator(:), denominator(:)
       real(dp), allocatable :: trial(:), jacobian(:, :), cumulative_jacobian(:, :)
@@ -2109,8 +2127,9 @@ contains
 
    pure function tfarima_leverrier_faddeev(observation_loading, transition) &
       result(out)
-      ! Compute characteristic and observation-weighted adjoint polynomials.
-      real(dp), intent(in) :: observation_loading(:), transition(:, :)
+      !! Compute characteristic and observation-weighted adjoint polynomials.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
       type(tfarima_leverrier_t) :: out
       real(dp), allocatable :: identity(:, :), recursion(:, :), product(:, :)
       integer :: n, order, i
@@ -2147,10 +2166,11 @@ contains
 
    pure function tfarima_ssm_form(observation_loading, transition, &
       disturbance_covariance, state_noise_contemporaneous) result(out)
-      ! Construct a covariance-aware time-invariant univariate SSM form.
-      real(dp), intent(in) :: observation_loading(:), transition(:, :)
-      real(dp), intent(in) :: disturbance_covariance(:, :)
-      logical, intent(in), optional :: state_noise_contemporaneous
+      !! Construct a covariance-aware time-invariant univariate SSM form.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: disturbance_covariance(:, :) !! Disturbance covariance matrix.
+      logical, intent(in), optional :: state_noise_contemporaneous !! State noise contemporaneous.
       type(tfarima_ssm_form_t) :: out
       integer :: n
 
@@ -2177,8 +2197,8 @@ contains
    end function tfarima_ssm_form
 
    pure function tfarima_switch_ssm_form(form) result(out)
-      ! Switch state disturbances between contemporaneous and one-lag forms.
-      type(tfarima_ssm_form_t), intent(in) :: form
+      !! Switch state disturbances between contemporaneous and one-lag forms.
+      type(tfarima_ssm_form_t), intent(in) :: form !! Form.
       type(tfarima_ssm_form_t) :: out
       real(dp), allocatable :: loading(:), covariance(:, :), inverse(:, :)
       real(dp), allocatable :: state_covariance(:, :), cross_covariance(:)
@@ -2221,10 +2241,10 @@ contains
 
    pure function tfarima_ssm_to_arima(model, tolerance, max_iterations) &
       result(out)
-      ! Reduce a time-invariant univariate KFAS model to one ARIMA spectrum.
-      type(ssm_model_t), intent(in) :: model
-      real(dp), intent(in), optional :: tolerance
-      integer, intent(in), optional :: max_iterations
+      !! Reduce a time-invariant univariate KFAS model to one ARIMA spectrum.
+      type(ssm_model_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(tfarima_ssm_reduction_t) :: out
       type(tfarima_ssm_form_t) :: form
       real(dp), allocatable :: covariance(:, :), process(:, :)
@@ -2262,10 +2282,10 @@ contains
    end function tfarima_ssm_to_arima
 
    pure function tfarima_reduce_ssm(form, tolerance, max_iterations) result(out)
-      ! Reduce a covariance-aware state-space form to an ARIMA spectrum.
-      type(tfarima_ssm_form_t), intent(in) :: form
-      real(dp), intent(in), optional :: tolerance
-      integer, intent(in), optional :: max_iterations
+      !! Reduce a covariance-aware state-space form to an ARIMA spectrum.
+      type(tfarima_ssm_form_t), intent(in) :: form !! Form.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(tfarima_ssm_reduction_t) :: out
       type(tfarima_leverrier_t) :: leverrier
       type(arima2_roots_t) :: roots
@@ -2359,10 +2379,10 @@ contains
 
       pure function polynomial_from_selected_roots(all_roots, selected, &
          local_tolerance) result(polynomial)
-         ! Construct a real normalized polynomial from selected ordinary roots.
-         complex(dp), intent(in) :: all_roots(:)
-         logical, intent(in) :: selected(:)
-         real(dp), intent(in) :: local_tolerance
+         !! Construct a real normalized polynomial from selected ordinary roots.
+         complex(dp), intent(in) :: all_roots(:) !! All roots.
+         logical, intent(in) :: selected(:) !! Flag controlling selected.
+         real(dp), intent(in) :: local_tolerance !! Local tolerance.
          real(dp), allocatable :: polynomial(:)
          complex(dp), allocatable :: work(:), next(:)
          integer :: root_index, order, k
@@ -2391,9 +2411,10 @@ contains
 
       pure subroutine cancel_reduction_factor(numerator, denominator, &
          local_tolerance)
-         ! Cancel one common polynomial factor in a reduced ARIMA spectrum.
-         real(dp), allocatable, intent(inout) :: numerator(:), denominator(:)
-         real(dp), intent(in) :: local_tolerance
+         !! Cancel one common polynomial factor in a reduced ARIMA spectrum.
+         real(dp), allocatable, intent(inout) :: numerator(:) !! Numerator polynomial coefficients, updated in place.
+         real(dp), allocatable, intent(inout) :: denominator(:) !! Denominator polynomial coefficients, updated in place.
+         real(dp), intent(in) :: local_tolerance !! Local tolerance.
          real(dp), allocatable :: common(:)
          type(tfarima_polynomial_division_t) :: numerator_division
          type(tfarima_polynomial_division_t) :: denominator_division
@@ -2414,8 +2435,8 @@ contains
    end function tfarima_reduce_ssm
 
    pure logical function valid_ssm_form(form) result(valid)
-      ! Report whether a covariance-aware state-space form is complete.
-      type(tfarima_ssm_form_t), intent(in) :: form
+      !! Report whether a covariance-aware state-space form is complete.
+      type(tfarima_ssm_form_t), intent(in) :: form !! Form.
       integer :: n
 
       valid = form%info == 0 .and. allocated(form%observation_loading) .and. &
@@ -2435,9 +2456,11 @@ contains
 
    pure function tfarima_root_decomposition_basis(ar_polynomial, &
       difference_polynomial, mean_value, tolerance) result(out)
-      ! Build TFARIMA root classifications and deterministic decomposition basis.
-      real(dp), intent(in) :: ar_polynomial(:), difference_polynomial(:)
-      real(dp), intent(in), optional :: mean_value, tolerance
+      !! Build TFARIMA root classifications and deterministic decomposition basis.
+      real(dp), intent(in) :: ar_polynomial(:) !! Autoregressive polynomial coefficients.
+      real(dp), intent(in) :: difference_polynomial(:) !! Difference polynomial coefficients.
+      real(dp), intent(in), optional :: mean_value !! Mean value.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(tfarima_decomposition_basis_t) :: out
       type(arima2_roots_t) :: roots
       complex(dp), allocatable :: inverse_roots(:)
@@ -2612,13 +2635,16 @@ contains
    pure function tfarima_root_decompose(series, ar_polynomial, &
       difference_polynomial, ma_polynomial, innovation_variance, mean_value, &
       method, log_transform, tolerance) result(out)
-      ! Decompose an ARIMA series by forecast, backcast, or mixed root effects.
-      real(dp), intent(in) :: series(:), ar_polynomial(:)
-      real(dp), intent(in) :: difference_polynomial(:), ma_polynomial(:)
-      real(dp), intent(in) :: innovation_variance
-      real(dp), intent(in), optional :: mean_value, tolerance
-      integer, intent(in), optional :: method
-      logical, intent(in), optional :: log_transform
+      !! Decompose an ARIMA series by forecast, backcast, or mixed root effects.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: ar_polynomial(:) !! Autoregressive polynomial coefficients.
+      real(dp), intent(in) :: difference_polynomial(:) !! Difference polynomial coefficients.
+      real(dp), intent(in) :: ma_polynomial(:) !! Moving-average polynomial coefficients.
+      real(dp), intent(in) :: innovation_variance !! Innovation variance.
+      real(dp), intent(in), optional :: mean_value !! Mean value.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      logical, intent(in), optional :: log_transform !! Flag controlling log transform.
       type(tfarima_root_decomposition_t) :: out
       real(dp), allocatable :: transformed(:), effects(:, :), loading(:)
       real(dp) :: mu, tol
@@ -2679,11 +2705,14 @@ contains
    pure function tfarima_arima_to_structural_ssm(model, mean_value, &
       multiple_sources, contemporaneous, grouping, tolerance, max_iterations) &
       result(out)
-      ! Convert an ARIMA model to TFARIMA's eventual-forecast structural form.
-      type(tfarima_ucarima_component_t), intent(in) :: model
-      real(dp), intent(in), optional :: mean_value, grouping(:, :), tolerance
-      logical, intent(in), optional :: multiple_sources, contemporaneous
-      integer, intent(in), optional :: max_iterations
+      !! Convert an ARIMA model to TFARIMA's eventual-forecast structural form.
+      type(tfarima_ucarima_component_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in), optional :: mean_value !! Mean value.
+      real(dp), intent(in), optional :: grouping(:, :) !! Grouping.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      logical, intent(in), optional :: multiple_sources !! Flag controlling multiple sources.
+      logical, intent(in), optional :: contemporaneous !! Flag controlling contemporaneous.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(tfarima_structural_ssm_t) :: out
       real(dp), allocatable :: first_basis(:, :), next_basis(:, :), inverse(:, :)
       real(dp), allocatable :: transition(:, :), loading(:), forcing(:), psi(:)
@@ -2832,9 +2861,10 @@ contains
 
    pure function finite_ma_autocovariance(polynomial, variance, max_lag) &
       result(covariance)
-      ! Return finite-MA autocovariances through a requested lag.
-      real(dp), intent(in) :: polynomial(:), variance
-      integer, intent(in) :: max_lag
+      !! Return finite-MA autocovariances through a requested lag.
+      real(dp), intent(in) :: polynomial(:) !! Polynomial.
+      real(dp), intent(in) :: variance !! Variance value or matrix.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: covariance(:)
       integer :: lag, n
 
@@ -2853,8 +2883,10 @@ contains
 
    pure function least_squares_coefficients(matrix, rhs, tolerance) &
       result(coefficients)
-      ! Solve a full-rank least-squares system through normal equations.
-      real(dp), intent(in) :: matrix(:, :), rhs(:), tolerance
+      !! Solve a full-rank least-squares system through normal equations.
+      real(dp), intent(in) :: matrix(:, :) !! Input matrix.
+      real(dp), intent(in) :: rhs(:) !! Rhs.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
       real(dp), allocatable :: coefficients(:), normal(:, :), inverse(:, :)
       integer :: status
 
@@ -2865,7 +2897,7 @@ contains
       normal = matmul(transpose(matrix), matrix)
       call invert_matrix(normal, inverse, status)
       if (status /= 0) then
-         normal = normal + tolerance*identity_array(size(normal, 1))
+         normal = normal + tolerance*identity_matrix(size(normal, 1))
          call invert_matrix(normal, inverse, status)
       end if
       if (status /= 0) then
@@ -2877,9 +2909,11 @@ contains
 
    pure function nonnegative_least_squares(matrix, rhs, max_iterations, &
       tolerance) result(coefficients)
-      ! Minimize a linear least-squares residual under nonnegative coordinates.
-      real(dp), intent(in) :: matrix(:, :), rhs(:), tolerance
-      integer, intent(in) :: max_iterations
+      !! Minimize a linear least-squares residual under nonnegative coordinates.
+      real(dp), intent(in) :: matrix(:, :) !! Input matrix.
+      real(dp), intent(in) :: rhs(:) !! Rhs.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
       real(dp), allocatable :: coefficients(:), residual(:)
       real(dp) :: denominator, updated, change
       integer :: iteration, column
@@ -2907,8 +2941,8 @@ contains
    end function nonnegative_least_squares
 
    pure function structural_ssm_autocovariance(form) result(covariance)
-      ! Reconstruct reduced numerator autocovariances from an SSM disturbance form.
-      type(tfarima_ssm_form_t), intent(in) :: form
+      !! Reconstruct reduced numerator autocovariances from an SSM disturbance form.
+      type(tfarima_ssm_form_t), intent(in) :: form !! Form.
       real(dp), allocatable :: covariance(:), numerator(:, :)
       type(tfarima_leverrier_t) :: leverrier
       integer :: r, lag, i, j, coefficient
@@ -2946,27 +2980,15 @@ contains
       end do
    end function structural_ssm_autocovariance
 
-   pure function identity_array(order) result(identity)
-      ! Return a square identity matrix of requested order.
-      integer, intent(in) :: order
-      real(dp) :: identity(order, order)
-      integer :: i
-
-      identity = 0.0_dp
-      do i = 1, order
-         identity(i, i) = 1.0_dp
-      end do
-   end function identity_array
-
    pure function tfarima_structural_initialize(series, form, observations, &
       log_transform, regressors, regression_coefficients) result(out)
-      ! Estimate structural initial moments by filtering a GLS design matrix.
-      real(dp), intent(in) :: series(:)
-      type(tfarima_ssm_form_t), intent(in) :: form
-      integer, intent(in), optional :: observations
-      logical, intent(in), optional :: log_transform
-      real(dp), intent(in), optional :: regressors(:, :)
-      real(dp), intent(in), optional :: regression_coefficients(:)
+      !! Estimate structural initial moments by filtering a GLS design matrix.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(tfarima_ssm_form_t), intent(in) :: form !! Form.
+      integer, intent(in), optional :: observations !! Observed time-series values.
+      logical, intent(in), optional :: log_transform !! Flag controlling log transform.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: regression_coefficients(:) !! Regression coefficients.
       type(tfarima_structural_initialization_t) :: out
       type(tfarima_ssm_form_t) :: lagged
       real(dp), allocatable :: adjusted(:)
@@ -2992,14 +3014,14 @@ contains
    pure function tfarima_structural_filter(series, form, initial_state, &
       initial_covariance, log_transform, regressors, regression_coefficients) &
       result(out)
-      ! Filter a structural model with correlated observation and state noise.
-      real(dp), intent(in) :: series(:)
-      type(tfarima_ssm_form_t), intent(in) :: form
-      real(dp), intent(in), optional :: initial_state(:)
-      real(dp), intent(in), optional :: initial_covariance(:, :)
-      logical, intent(in), optional :: log_transform
-      real(dp), intent(in), optional :: regressors(:, :)
-      real(dp), intent(in), optional :: regression_coefficients(:)
+      !! Filter a structural model with correlated observation and state noise.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(tfarima_ssm_form_t), intent(in) :: form !! Form.
+      real(dp), intent(in), optional :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in), optional :: initial_covariance(:, :) !! Initial state covariance matrix.
+      logical, intent(in), optional :: log_transform !! Flag controlling log transform.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: regression_coefficients(:) !! Regression coefficients.
       type(tfarima_structural_filter_t) :: out
       type(tfarima_structural_initialization_t) :: initialization
       type(tfarima_ssm_form_t) :: lagged
@@ -3047,14 +3069,14 @@ contains
    pure function tfarima_structural_smooth(series, form, initial_state, &
       initial_covariance, log_transform, regressors, regression_coefficients) &
       result(out)
-      ! Smooth observation-aligned states in a joint-disturbance structural model.
-      real(dp), intent(in) :: series(:)
-      type(tfarima_ssm_form_t), intent(in) :: form
-      real(dp), intent(in), optional :: initial_state(:)
-      real(dp), intent(in), optional :: initial_covariance(:, :)
-      logical, intent(in), optional :: log_transform
-      real(dp), intent(in), optional :: regressors(:, :)
-      real(dp), intent(in), optional :: regression_coefficients(:)
+      !! Smooth observation-aligned states in a joint-disturbance structural model.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(tfarima_ssm_form_t), intent(in) :: form !! Form.
+      real(dp), intent(in), optional :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in), optional :: initial_covariance(:, :) !! Initial state covariance matrix.
+      logical, intent(in), optional :: log_transform !! Flag controlling log transform.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: regression_coefficients(:) !! Regression coefficients.
       type(tfarima_structural_smoother_t) :: out
       type(tfarima_structural_initialization_t) :: initialization
       type(tfarima_ssm_form_t) :: lagged
@@ -3132,13 +3154,13 @@ contains
 
    pure function tfarima_structural_forecast(filtered, form, horizon, &
       future_regressors, regression_coefficients, log_transform) result(out)
-      ! Forecast a filtered structural model with optional regression and log scale.
-      type(tfarima_structural_filter_t), intent(in) :: filtered
-      type(tfarima_ssm_form_t), intent(in) :: form
-      integer, intent(in) :: horizon
-      real(dp), intent(in), optional :: future_regressors(:, :)
-      real(dp), intent(in), optional :: regression_coefficients(:)
-      logical, intent(in), optional :: log_transform
+      !! Forecast a filtered structural model with optional regression and log scale.
+      type(tfarima_structural_filter_t), intent(in) :: filtered !! Filtered.
+      type(tfarima_ssm_form_t), intent(in) :: form !! Form.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in), optional :: future_regressors(:, :) !! Future regressors.
+      real(dp), intent(in), optional :: regression_coefficients(:) !! Regression coefficients.
+      logical, intent(in), optional :: log_transform !! Flag controlling log transform.
       type(tfarima_structural_forecast_t) :: out
       type(tfarima_ssm_form_t) :: lagged
       real(dp), allocatable :: state(:), covariance(:, :), process(:, :)
@@ -3209,8 +3231,8 @@ contains
    end function tfarima_structural_forecast
 
    pure function tfarima_band_cholesky(covariance_band) result(out)
-      ! Factor a symmetric positive-definite matrix in lower-band storage.
-      real(dp), intent(in) :: covariance_band(:, :)
+      !! Factor a symmetric positive-definite matrix in lower-band storage.
+      real(dp), intent(in) :: covariance_band(:, :) !! Covariance band.
       type(tfarima_band_cholesky_t) :: out
       real(dp) :: value
       integer :: row, lag, k, observations, width
@@ -3249,8 +3271,9 @@ contains
 
    pure function tfarima_band_forward_solve(cholesky_band, right_hand_side) &
       result(solution)
-      ! Solve L*x=b for a lower triangular matrix in band storage.
-      real(dp), intent(in) :: cholesky_band(:, :), right_hand_side(:)
+      !! Solve L*x=b for a lower triangular matrix in band storage.
+      real(dp), intent(in) :: cholesky_band(:, :) !! Cholesky band.
+      real(dp), intent(in) :: right_hand_side(:) !! Right hand side.
       real(dp), allocatable :: solution(:)
       real(dp) :: value
       integer :: row, column, observations, width
@@ -3278,10 +3301,11 @@ contains
 
    pure function tfarima_reduced_likelihood(series, ar_polynomial, &
       disturbance_numerator, disturbance_covariance) result(out)
-      ! Evaluate TFARIMA's exact profiled reduced-form Gaussian likelihood.
-      real(dp), intent(in) :: series(:), ar_polynomial(:)
-      real(dp), intent(in) :: disturbance_numerator(:, :)
-      real(dp), intent(in) :: disturbance_covariance(:, :)
+      !! Evaluate TFARIMA's exact profiled reduced-form Gaussian likelihood.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: ar_polynomial(:) !! Autoregressive polynomial coefficients.
+      real(dp), intent(in) :: disturbance_numerator(:, :) !! Disturbance numerator.
+      real(dp), intent(in) :: disturbance_covariance(:, :) !! Disturbance covariance matrix.
       type(tfarima_reduced_likelihood_t) :: out
       type(tfarima_band_cholesky_t) :: factorization
       real(dp), allocatable :: ar(:), numerator(:, :), psi(:, :)
@@ -3457,9 +3481,9 @@ contains
    end function tfarima_reduced_likelihood
 
    pure function tfarima_ucarima_reduced_likelihood(series, model) result(out)
-      ! Evaluate a built UCARIMA model by exact reduced-form factorization.
-      real(dp), intent(in) :: series(:)
-      type(tfarima_ucarima_model_t), intent(in) :: model
+      !! Evaluate a built UCARIMA model by exact reduced-form factorization.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(tfarima_ucarima_model_t), intent(in) :: model !! Model specification.
       type(tfarima_reduced_likelihood_t) :: out
       real(dp), allocatable :: ar(:), difference(:), adjusted(:)
       real(dp), allocatable :: numerator(:, :), covariance(:, :)
@@ -3491,9 +3515,10 @@ contains
 
    pure function tfarima_structural_reduced_likelihood(series, form, &
       difference_polynomial) result(out)
-      ! Evaluate a structural SSM through its exact reduced representation.
-      real(dp), intent(in) :: series(:), difference_polynomial(:)
-      type(tfarima_ssm_form_t), intent(in) :: form
+      !! Evaluate a structural SSM through its exact reduced representation.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: difference_polynomial(:) !! Difference polynomial coefficients.
+      type(tfarima_ssm_form_t), intent(in) :: form !! Form.
       type(tfarima_reduced_likelihood_t) :: out
       type(tfarima_ssm_reduction_t) :: reduction
       type(tfarima_polynomial_division_t) :: division
@@ -3522,9 +3547,9 @@ contains
    end function tfarima_structural_reduced_likelihood
 
    pure function repeated_block_diagonal(block, repetitions) result(matrix)
-      ! Repeat one square matrix along a block diagonal.
-      real(dp), intent(in) :: block(:, :)
-      integer, intent(in) :: repetitions
+      !! Repeat one square matrix along a block diagonal.
+      real(dp), intent(in) :: block(:, :) !! Block.
+      integer, intent(in) :: repetitions !! Repetitions.
       real(dp), allocatable :: matrix(:, :)
       integer :: first, last, repetition, n
 
@@ -3540,11 +3565,11 @@ contains
 
    pure function prepare_structural_series(series, log_transform, regressors, &
       regression_coefficients) result(adjusted)
-      ! Apply an optional log transform and known deterministic regression signal.
-      real(dp), intent(in) :: series(:)
-      logical, intent(in), optional :: log_transform
-      real(dp), intent(in), optional :: regressors(:, :)
-      real(dp), intent(in), optional :: regression_coefficients(:)
+      !! Apply an optional log transform and known deterministic regression signal.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      logical, intent(in), optional :: log_transform !! Flag controlling log transform.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: regression_coefficients(:) !! Regression coefficients.
       real(dp), allocatable :: adjusted(:)
       logical :: logarithm
 
@@ -3573,10 +3598,10 @@ contains
 
    pure function initialize_structural_series(series, form, observations) &
       result(out)
-      ! Estimate initial state moments from filtered GLS observation equations.
-      real(dp), intent(in) :: series(:)
-      type(tfarima_ssm_form_t), intent(in) :: form
-      integer, intent(in) :: observations
+      !! Estimate initial state moments from filtered GLS observation equations.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(tfarima_ssm_form_t), intent(in) :: form !! Form.
+      integer, intent(in) :: observations !! Observed time-series values.
       type(tfarima_structural_initialization_t) :: out
       type(tfarima_structural_filter_t) :: filtered
       real(dp), allocatable :: zero(:), zero_covariance(:, :), design(:, :)
@@ -3619,7 +3644,7 @@ contains
       normal = matmul(transpose(whitened), whitened)
       call invert_matrix(normal, inverse, status)
       if (status /= 0) then
-         normal = normal + 1.0e-8_dp*identity_array(dimension)
+         normal = normal + 1.0e-8_dp*identity_matrix(dimension)
          call invert_matrix(normal, inverse, status)
       end if
       if (status /= 0) then
@@ -3631,7 +3656,7 @@ contains
       scale = sum(residual**2)/real(max(1, n - dimension), dp)
       out%state = coefficients
       if (n <= dimension) then
-         out%covariance = 1.0e4_dp*identity_array(dimension)
+         out%covariance = 1.0e4_dp*identity_matrix(dimension)
       else
          out%covariance = scale*inverse
       end if
@@ -3640,10 +3665,11 @@ contains
 
    pure function run_structural_filter(series, form, initial_state, &
       initial_covariance) result(out)
-      ! Run the lagged joint-disturbance Kalman innovation recursion.
-      real(dp), intent(in) :: series(:), initial_state(:)
-      type(tfarima_ssm_form_t), intent(in) :: form
-      real(dp), intent(in) :: initial_covariance(:, :)
+      !! Run the lagged joint-disturbance Kalman innovation recursion.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      type(tfarima_ssm_form_t), intent(in) :: form !! Form.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
       type(tfarima_structural_filter_t) :: out
       real(dp), allocatable :: state(:), covariance(:, :), next_state(:)
       real(dp), allocatable :: next_covariance(:, :), cross(:), process(:, :)
@@ -3703,11 +3729,14 @@ contains
 
    pure recursive function root_decomposition_effects(series, mean_value, ar_polynomial, &
       difference_polynomial, ma_polynomial, basis, method) result(effects)
-      ! Propagate root-effect coefficients from an exact ARMA innovation sequence.
-      real(dp), intent(in) :: series(:), mean_value, ar_polynomial(:)
-      real(dp), intent(in) :: difference_polynomial(:), ma_polynomial(:)
-      real(dp), intent(in) :: basis(:, :)
-      integer, intent(in) :: method
+      !! Propagate root-effect coefficients from an exact ARMA innovation sequence.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: mean_value !! Mean value.
+      real(dp), intent(in) :: ar_polynomial(:) !! Autoregressive polynomial coefficients.
+      real(dp), intent(in) :: difference_polynomial(:) !! Difference polynomial coefficients.
+      real(dp), intent(in) :: ma_polynomial(:) !! Moving-average polynomial coefficients.
+      real(dp), intent(in) :: basis(:, :) !! Basis.
+      integer, intent(in) :: method !! Algorithm or estimation method.
       real(dp), allocatable :: effects(:, :), forward(:, :), backward(:, :)
       real(dp), allocatable :: stationary(:), raw_innovations(:), innovations(:)
       real(dp), allocatable :: psi(:), initial_values(:), coefficient(:)
@@ -3789,8 +3818,10 @@ contains
 
    pure function exact_arma_residuals(series, ar_polynomial, ma_polynomial) &
       result(residuals)
-      ! Compute exact ARMA residuals using estimated Gaussian presample values.
-      real(dp), intent(in) :: series(:), ar_polynomial(:), ma_polynomial(:)
+      !! Compute exact ARMA residuals using estimated Gaussian presample values.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: ar_polynomial(:) !! Autoregressive polynomial coefficients.
+      real(dp), intent(in) :: ma_polynomial(:) !! Moving-average polynomial coefficients.
       real(dp), allocatable :: residuals(:), initial(:)
       real(dp) :: value
       integer :: n, p, q, time, lag, source
@@ -3834,8 +3865,10 @@ contains
 
    pure function arma_initial_conditions(series, ar_polynomial, ma_polynomial) &
       result(initial)
-      ! Estimate stationary ARMA presample series and innovation conditions.
-      real(dp), intent(in) :: series(:), ar_polynomial(:), ma_polynomial(:)
+      !! Estimate stationary ARMA presample series and innovation conditions.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: ar_polynomial(:) !! Autoregressive polynomial coefficients.
+      real(dp), intent(in) :: ma_polynomial(:) !! Moving-average polynomial coefficients.
       real(dp), allocatable :: initial(:)
       type(itsmr_arma_model_t) :: model
       real(dp), allocatable :: conditional(:), covariance(:), psi(:), pu(:, :)
@@ -3932,8 +3965,8 @@ contains
    end function arma_initial_conditions
 
    pure function decomposition_polynomial_roots(polynomial) result(out)
-      ! Find validated polynomial roots with an Aberth fallback for sparse cases.
-      real(dp), intent(in) :: polynomial(:)
+      !! Find validated polynomial roots with an Aberth fallback for sparse cases.
+      real(dp), intent(in) :: polynomial(:) !! Polynomial.
       type(arima2_roots_t) :: out
       complex(dp), allocatable :: previous(:), next(:)
       complex(dp) :: value, derivative, correction, interaction, denominator
@@ -4003,9 +4036,9 @@ contains
 
    pure real(dp) function polynomial_root_residual(polynomial, roots) &
       result(residual)
-      ! Return the largest absolute polynomial residual over candidate roots.
-      real(dp), intent(in) :: polynomial(:)
-      complex(dp), intent(in) :: roots(:)
+      !! Return the largest absolute polynomial residual over candidate roots.
+      real(dp), intent(in) :: polynomial(:) !! Polynomial.
+      complex(dp), intent(in) :: roots(:) !! Roots.
       complex(dp) :: value
       integer :: i, power
 
@@ -4021,10 +4054,10 @@ contains
 
    pure complex(dp) function tfarima_polynomial_derivative(polynomial, z, order) &
       result(value)
-      ! Evaluate a requested derivative of a lag polynomial at a complex point.
-      real(dp), intent(in) :: polynomial(:)
-      complex(dp), intent(in) :: z
-      integer, intent(in) :: order
+      !! Evaluate a requested derivative of a lag polynomial at a complex point.
+      real(dp), intent(in) :: polynomial(:) !! Polynomial.
+      complex(dp), intent(in) :: z !! Z.
+      integer, intent(in) :: order !! Model or polynomial order.
       integer :: degree
 
       value = cmplx(0.0_dp, 0.0_dp, dp)
@@ -4037,11 +4070,12 @@ contains
 
    pure function tfarima_transfer_spec(numerator, denominator, delay, &
       estimate_numerator, estimate_denominator) result(out)
-      ! Construct a rational input specification with optional free masks.
-      real(dp), intent(in) :: numerator(:), denominator(:)
-      integer, intent(in), optional :: delay
-      logical, intent(in), optional :: estimate_numerator(:)
-      logical, intent(in), optional :: estimate_denominator(:)
+      !! Construct a rational input specification with optional free masks.
+      real(dp), intent(in) :: numerator(:) !! Numerator polynomial coefficients.
+      real(dp), intent(in) :: denominator(:) !! Denominator polynomial coefficients.
+      integer, intent(in), optional :: delay !! Delay.
+      logical, intent(in), optional :: estimate_numerator(:) !! Whether to estimate the numerator.
+      logical, intent(in), optional :: estimate_denominator(:) !! Whether to estimate the denominator.
       type(tfarima_transfer_spec_t) :: out
       integer :: selected_delay
 
@@ -4076,12 +4110,13 @@ contains
 
    pure function tfarima_prewhitened_ccf(input, output, input_model, max_lag, &
       output_model, confidence_level) result(out)
-      ! Correlate input and output after conditional ARIMA prewhitening.
-      real(dp), intent(in) :: input(:), output(:)
-      type(tfarima_ucarima_component_t), intent(in) :: input_model
-      integer, intent(in) :: max_lag
-      type(tfarima_ucarima_component_t), intent(in), optional :: output_model
-      real(dp), intent(in), optional :: confidence_level
+      !! Correlate input and output after conditional ARIMA prewhitening.
+      real(dp), intent(in) :: input(:) !! Input.
+      real(dp), intent(in) :: output(:) !! Output.
+      type(tfarima_ucarima_component_t), intent(in) :: input_model !! Input model.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      type(tfarima_ucarima_component_t), intent(in), optional :: output_model !! Output model.
+      real(dp), intent(in), optional :: confidence_level !! Confidence level.
       type(tfarima_prewhitened_ccf_t) :: out
       real(dp), allocatable :: input_residuals(:), output_residuals(:)
       real(dp) :: confidence, input_mean, output_mean, scale
@@ -4137,13 +4172,16 @@ contains
    pure function tfarima_identify_transfer(output, input, input_model, &
       numerator_order, denominator_order, max_lag, output_model, delay, &
       confidence_level) result(out)
-      ! Identify a rational transfer delay and starting coefficients.
-      real(dp), intent(in) :: output(:), input(:)
-      type(tfarima_ucarima_component_t), intent(in) :: input_model
-      integer, intent(in) :: numerator_order, denominator_order, max_lag
-      type(tfarima_ucarima_component_t), intent(in), optional :: output_model
-      integer, intent(in), optional :: delay
-      real(dp), intent(in), optional :: confidence_level
+      !! Identify a rational transfer delay and starting coefficients.
+      real(dp), intent(in) :: output(:) !! Output.
+      real(dp), intent(in) :: input(:) !! Input.
+      type(tfarima_ucarima_component_t), intent(in) :: input_model !! Input model.
+      integer, intent(in) :: numerator_order !! Numerator order.
+      integer, intent(in) :: denominator_order !! Denominator order.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      type(tfarima_ucarima_component_t), intent(in), optional :: output_model !! Output model.
+      integer, intent(in), optional :: delay !! Delay.
+      real(dp), intent(in), optional :: confidence_level !! Confidence level.
       type(tfarima_transfer_identification_t) :: out
       real(dp), allocatable :: impulse(:), numerator(:), denominator(:)
       real(dp), allocatable :: design(:, :), rhs(:), normal_matrix(:, :)
@@ -4235,12 +4273,12 @@ contains
 
    pure function tfarima_exact_transfer_ccf(fit, input, input_models, &
       max_lag, confidence_level) result(out)
-      ! Check fitted residuals against each separately prewhitened input.
-      type(tfarima_exact_transfer_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: input(:, :)
-      type(tfarima_ucarima_component_t), intent(in) :: input_models(:)
-      integer, intent(in) :: max_lag
-      real(dp), intent(in), optional :: confidence_level
+      !! Check fitted residuals against each separately prewhitened input.
+      type(tfarima_exact_transfer_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: input(:, :) !! Input.
+      type(tfarima_ucarima_component_t), intent(in) :: input_models(:) !! Input models.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      real(dp), intent(in), optional :: confidence_level !! Confidence level.
       type(tfarima_prewhitened_ccf_t), allocatable :: out(:)
       type(tfarima_ucarima_component_t) :: identity_model
       integer :: dynamic_input
@@ -4268,13 +4306,13 @@ contains
 
    pure function tfarima_diagnose_transfer(fit, max_lag, input, input_models, &
       confidence_level, fitted_parameter_count) result(out)
-      ! Summarize fitted transfer residual dependence, shape, and spectrum.
-      type(tfarima_exact_transfer_fit_t), intent(in) :: fit
-      integer, intent(in) :: max_lag
-      real(dp), intent(in), optional :: input(:, :)
-      type(tfarima_ucarima_component_t), intent(in), optional :: input_models(:)
-      real(dp), intent(in), optional :: confidence_level
-      integer, intent(in), optional :: fitted_parameter_count
+      !! Summarize fitted transfer residual dependence, shape, and spectrum.
+      type(tfarima_exact_transfer_fit_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      real(dp), intent(in), optional :: input(:, :) !! Input.
+      type(tfarima_ucarima_component_t), intent(in), optional :: input_models(:) !! Input models.
+      real(dp), intent(in), optional :: confidence_level !! Confidence level.
+      integer, intent(in), optional :: fitted_parameter_count !! Number of fitted parameter.
       type(tfarima_transfer_diagnostics_t) :: out
       real(dp), allocatable :: residuals(:), centered(:), periodogram(:)
       real(dp) :: confidence, alpha, scale, cosine_sum, sine_sum
@@ -4368,10 +4406,11 @@ contains
 
    pure function tfarima_simulate_transfer(input, specifications, regressors, &
       regression_coefficients) result(out)
-      ! Evaluate multiple delayed rational inputs and deterministic regressors.
-      real(dp), intent(in) :: input(:, :)
-      type(tfarima_transfer_spec_t), intent(in) :: specifications(:)
-      real(dp), intent(in), optional :: regressors(:, :), regression_coefficients(:)
+      !! Evaluate multiple delayed rational inputs and deterministic regressors.
+      real(dp), intent(in) :: input(:, :) !! Input.
+      type(tfarima_transfer_spec_t), intent(in) :: specifications(:) !! Specifications.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: regression_coefficients(:) !! Regression coefficients.
       type(tfarima_transfer_signal_t) :: out
       integer :: n, input_count, dynamic_input
 
@@ -4417,17 +4456,21 @@ contains
       regressors, input_models, input_history, noise_history, &
       noise_innovations, input_innovations, noise_innovation_history, &
       input_innovation_history, burn_in, seed) result(out)
-      ! Simulate exact transfer models with fixed or ARIMA-generated inputs.
-      type(tfarima_exact_transfer_fit_t), intent(in) :: fit
-      integer, intent(in) :: observations, simulations
-      real(dp), intent(in), optional :: input(:, :), regressors(:, :)
-      type(tfarima_ucarima_component_t), intent(in), optional :: input_models(:)
-      real(dp), intent(in), optional :: input_history(:, :), noise_history(:)
-      real(dp), intent(in), optional :: noise_innovations(:, :)
-      real(dp), intent(in), optional :: input_innovations(:, :, :)
-      real(dp), intent(in), optional :: noise_innovation_history(:)
-      real(dp), intent(in), optional :: input_innovation_history(:, :)
-      integer, intent(in), optional :: burn_in, seed
+      !! Simulate exact transfer models with fixed or ARIMA-generated inputs.
+      type(tfarima_exact_transfer_fit_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: observations !! Observed time-series values.
+      integer, intent(in) :: simulations !! Number of simulation draws.
+      real(dp), intent(in), optional :: input(:, :) !! Input.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      type(tfarima_ucarima_component_t), intent(in), optional :: input_models(:) !! Input models.
+      real(dp), intent(in), optional :: input_history(:, :) !! Input history.
+      real(dp), intent(in), optional :: noise_history(:) !! Noise history.
+      real(dp), intent(in), optional :: noise_innovations(:, :) !! Noise innovations.
+      real(dp), intent(in), optional :: input_innovations(:, :, :) !! Input innovations.
+      real(dp), intent(in), optional :: noise_innovation_history(:) !! Noise innovation history.
+      real(dp), intent(in), optional :: input_innovation_history(:, :) !! Input innovation history.
+      integer, intent(in), optional :: burn_in !! Burn in.
+      integer, intent(in), optional :: seed !! Random-number seed.
       type(tfarima_transfer_simulation_t) :: out
       type(tfarima_transfer_signal_t) :: signal
       real(dp), allocatable :: full_input(:, :, :), full_noise(:, :)
@@ -4612,9 +4655,10 @@ contains
    end function tfarima_simulate_exact_model
 
    pure function tfarima_transfer(numerator, denominator, delay) result(out)
-      ! Construct and validate a rational transfer function.
-      real(dp), intent(in) :: numerator(:), denominator(:)
-      integer, intent(in), optional :: delay
+      !! Construct and validate a rational transfer function.
+      real(dp), intent(in) :: numerator(:) !! Numerator polynomial coefficients.
+      real(dp), intent(in) :: denominator(:) !! Denominator polynomial coefficients.
+      integer, intent(in), optional :: delay !! Delay.
       type(tfarima_transfer_t) :: out
 
       out%delay = 0
@@ -4631,9 +4675,9 @@ contains
    end function tfarima_transfer
 
    pure function tfarima_filter(input, transfer) result(output)
-      ! Filter an input through a delayed rational lag polynomial.
-      real(dp), intent(in) :: input(:)
-      type(tfarima_transfer_t), intent(in) :: transfer
+      !! Filter an input through a delayed rational lag polynomial.
+      real(dp), intent(in) :: input(:) !! Input.
+      type(tfarima_transfer_t), intent(in) :: transfer !! Transfer.
       real(dp), allocatable :: output(:)
       real(dp) :: value
       integer :: time, lag, source
@@ -4657,10 +4701,10 @@ contains
    end function tfarima_filter
 
    pure function tfarima_impulse_response(transfer, max_lag, cumulative) result(response)
-      ! Compute a transfer function's impulse or cumulative step response.
-      type(tfarima_transfer_t), intent(in) :: transfer
-      integer, intent(in) :: max_lag
-      logical, intent(in), optional :: cumulative
+      !! Compute a transfer function's impulse or cumulative step response.
+      type(tfarima_transfer_t), intent(in) :: transfer !! Transfer.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      logical, intent(in), optional :: cumulative !! Flag controlling cumulative.
       real(dp), allocatable :: response(:), ratio(:)
       logical :: step
       integer :: lag
@@ -4685,9 +4729,10 @@ contains
 
    pure function tfarima_difference(series, difference_polynomial, log_transform) &
       result(differenced)
-      ! Apply an optional log transform and lag-difference polynomial.
-      real(dp), intent(in) :: series(:), difference_polynomial(:)
-      logical, intent(in), optional :: log_transform
+      !! Apply an optional log transform and lag-difference polynomial.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: difference_polynomial(:) !! Difference polynomial coefficients.
+      logical, intent(in), optional :: log_transform !! Flag controlling log transform.
       real(dp), allocatable :: differenced(:), transformed(:)
       logical :: logarithm
       integer :: degree, time, lag
@@ -4715,12 +4760,16 @@ contains
    pure function tfarima_arima_forecast(series, ar_polynomial, &
       difference_polynomial, ma_polynomial, innovation_variance, horizon, &
       mean_value, levels, log_transform) result(out)
-      ! Forecast a tfarima-form ARIMA model by its ARMA recursions.
-      real(dp), intent(in) :: series(:), ar_polynomial(:), difference_polynomial(:)
-      real(dp), intent(in) :: ma_polynomial(:), innovation_variance
-      integer, intent(in) :: horizon
-      real(dp), intent(in), optional :: mean_value, levels(:)
-      logical, intent(in), optional :: log_transform
+      !! Forecast a tfarima-form ARIMA model by its ARMA recursions.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: ar_polynomial(:) !! Autoregressive polynomial coefficients.
+      real(dp), intent(in) :: difference_polynomial(:) !! Difference polynomial coefficients.
+      real(dp), intent(in) :: ma_polynomial(:) !! Moving-average polynomial coefficients.
+      real(dp), intent(in) :: innovation_variance !! Innovation variance.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in), optional :: mean_value !! Mean value.
+      real(dp), intent(in), optional :: levels(:) !! Levels.
+      logical, intent(in), optional :: log_transform !! Flag controlling log transform.
       type(tfarima_forecast_t) :: out
       real(dp), allocatable :: transformed(:), stationary(:), innovations(:)
       real(dp), allocatable :: full_stationary(:), full_innovations(:), psi(:)
@@ -4805,12 +4854,15 @@ contains
    pure function tfarima_arima_backcast(series, ar_polynomial, &
       difference_polynomial, ma_polynomial, innovation_variance, horizon, &
       mean_value, log_transform) result(backcast)
-      ! Backcast an ARIMA model by forecasting the reversed series.
-      real(dp), intent(in) :: series(:), ar_polynomial(:), difference_polynomial(:)
-      real(dp), intent(in) :: ma_polynomial(:), innovation_variance
-      integer, intent(in) :: horizon
-      real(dp), intent(in), optional :: mean_value
-      logical, intent(in), optional :: log_transform
+      !! Backcast an ARIMA model by forecasting the reversed series.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: ar_polynomial(:) !! Autoregressive polynomial coefficients.
+      real(dp), intent(in) :: difference_polynomial(:) !! Difference polynomial coefficients.
+      real(dp), intent(in) :: ma_polynomial(:) !! Moving-average polynomial coefficients.
+      real(dp), intent(in) :: innovation_variance !! Innovation variance.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in), optional :: mean_value !! Mean value.
+      logical, intent(in), optional :: log_transform !! Flag controlling log transform.
       real(dp), allocatable :: backcast(:), reversed(:)
       type(tfarima_forecast_t) :: forecast
       integer :: i
@@ -4833,8 +4885,10 @@ contains
    end function tfarima_arima_backcast
 
    pure function tfarima_intervention(length, position, intervention_type) result(variable)
-      ! Create pulse, step, or ramp intervention values.
-      integer, intent(in) :: length, position, intervention_type
+      !! Create pulse, step, or ramp intervention values.
+      integer, intent(in) :: length !! Length.
+      integer, intent(in) :: position !! Position.
+      integer, intent(in) :: intervention_type !! Intervention type.
       real(dp), allocatable :: variable(:)
       integer :: i
 
@@ -4861,9 +4915,12 @@ contains
 
    pure function tfarima_seasonal_dummies(length, period, start_season, &
       reference, constant) result(dummy)
-      ! Create tfarima reference-coded seasonal dummy regressors.
-      integer, intent(in) :: length, period, start_season, reference
-      logical, intent(in), optional :: constant
+      !! Create tfarima reference-coded seasonal dummy regressors.
+      integer, intent(in) :: length !! Length.
+      integer, intent(in) :: period !! Seasonal period.
+      integer, intent(in) :: start_season !! Start season.
+      integer, intent(in) :: reference !! Reference.
+      logical, intent(in), optional :: constant !! Flag controlling constant.
       real(dp), allocatable :: dummy(:, :)
       integer :: columns, offset, time, season, target, column
       logical :: include_constant
@@ -4894,9 +4951,11 @@ contains
 
    pure function tfarima_harmonic_regressors(length, period, start_season, &
       constant) result(regressors)
-      ! Create tfarima cosine-sine seasonal regressors.
-      integer, intent(in) :: length, period, start_season
-      logical, intent(in), optional :: constant
+      !! Create tfarima cosine-sine seasonal regressors.
+      integer, intent(in) :: length !! Length.
+      integer, intent(in) :: period !! Seasonal period.
+      integer, intent(in) :: start_season !! Start season.
+      logical, intent(in), optional :: constant !! Flag controlling constant.
       real(dp), allocatable :: regressors(:, :)
       real(dp) :: angle
       integer :: harmonics, columns, offset, time, harmonic, column
@@ -4932,8 +4991,8 @@ contains
    end function tfarima_harmonic_regressors
 
    pure function tfarima_standardize(values) result(standardized)
-      ! Center and scale a vector using R's sample standard deviation.
-      real(dp), intent(in) :: values(:)
+      !! Center and scale a vector using R's sample standard deviation.
+      real(dp), intent(in) :: values(:) !! Input values.
       real(dp), allocatable :: standardized(:)
       real(dp) :: mean_value, standard_deviation
 
@@ -4954,10 +5013,11 @@ contains
 
    pure function tfarima_autocovariance(ar_polynomial, ma_polynomial, &
       innovation_variance, max_lag) result(covariance)
-      ! Return ARMA autocovariances using tfarima polynomial signs.
-      real(dp), intent(in) :: ar_polynomial(:), ma_polynomial(:)
-      real(dp), intent(in) :: innovation_variance
-      integer, intent(in) :: max_lag
+      !! Return ARMA autocovariances using tfarima polynomial signs.
+      real(dp), intent(in) :: ar_polynomial(:) !! Autoregressive polynomial coefficients.
+      real(dp), intent(in) :: ma_polynomial(:) !! Moving-average polynomial coefficients.
+      real(dp), intent(in) :: innovation_variance !! Innovation variance.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: covariance(:)
       type(itsmr_arma_model_t) :: model
 
@@ -4979,9 +5039,10 @@ contains
 
    pure function tfarima_partial_autocorrelation(ar_polynomial, ma_polynomial, &
       max_lag) result(partial)
-      ! Compute theoretical ARMA partial autocorrelations by Levinson recursion.
-      real(dp), intent(in) :: ar_polynomial(:), ma_polynomial(:)
-      integer, intent(in) :: max_lag
+      !! Compute theoretical ARMA partial autocorrelations by Levinson recursion.
+      real(dp), intent(in) :: ar_polynomial(:) !! Autoregressive polynomial coefficients.
+      real(dp), intent(in) :: ma_polynomial(:) !! Moving-average polynomial coefficients.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: partial(:), correlation(:), previous(:), current(:)
       real(dp) :: denominator, numerator
       integer :: order, j
@@ -5025,10 +5086,10 @@ contains
 
    pure function tfarima_autocovariance_to_ma(covariance, tolerance, &
       max_iterations) result(out)
-      ! Recover finite MA coefficients with tfarima's Newton factorization.
-      real(dp), intent(in) :: covariance(:)
-      real(dp), intent(in), optional :: tolerance
-      integer, intent(in), optional :: max_iterations
+      !! Recover finite MA coefficients with tfarima's Newton factorization.
+      real(dp), intent(in) :: covariance(:) !! Covariance matrix.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(tfarima_ma_factor_t) :: out
       real(dp), allocatable :: coefficient(:), next_coefficient(:), &
          residual(:), jacobian(:, :), inverse(:, :)
@@ -5081,10 +5142,12 @@ contains
 
    pure function tfarima_cramer_wold_factor(covariance, method, initial, &
       tolerance, max_iterations) result(out)
-      ! Factor finite autocovariances with selectable robust Cramer-Wold methods.
-      real(dp), intent(in) :: covariance(:)
-      integer, intent(in), optional :: method, max_iterations
-      real(dp), intent(in), optional :: initial(:), tolerance
+      !! Factor finite autocovariances with selectable robust Cramer-Wold methods.
+      real(dp), intent(in) :: covariance(:) !! Covariance matrix.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(tfarima_ma_factor_t) :: out
       type(tfarima_ma_factor_t) :: candidate
       real(dp), allocatable :: g(:), start(:)
@@ -5138,8 +5201,9 @@ contains
    end function tfarima_cramer_wold_factor
 
    pure function cramer_wold_roots(covariance, tolerance) result(out)
-      ! Select the minimum-phase half of the palindromic covariance roots.
-      real(dp), intent(in) :: covariance(:), tolerance
+      !! Select the minimum-phase half of the palindromic covariance roots.
+      real(dp), intent(in) :: covariance(:) !! Covariance matrix.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
       type(tfarima_ma_factor_t) :: out
       type(arima2_roots_t) :: roots
       real(dp), allocatable :: palindromic(:)
@@ -5202,9 +5266,10 @@ contains
 
    pure function cramer_wold_bauer(covariance, tolerance, max_iterations) &
       result(out)
-      ! Initialize a Cramer-Wold factor with Laurie's Bauer recursion.
-      real(dp), intent(in) :: covariance(:), tolerance
-      integer, intent(in) :: max_iterations
+      !! Initialize a Cramer-Wold factor with Laurie's Bauer recursion.
+      real(dp), intent(in) :: covariance(:) !! Covariance matrix.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
       type(tfarima_ma_factor_t) :: out
       real(dp), allocatable :: g(:), theta(:), previous(:)
       real(dp) :: ratio, g0
@@ -5241,9 +5306,11 @@ contains
 
    pure function cramer_wold_laurie(covariance, initial, tolerance, &
       max_iterations) result(out)
-      ! Refine a Cramer-Wold factor with Laurie algorithm AS 175.
-      real(dp), intent(in) :: covariance(:), initial(:), tolerance
-      integer, intent(in) :: max_iterations
+      !! Refine a Cramer-Wold factor with Laurie algorithm AS 175.
+      real(dp), intent(in) :: covariance(:) !! Covariance matrix.
+      real(dp), intent(in) :: initial(:) !! Initial value.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
       type(tfarima_ma_factor_t) :: out
       type(tfarima_ma_factor_t) :: bauer
       real(dp), allocatable :: theta(:), next(:)
@@ -5285,8 +5352,9 @@ contains
    end function cramer_wold_laurie
 
    pure function laurie_iteration(covariance, theta) result(next)
-      ! Perform one Laurie AS 175 factor recursion.
-      real(dp), intent(in) :: covariance(:), theta(:)
+      !! Perform one Laurie AS 175 factor recursion.
+      real(dp), intent(in) :: covariance(:) !! Covariance matrix.
+      real(dp), intent(in) :: theta(:) !! Theta.
       real(dp) :: next(size(theta)), g(size(theta))
       real(dp) :: ratio, saved
       integer :: order, m, i
@@ -5318,9 +5386,11 @@ contains
 
    pure function cramer_wold_wilson(covariance, initial, tolerance, &
       max_iterations) result(out)
-      ! Solve covariance moment equations by Wilson's matrix iteration.
-      real(dp), intent(in) :: covariance(:), initial(:), tolerance
-      integer, intent(in) :: max_iterations
+      !! Solve covariance moment equations by Wilson's matrix iteration.
+      real(dp), intent(in) :: covariance(:) !! Covariance matrix.
+      real(dp), intent(in) :: initial(:) !! Initial value.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
       type(tfarima_ma_factor_t) :: out
       real(dp), allocatable :: g(:), theta(:), moments(:), residual(:)
       real(dp), allocatable :: matrix(:, :), inverse(:, :)
@@ -5377,9 +5447,9 @@ contains
    end function cramer_wold_wilson
 
    pure subroutine factor_moments(coefficients, moments)
-      ! Reconstruct one-sided autocovariances from finite MA coefficients.
-      real(dp), intent(in) :: coefficients(:)
-      real(dp), intent(out) :: moments(:)
+      !! Reconstruct one-sided autocovariances from finite MA coefficients.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(out) :: moments(:) !! Moments.
       integer :: lag, n
 
       n = size(coefficients)
@@ -5391,8 +5461,9 @@ contains
 
    pure real(dp) function factor_residual_norm(covariance, coefficients) &
       result(value)
-      ! Return the Euclidean autocovariance reconstruction error.
-      real(dp), intent(in) :: covariance(:), coefficients(:)
+      !! Return the Euclidean autocovariance reconstruction error.
+      real(dp), intent(in) :: covariance(:) !! Covariance matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
       real(dp), allocatable :: moments(:)
 
       if (size(covariance) /= size(coefficients)) then
@@ -5405,9 +5476,9 @@ contains
    end function factor_residual_norm
 
    pure subroutine retain_better_factor(best, candidate)
-      ! Retain a valid factor when it improves the reconstruction residual.
-      type(tfarima_ma_factor_t), intent(inout) :: best
-      type(tfarima_ma_factor_t), intent(in) :: candidate
+      !! Retain a valid factor when it improves the reconstruction residual.
+      type(tfarima_ma_factor_t), intent(inout) :: best !! Best, updated in place.
+      type(tfarima_ma_factor_t), intent(in) :: candidate !! Candidate.
 
       if (candidate%info /= 0 .or. .not. allocated(candidate%coefficients)) return
       if (best%info /= 0 .or. .not. allocated(best%coefficients) .or. &
@@ -5415,16 +5486,16 @@ contains
    end subroutine retain_better_factor
 
    pure function tfarima_palindromic_to_wold(polynomial) result(wold)
-      ! Convert symmetric palindromic coordinates to a Wold polynomial.
-      real(dp), intent(in) :: polynomial(:)
+      !! Convert symmetric palindromic coordinates to a Wold polynomial.
+      real(dp), intent(in) :: polynomial(:) !! Polynomial.
       real(dp), allocatable :: wold(:)
 
       wold = wold_from_palindromic(polynomial)
    end function tfarima_palindromic_to_wold
 
    pure function tfarima_wold_to_palindromic(wold) result(polynomial)
-      ! Convert a Wold polynomial back to symmetric palindromic coordinates.
-      real(dp), intent(in) :: wold(:)
+      !! Convert a Wold polynomial back to symmetric palindromic coordinates.
+      real(dp), intent(in) :: wold(:) !! Wold.
       real(dp), allocatable :: polynomial(:)
 
       polynomial = palindromic_from_wold(wold)
@@ -5432,10 +5503,12 @@ contains
 
    pure function tfarima_lag_polynomial(lags, offset, loading, parameters, &
       exponent) result(out)
-      ! Construct a sparse lag polynomial with linear parameter restrictions.
-      integer, intent(in) :: lags(:)
-      real(dp), intent(in) :: offset(:), loading(:, :), parameters(:)
-      integer, intent(in), optional :: exponent
+      !! Construct a sparse lag polynomial with linear parameter restrictions.
+      integer, intent(in) :: lags(:) !! Lags.
+      real(dp), intent(in) :: offset(:) !! Known additive offset.
+      real(dp), intent(in) :: loading(:, :) !! Loading.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in), optional :: exponent !! Exponent.
       type(tfarima_lag_polynomial_t) :: out
       real(dp), allocatable :: coefficients(:)
 
@@ -5464,9 +5537,9 @@ contains
    end function tfarima_lag_polynomial
 
    pure function tfarima_update_lag_polynomial(model, parameters) result(out)
-      ! Evaluate a restricted lag polynomial at new parameter values.
-      type(tfarima_lag_polynomial_t), intent(in) :: model
-      real(dp), intent(in) :: parameters(:)
+      !! Evaluate a restricted lag polynomial at new parameter values.
+      type(tfarima_lag_polynomial_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
       type(tfarima_lag_polynomial_t) :: out
 
       if (model%info /= 0 .or. .not. allocated(model%lags) .or. &
@@ -5480,10 +5553,10 @@ contains
 
    pure logical function tfarima_polynomial_admissible(polynomial, strict, &
       tolerance) result(admissible)
-      ! Test whether every lag-polynomial root is outside the unit circle.
-      real(dp), intent(in) :: polynomial(:)
-      logical, intent(in), optional :: strict
-      real(dp), intent(in), optional :: tolerance
+      !! Test whether every lag-polynomial root is outside the unit circle.
+      real(dp), intent(in) :: polynomial(:) !! Polynomial.
+      logical, intent(in), optional :: strict !! Flag controlling strict.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(arima2_roots_t) :: root_result
       real(dp) :: tol
       logical :: outside
@@ -5515,15 +5588,18 @@ contains
       noise_model, regressors, initial_regression, estimate_noise_ar, &
       estimate_noise_ma, estimate_noise_variance, max_iterations, tolerance) &
       result(out)
-      ! Fit multiple rational inputs and ARIMA noise by exact KFAS likelihood.
-      real(dp), intent(in) :: output(:), input(:, :)
-      type(tfarima_transfer_spec_t), intent(in) :: specifications(:)
-      type(tfarima_ucarima_component_t), intent(in) :: noise_model
-      real(dp), intent(in), optional :: regressors(:, :), initial_regression(:)
-      logical, intent(in), optional :: estimate_noise_ar(:), estimate_noise_ma(:)
-      logical, intent(in), optional :: estimate_noise_variance
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Fit multiple rational inputs and ARIMA noise by exact KFAS likelihood.
+      real(dp), intent(in) :: output(:) !! Output.
+      real(dp), intent(in) :: input(:, :) !! Input.
+      type(tfarima_transfer_spec_t), intent(in) :: specifications(:) !! Specifications.
+      type(tfarima_ucarima_component_t), intent(in) :: noise_model !! Noise model.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: initial_regression(:) !! Initial regression.
+      logical, intent(in), optional :: estimate_noise_ar(:) !! Whether to estimate the noise autoregressive.
+      logical, intent(in), optional :: estimate_noise_ma(:) !! Whether to estimate the noise moving-average.
+      logical, intent(in), optional :: estimate_noise_variance !! Whether to estimate the noise variance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(tfarima_exact_transfer_fit_t) :: out
       type(optimization_result_t) :: warm_start, optimization
       type(kfs_filter_t) :: filtered
@@ -5740,8 +5816,8 @@ contains
    contains
 
       pure function objective(values) result(value)
-         ! Return the negative exact likelihood for transfer optimizer values.
-         real(dp), intent(in) :: values(:)
+         !! Return the negative exact likelihood for transfer optimizer values.
+         real(dp), intent(in) :: values(:) !! Input values.
          real(dp) :: value
          type(tfarima_transfer_spec_t), allocatable :: trial_specs(:)
          type(tfarima_ucarima_component_t) :: trial_noise
@@ -5761,13 +5837,14 @@ contains
 
       pure subroutine evaluate(values, specs, noise, regression, transformed, &
          filter_result, evaluation_status)
-         ! Decode all signals and evaluate their exact ARIMA noise likelihood.
-         real(dp), intent(in) :: values(:)
-         type(tfarima_transfer_spec_t), allocatable, intent(out) :: specs(:)
-         type(tfarima_ucarima_component_t), intent(out) :: noise
-         real(dp), allocatable, intent(out) :: regression(:), transformed(:)
-         type(kfs_filter_t), intent(out) :: filter_result
-         integer, intent(out) :: evaluation_status
+         !! Decode all signals and evaluate their exact ARIMA noise likelihood.
+         real(dp), intent(in) :: values(:) !! Input values.
+         type(tfarima_transfer_spec_t), allocatable, intent(out) :: specs(:) !! Specs.
+         type(tfarima_ucarima_component_t), intent(out) :: noise !! Noise.
+         real(dp), allocatable, intent(out) :: regression(:) !! Regression.
+         real(dp), allocatable, intent(out) :: transformed(:) !! Transformed.
+         type(kfs_filter_t), intent(out) :: filter_result !! Filter result.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          type(tfarima_ucarima_model_t) :: trial_model
          type(tfarima_ucarima_ssm_t) :: state_space
          real(dp), allocatable :: numerator(:), denominator(:), ar(:), ma(:)
@@ -5846,9 +5923,9 @@ contains
       end subroutine evaluate
 
       pure subroutine natural_parameters(values, natural)
-         ! Transform the final noise variance coordinate to its natural scale.
-         real(dp), intent(in) :: values(:)
-         real(dp), intent(out) :: natural(:)
+         !! Transform the final noise variance coordinate to its natural scale.
+         real(dp), intent(in) :: values(:) !! Input values.
+         real(dp), intent(out) :: natural(:) !! Natural.
          integer :: parameter
 
          natural = values
@@ -5865,16 +5942,22 @@ contains
       estimate_noise_ma, estimate_noise_variance, significance_level, &
       keep_regressors, keep_inputs, max_steps, max_iterations, tolerance) &
       result(out)
-      ! Backward-select regressors and complete inputs using exact-fit p-values.
-      real(dp), intent(in) :: output(:), input(:, :)
-      type(tfarima_transfer_spec_t), intent(in) :: specifications(:)
-      type(tfarima_ucarima_component_t), intent(in) :: noise_model
-      real(dp), intent(in), optional :: regressors(:, :), initial_regression(:)
-      logical, intent(in), optional :: estimate_noise_ar(:), estimate_noise_ma(:)
-      logical, intent(in), optional :: estimate_noise_variance
-      real(dp), intent(in), optional :: significance_level, tolerance
-      logical, intent(in), optional :: keep_regressors(:), keep_inputs(:)
-      integer, intent(in), optional :: max_steps, max_iterations
+      !! Backward-select regressors and complete inputs using exact-fit p-values.
+      real(dp), intent(in) :: output(:) !! Output.
+      real(dp), intent(in) :: input(:, :) !! Input.
+      type(tfarima_transfer_spec_t), intent(in) :: specifications(:) !! Specifications.
+      type(tfarima_ucarima_component_t), intent(in) :: noise_model !! Noise model.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: initial_regression(:) !! Initial regression.
+      logical, intent(in), optional :: estimate_noise_ar(:) !! Whether to estimate the noise autoregressive.
+      logical, intent(in), optional :: estimate_noise_ma(:) !! Whether to estimate the noise moving-average.
+      logical, intent(in), optional :: estimate_noise_variance !! Whether to estimate the noise variance.
+      real(dp), intent(in), optional :: significance_level !! Significance level.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      logical, intent(in), optional :: keep_regressors(:) !! Flag controlling keep regressors.
+      logical, intent(in), optional :: keep_inputs(:) !! Flag controlling keep inputs.
+      integer, intent(in), optional :: max_steps !! Maximum steps.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(tfarima_transfer_selection_t) :: out
       type(tfarima_transfer_spec_t), allocatable :: current_specs(:)
       type(tfarima_ucarima_component_t) :: current_noise
@@ -6066,8 +6149,9 @@ contains
 
       pure real(dp) function coefficient_p_value(coefficient, standard_error) &
          result(value)
-         ! Return a two-sided normal p-value or -1 when inference is unavailable.
-         real(dp), intent(in) :: coefficient, standard_error
+         !! Return a two-sided normal p-value or -1 when inference is unavailable.
+         real(dp), intent(in) :: coefficient !! Coefficient.
+         real(dp), intent(in) :: standard_error !! Standard error.
 
          if (.not. ieee_is_finite(coefficient) .or. &
             .not. ieee_is_finite(standard_error) .or. &
@@ -6079,10 +6163,11 @@ contains
       end function coefficient_p_value
 
       pure subroutine omit_regressor(matrix, beta, index, position)
-         ! Remove one regressor column and its current coefficient.
-         real(dp), allocatable, intent(inout) :: matrix(:, :), beta(:)
-         integer, allocatable, intent(inout) :: index(:)
-         integer, intent(in) :: position
+         !! Remove one regressor column and its current coefficient.
+         real(dp), allocatable, intent(inout) :: matrix(:, :) !! Input matrix, updated in place.
+         real(dp), allocatable, intent(inout) :: beta(:) !! Regression or model coefficients, updated in place.
+         integer, allocatable, intent(inout) :: index(:) !! Element or observation index, updated in place.
+         integer, intent(in) :: position !! Position.
          integer, allocatable :: retained(:)
          integer :: item
 
@@ -6094,11 +6179,11 @@ contains
       end subroutine omit_regressor
 
       pure subroutine omit_transfer_input(matrix, specs, index, position)
-         ! Remove one dynamic input, its specification, and original index.
-         real(dp), allocatable, intent(inout) :: matrix(:, :)
-         type(tfarima_transfer_spec_t), allocatable, intent(inout) :: specs(:)
-         integer, allocatable, intent(inout) :: index(:)
-         integer, intent(in) :: position
+         !! Remove one dynamic input, its specification, and original index.
+         real(dp), allocatable, intent(inout) :: matrix(:, :) !! Input matrix, updated in place.
+         type(tfarima_transfer_spec_t), allocatable, intent(inout) :: specs(:) !! Specs, updated in place.
+         integer, allocatable, intent(inout) :: index(:) !! Element or observation index, updated in place.
+         integer, intent(in) :: position !! Position.
          integer, allocatable :: retained(:)
          integer :: item
 
@@ -6113,11 +6198,13 @@ contains
 
    pure function tfarima_exact_transfer_forecast(fit, output_history, &
       input_history, future_input, future_regressors, levels) result(out)
-      ! Forecast a fitted transfer model for known future dynamic inputs.
-      type(tfarima_exact_transfer_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: output_history(:), input_history(:, :)
-      real(dp), intent(in) :: future_input(:, :)
-      real(dp), intent(in), optional :: future_regressors(:, :), levels(:)
+      !! Forecast a fitted transfer model for known future dynamic inputs.
+      type(tfarima_exact_transfer_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: output_history(:) !! Output history.
+      real(dp), intent(in) :: input_history(:, :) !! Input history.
+      real(dp), intent(in) :: future_input(:, :) !! Future input.
+      real(dp), intent(in), optional :: future_regressors(:, :) !! Future regressors.
+      real(dp), intent(in), optional :: levels(:) !! Levels.
       type(tfarima_exact_transfer_forecast_t) :: out
       type(tfarima_forecast_t) :: noise_forecast
       real(dp), allocatable :: noise_history(:), complete_input(:), signal(:)
@@ -6195,13 +6282,18 @@ contains
    pure function tfarima_transfer_fit(output, input, delay, denominator_order, &
       numerator_order, noise_ar_polynomial, noise_ma_polynomial, &
       initial_parameters, include_mean, max_iterations, tolerance) result(out)
-      ! Fit a rational transfer function by conditional Gaussian likelihood.
-      real(dp), intent(in) :: output(:), input(:)
-      integer, intent(in) :: delay, denominator_order, numerator_order
-      real(dp), intent(in) :: noise_ar_polynomial(:), noise_ma_polynomial(:)
-      real(dp), intent(in), optional :: initial_parameters(:), tolerance
-      logical, intent(in), optional :: include_mean
-      integer, intent(in), optional :: max_iterations
+      !! Fit a rational transfer function by conditional Gaussian likelihood.
+      real(dp), intent(in) :: output(:) !! Output.
+      real(dp), intent(in) :: input(:) !! Input.
+      integer, intent(in) :: delay !! Delay.
+      integer, intent(in) :: denominator_order !! Denominator order.
+      integer, intent(in) :: numerator_order !! Numerator order.
+      real(dp), intent(in) :: noise_ar_polynomial(:) !! Noise autoregressive polynomial coefficients.
+      real(dp), intent(in) :: noise_ma_polynomial(:) !! Noise moving-average polynomial coefficients.
+      real(dp), intent(in), optional :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(tfarima_transfer_fit_t) :: out
       type(optimization_result_t) :: optimization, warm_start
       real(dp), allocatable :: initial(:), denominator(:), numerator(:), signal(:)
@@ -6281,8 +6373,8 @@ contains
    contains
 
       pure function objective(parameters) result(value)
-         ! Return the profiled conditional Gaussian negative log likelihood.
-         real(dp), intent(in) :: parameters(:)
+         !! Return the profiled conditional Gaussian negative log likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: value, candidate_mean, candidate_variance
          real(dp), allocatable :: candidate_numerator(:), candidate_denominator(:)
          real(dp), allocatable :: candidate_signal(:), candidate_residuals(:)
@@ -6312,15 +6404,18 @@ contains
       numerator_model, denominator_model, noise_ar_polynomial, &
       noise_ma_polynomial, initial_gain, include_mean, max_iterations, &
       tolerance) result(out)
-      ! Fit a transfer function whose lag polynomials have linear restrictions.
-      real(dp), intent(in) :: output(:), input(:), initial_gain
-      integer, intent(in) :: delay
-      type(tfarima_lag_polynomial_t), intent(in) :: numerator_model
-      type(tfarima_lag_polynomial_t), intent(in) :: denominator_model
-      real(dp), intent(in) :: noise_ar_polynomial(:), noise_ma_polynomial(:)
-      logical, intent(in), optional :: include_mean
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Fit a transfer function whose lag polynomials have linear restrictions.
+      real(dp), intent(in) :: output(:) !! Output.
+      real(dp), intent(in) :: input(:) !! Input.
+      real(dp), intent(in) :: initial_gain !! Initial gain.
+      integer, intent(in) :: delay !! Delay.
+      type(tfarima_lag_polynomial_t), intent(in) :: numerator_model !! Numerator model.
+      type(tfarima_lag_polynomial_t), intent(in) :: denominator_model !! Denominator model.
+      real(dp), intent(in) :: noise_ar_polynomial(:) !! Noise autoregressive polynomial coefficients.
+      real(dp), intent(in) :: noise_ma_polynomial(:) !! Noise moving-average polynomial coefficients.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(tfarima_transfer_fit_t) :: out
       type(optimization_result_t) :: optimization, warm_start
       type(tfarima_lag_polynomial_t) :: fitted_numerator, fitted_denominator
@@ -6402,11 +6497,12 @@ contains
 
       pure subroutine decode_restricted(parameters, candidate_gain, &
          candidate_numerator, candidate_denominator, candidate_mean)
-         ! Decode gain, restricted operators, and optional mean.
-         real(dp), intent(in) :: parameters(:)
-         real(dp), intent(out) :: candidate_gain, candidate_mean
-         type(tfarima_lag_polynomial_t), intent(out) :: candidate_numerator
-         type(tfarima_lag_polynomial_t), intent(out) :: candidate_denominator
+         !! Decode gain, restricted operators, and optional mean.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         real(dp), intent(out) :: candidate_gain !! Candidate gain.
+         real(dp), intent(out) :: candidate_mean !! Candidate mean.
+         type(tfarima_lag_polynomial_t), intent(out) :: candidate_numerator !! Candidate numerator.
+         type(tfarima_lag_polynomial_t), intent(out) :: candidate_denominator !! Candidate denominator.
          integer :: first_denominator
 
          candidate_gain = parameters(1)
@@ -6421,8 +6517,8 @@ contains
       end subroutine decode_restricted
 
       pure function objective(parameters) result(value)
-         ! Return the restricted profiled conditional negative log likelihood.
-         real(dp), intent(in) :: parameters(:)
+         !! Return the restricted profiled conditional negative log likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: value, candidate_gain, candidate_mean, candidate_variance
          real(dp), allocatable :: candidate_signal(:), candidate_residuals(:)
          type(tfarima_lag_polynomial_t) :: candidate_numerator
@@ -6452,11 +6548,13 @@ contains
 
    pure function tfarima_outlier_response(outlier_type, observations, &
       ar_polynomial, difference_polynomial, ma_polynomial, decay) result(response)
-      ! Return an outlier's unit response in the ARIMA residual domain.
-      integer, intent(in) :: outlier_type, observations
-      real(dp), intent(in) :: ar_polynomial(:), difference_polynomial(:)
-      real(dp), intent(in) :: ma_polynomial(:)
-      real(dp), intent(in), optional :: decay
+      !! Return an outlier's unit response in the ARIMA residual domain.
+      integer, intent(in) :: outlier_type !! Outlier type.
+      integer, intent(in) :: observations !! Observed time-series values.
+      real(dp), intent(in) :: ar_polynomial(:) !! Autoregressive polynomial coefficients.
+      real(dp), intent(in) :: difference_polynomial(:) !! Difference polynomial coefficients.
+      real(dp), intent(in) :: ma_polynomial(:) !! Moving-average polynomial coefficients.
+      real(dp), intent(in), optional :: decay !! Decay.
       real(dp), allocatable :: response(:), pi_weight(:)
       real(dp) :: selected_decay
       integer :: lag
@@ -6498,14 +6596,19 @@ contains
       difference_polynomial, ma_polynomial, enabled_types, candidate_positions, &
       mean_value, cutoff, retention_cutoff, tc_decay, max_passes, &
       log_transform) result(out)
-      ! Detect and jointly refit tfarima AO, LS, TC, and IO effects.
-      real(dp), intent(in) :: series(:), ar_polynomial(:), difference_polynomial(:)
-      real(dp), intent(in) :: ma_polynomial(:)
-      integer, intent(in) :: enabled_types(:)
-      integer, intent(in), optional :: candidate_positions(:), max_passes
-      real(dp), intent(in), optional :: mean_value, cutoff, retention_cutoff
-      real(dp), intent(in), optional :: tc_decay
-      logical, intent(in), optional :: log_transform
+      !! Detect and jointly refit tfarima AO, LS, TC, and IO effects.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: ar_polynomial(:) !! Autoregressive polynomial coefficients.
+      real(dp), intent(in) :: difference_polynomial(:) !! Difference polynomial coefficients.
+      real(dp), intent(in) :: ma_polynomial(:) !! Moving-average polynomial coefficients.
+      integer, intent(in) :: enabled_types(:) !! Enabled types.
+      integer, intent(in), optional :: candidate_positions(:) !! Candidate positions.
+      integer, intent(in), optional :: max_passes !! Maximum passes.
+      real(dp), intent(in), optional :: mean_value !! Mean value.
+      real(dp), intent(in), optional :: cutoff !! Cutoff.
+      real(dp), intent(in), optional :: retention_cutoff !! Retention cutoff.
+      real(dp), intent(in), optional :: tc_decay !! Tc decay.
+      logical, intent(in), optional :: log_transform !! Flag controlling log transform.
       type(tfarima_outlier_result_t) :: out
       real(dp), allocatable :: stationary(:), residual(:), original_residual(:)
       real(dp), allocatable :: aligned(:), response(:, :), selected_response(:, :)
@@ -6580,7 +6683,7 @@ contains
       decay = 0.0_dp
       selected = 0
       do pass = 1, limit
-         scale = sample_standard_deviation(aligned)
+         scale = standard_deviation(aligned)
          if (scale <= tiny(1.0_dp)) exit
          k = 0
          do item = 1, size(candidates)
@@ -6660,8 +6763,10 @@ contains
 
    pure function tfarima_month_lengths(start_year, start_month, observations) &
       result(lengths)
-      ! Return calendar lengths for a sequence of monthly observations.
-      integer, intent(in) :: start_year, start_month, observations
+      !! Return calendar lengths for a sequence of monthly observations.
+      integer, intent(in) :: start_year !! Start year.
+      integer, intent(in) :: start_month !! Start month.
+      integer, intent(in) :: observations !! Observed time-series values.
       real(dp), allocatable :: lengths(:)
       integer :: time, year, month
 
@@ -6678,8 +6783,10 @@ contains
 
    pure function tfarima_weekday_counts(start_year, start_month, observations) &
       result(counts)
-      ! Count Sunday-through-Saturday occurrences in monthly periods.
-      integer, intent(in) :: start_year, start_month, observations
+      !! Count Sunday-through-Saturday occurrences in monthly periods.
+      integer, intent(in) :: start_year !! Start year.
+      integer, intent(in) :: start_month !! Start month.
+      integer, intent(in) :: observations !! Observed time-series values.
       real(dp), allocatable :: counts(:, :)
       type(date_t) :: current
       integer :: time, year, month, day, weekday
@@ -6702,9 +6809,11 @@ contains
 
    pure function tfarima_leap_year_regressor(start_year, start_month, &
       observations, working_day_coding) result(regressor)
-      ! Create tfarima's February leap-year or working-day contrast.
-      integer, intent(in) :: start_year, start_month, observations
-      logical, intent(in), optional :: working_day_coding
+      !! Create tfarima's February leap-year or working-day contrast.
+      integer, intent(in) :: start_year !! Start year.
+      integer, intent(in) :: start_month !! Start month.
+      integer, intent(in) :: observations !! Observed time-series values.
+      logical, intent(in), optional :: working_day_coding !! Flag controlling working day coding.
       real(dp), allocatable :: regressor(:)
       integer :: time, year, month
       logical :: working_day
@@ -6734,9 +6843,12 @@ contains
 
    pure function tfarima_easter_regressor(start_year, start_month, observations, &
       window_length, easter_monday) result(regressor)
-      ! Aggregate the final pre-Easter days into monthly regressors.
-      integer, intent(in) :: start_year, start_month, observations, window_length
-      logical, intent(in), optional :: easter_monday
+      !! Aggregate the final pre-Easter days into monthly regressors.
+      integer, intent(in) :: start_year !! Start year.
+      integer, intent(in) :: start_month !! Start month.
+      integer, intent(in) :: observations !! Observed time-series values.
+      integer, intent(in) :: window_length !! Window length.
+      logical, intent(in), optional :: easter_monday !! Flag controlling easter monday.
       real(dp), allocatable :: regressor(:)
       type(date_t) :: easter_date, window_start, month_start, month_end
       integer :: time, year, month, first_day, last_day, overlap
@@ -6769,11 +6881,17 @@ contains
    pure function tfarima_calendar_regressors(start_year, start_month, &
       observations, form, reference_weekday, include_month_length, &
       include_leap_year, include_easter, easter_window, easter_monday) result(out)
-      ! Construct tfarima monthly trading-day and holiday regressors.
-      integer, intent(in) :: start_year, start_month, observations, form
-      integer, intent(in), optional :: reference_weekday, easter_window
-      logical, intent(in), optional :: include_month_length, include_leap_year
-      logical, intent(in), optional :: include_easter, easter_monday
+      !! Construct tfarima monthly trading-day and holiday regressors.
+      integer, intent(in) :: start_year !! Start year.
+      integer, intent(in) :: start_month !! Start month.
+      integer, intent(in) :: observations !! Observed time-series values.
+      integer, intent(in) :: form !! Form.
+      integer, intent(in), optional :: reference_weekday !! Reference weekday.
+      integer, intent(in), optional :: easter_window !! Easter window.
+      logical, intent(in), optional :: include_month_length !! Whether to include the month length.
+      logical, intent(in), optional :: include_leap_year !! Whether to include the leap year.
+      logical, intent(in), optional :: include_easter !! Whether to include the easter.
+      logical, intent(in), optional :: easter_monday !! Flag controlling easter monday.
       type(tfarima_calendar_result_t) :: out
       real(dp), allocatable :: counts(:, :), excess(:, :), lengths(:)
       real(dp), allocatable :: leap(:), easter(:)
@@ -6870,9 +6988,12 @@ contains
    end function tfarima_calendar_regressors
 
    pure subroutine monthly_period(start_year, start_month, offset, year, month)
-      ! Map a one-origin monthly offset to Gregorian year and month.
-      integer, intent(in) :: start_year, start_month, offset
-      integer, intent(out) :: year, month
+      !! Map a one-origin monthly offset to Gregorian year and month.
+      integer, intent(in) :: start_year !! Start year.
+      integer, intent(in) :: start_month !! Start month.
+      integer, intent(in) :: offset !! Known additive offset.
+      integer, intent(out) :: year !! Year.
+      integer, intent(out) :: month !! Month.
       integer :: zero_origin
 
       zero_origin = start_month - 1 + offset - 1
@@ -6881,10 +7002,12 @@ contains
    end subroutine monthly_period
 
    pure subroutine outlier_t_ratio(position, response, residual, effect, t_ratio)
-      ! Estimate one shifted outlier response and its conditional t-ratio.
-      integer, intent(in) :: position
-      real(dp), intent(in) :: response(:), residual(:)
-      real(dp), intent(out) :: effect, t_ratio
+      !! Estimate one shifted outlier response and its conditional t-ratio.
+      integer, intent(in) :: position !! Position.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: residual(:) !! Residual.
+      real(dp), intent(out) :: effect !! Effect.
+      real(dp), intent(out) :: t_ratio !! T ratio.
       real(dp) :: sxx, rss
       integer :: length
 
@@ -6904,12 +7027,14 @@ contains
 
    pure subroutine unpack_parameters(parameters, numerator_order, denominator_order, &
       include_mean, numerator, denominator, mean_value)
-      ! Decode unrestricted transfer-function optimizer coordinates.
-      real(dp), intent(in) :: parameters(:)
-      integer, intent(in) :: numerator_order, denominator_order
-      logical, intent(in) :: include_mean
-      real(dp), allocatable, intent(out) :: numerator(:), denominator(:)
-      real(dp), intent(out) :: mean_value
+      !! Decode unrestricted transfer-function optimizer coordinates.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: numerator_order !! Numerator order.
+      integer, intent(in) :: denominator_order !! Denominator order.
+      logical, intent(in) :: include_mean !! Whether to include a mean term.
+      real(dp), allocatable, intent(out) :: numerator(:) !! Numerator polynomial coefficients.
+      real(dp), allocatable, intent(out) :: denominator(:) !! Denominator polynomial coefficients.
+      real(dp), intent(out) :: mean_value !! Mean value.
       integer :: first_denominator
 
       first_denominator = numerator_order + 2
@@ -6924,10 +7049,11 @@ contains
 
    pure function simulate_arima_innovations(model, innovations, series_history, &
       innovation_history) result(series)
-      ! Generate one ARIMA path from supplied scaled innovations and histories.
-      type(tfarima_ucarima_component_t), intent(in) :: model
-      real(dp), intent(in) :: innovations(:), series_history(:)
-      real(dp), intent(in) :: innovation_history(:)
+      !! Generate one ARIMA path from supplied scaled innovations and histories.
+      type(tfarima_ucarima_component_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in) :: innovations(:) !! Model innovations.
+      real(dp), intent(in) :: series_history(:) !! Series history.
+      real(dp), intent(in) :: innovation_history(:) !! Innovation history.
       real(dp), allocatable :: series(:), stationary(:), stationary_history(:)
       real(dp) :: value
       integer :: time, lag, index
@@ -6971,8 +7097,8 @@ contains
    end function simulate_arima_innovations
 
    pure logical function valid_prewhitening_model(model) result(valid)
-      ! Check an ARIMA component before using it as a prewhitening filter.
-      type(tfarima_ucarima_component_t), intent(in) :: model
+      !! Check an ARIMA component before using it as a prewhitening filter.
+      type(tfarima_ucarima_component_t), intent(in) :: model !! Model specification.
 
       valid = model%info == 0 .and. allocated(model%ar_polynomial) .and. &
          allocated(model%difference_polynomial) .and. &
@@ -6989,9 +7115,9 @@ contains
    end function valid_prewhitening_model
 
    pure function prewhiten_series(series, model) result(residuals)
-      ! Difference a series and apply a zero-presample ARMA inverse filter.
-      real(dp), intent(in) :: series(:)
-      type(tfarima_ucarima_component_t), intent(in) :: model
+      !! Difference a series and apply a zero-presample ARMA inverse filter.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(tfarima_ucarima_component_t), intent(in) :: model !! Model specification.
       real(dp), allocatable :: residuals(:), stationary(:)
 
       stationary = tfarima_difference(series, model%difference_polynomial)
@@ -7000,8 +7126,8 @@ contains
    end function prewhiten_series
 
    pure integer function first_significant_delay(diagnostic) result(delay)
-      ! Return the first significant nonnegative prewhitened correlation lag.
-      type(tfarima_prewhitened_ccf_t), intent(in) :: diagnostic
+      !! Return the first significant nonnegative prewhitened correlation lag.
+      type(tfarima_prewhitened_ccf_t), intent(in) :: diagnostic !! Diagnostic.
       integer :: position
 
       delay = -1
@@ -7015,8 +7141,10 @@ contains
 
    pure function conditional_residuals(series, ar_polynomial, ma_polynomial) &
       result(residuals)
-      ! Compute zero-presample conditional ARMA residuals.
-      real(dp), intent(in) :: series(:), ar_polynomial(:), ma_polynomial(:)
+      !! Compute zero-presample conditional ARMA residuals.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: ar_polynomial(:) !! Autoregressive polynomial coefficients.
+      real(dp), intent(in) :: ma_polynomial(:) !! Moving-average polynomial coefficients.
       real(dp), allocatable :: residuals(:)
       real(dp) :: value
       integer :: time, lag
@@ -7036,8 +7164,9 @@ contains
    end function conditional_residuals
 
    pure function trim_polynomial(polynomial, tolerance) result(trimmed)
-      ! Remove negligible trailing high-lag coefficients.
-      real(dp), intent(in) :: polynomial(:), tolerance
+      !! Remove negligible trailing high-lag coefficients.
+      real(dp), intent(in) :: polynomial(:) !! Polynomial.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
       real(dp), allocatable :: trimmed(:)
       integer :: last
 
@@ -7053,8 +7182,10 @@ contains
    end function trim_polynomial
 
    pure function polynomial_subtract(first, second, tolerance) result(difference)
-      ! Subtract coefficient vectors and remove negligible trailing terms.
-      real(dp), intent(in) :: first(:), second(:), tolerance
+      !! Subtract coefficient vectors and remove negligible trailing terms.
+      real(dp), intent(in) :: first(:) !! First operand.
+      real(dp), intent(in) :: second(:) !! Second operand.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
       real(dp), allocatable :: difference(:), work(:)
       integer :: length
 
@@ -7067,16 +7198,17 @@ contains
    end function polynomial_subtract
 
    pure logical function polynomial_is_zero(polynomial, tolerance) result(is_zero)
-      ! Test whether every polynomial coefficient is negligible.
-      real(dp), intent(in) :: polynomial(:), tolerance
+      !! Test whether every polynomial coefficient is negligible.
+      real(dp), intent(in) :: polynomial(:) !! Polynomial.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
 
       is_zero = size(polynomial) < 1
       if (size(polynomial) > 0) is_zero = all(abs(polynomial) <= tolerance)
    end function polynomial_is_zero
 
    pure function polynomial_autocovariance(polynomial) result(covariance)
-      ! Form nonnegative-lag coefficients of p(B)*p(F).
-      real(dp), intent(in) :: polynomial(:)
+      !! Form nonnegative-lag coefficients of p(B)*p(F).
+      real(dp), intent(in) :: polynomial(:) !! Polynomial.
       real(dp), allocatable :: covariance(:)
       integer :: lag
 
@@ -7088,8 +7220,8 @@ contains
    end function polynomial_autocovariance
 
    pure function wold_from_palindromic(palindromic) result(wold)
-      ! Express a symmetric Laurent polynomial in x = B + B**(-1).
-      real(dp), intent(in) :: palindromic(:)
+      !! Express a symmetric Laurent polynomial in x = B + B**(-1).
+      real(dp), intent(in) :: palindromic(:) !! Palindromic.
       real(dp), allocatable :: wold(:), p0(:), p1(:), p2(:)
       integer :: degree, n
 
@@ -7116,8 +7248,8 @@ contains
    end function wold_from_palindromic
 
    pure function palindromic_from_wold(wold) result(palindromic)
-      ! Convert a polynomial in B + B**(-1) to nonnegative Laurent lags.
-      real(dp), intent(in) :: wold(:)
+      !! Convert a polynomial in B + B**(-1) to nonnegative Laurent lags.
+      real(dp), intent(in) :: wold(:) !! Wold.
       real(dp), allocatable :: palindromic(:)
       integer :: degree, selection, index, n
 
@@ -7138,8 +7270,9 @@ contains
    end function palindromic_from_wold
 
    pure real(dp) function polynomial_max_difference(first, second) result(error)
-      ! Return the largest coefficient difference after zero padding.
-      real(dp), intent(in) :: first(:), second(:)
+      !! Return the largest coefficient difference after zero padding.
+      real(dp), intent(in) :: first(:) !! First operand.
+      real(dp), intent(in) :: second(:) !! Second operand.
       real(dp), allocatable :: left(:), right(:)
       integer :: length
 
@@ -7154,8 +7287,10 @@ contains
 
    pure real(dp) function rational_spectral_minimum(numerator, denominator, &
       tolerance) result(minimum)
-      ! Approximate a rational spectrum minimum over x in [-2, 2].
-      real(dp), intent(in) :: numerator(:), denominator(:), tolerance
+      !! Approximate a rational spectrum minimum over x in [-2, 2].
+      real(dp), intent(in) :: numerator(:) !! Numerator polynomial coefficients.
+      real(dp), intent(in) :: denominator(:) !! Denominator polynomial coefficients.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
       real(dp) :: den, value, x
       integer :: point
 
@@ -7170,8 +7305,9 @@ contains
    end function rational_spectral_minimum
 
    pure real(dp) function polynomial_value(polynomial, x) result(value)
-      ! Evaluate an increasing-power real polynomial by Horner's rule.
-      real(dp), intent(in) :: polynomial(:), x
+      !! Evaluate an increasing-power real polynomial by Horner's rule.
+      real(dp), intent(in) :: polynomial(:) !! Polynomial.
+      real(dp), intent(in) :: x !! Input data or predictor values.
       integer :: coefficient
 
       value = 0.0_dp
@@ -7181,8 +7317,9 @@ contains
    end function polynomial_value
 
    pure real(dp) function binomial_coefficient(n, k) result(value)
-      ! Return an integer binomial coefficient in double precision.
-      integer, intent(in) :: n, k
+      !! Return an integer binomial coefficient in double precision.
+      integer, intent(in) :: n !! Number of observations or elements.
+      integer, intent(in) :: k !! K.
       integer :: i, selected
 
       selected = min(k, n - k)
@@ -7194,10 +7331,13 @@ contains
 
    pure subroutine stationary_state_covariance(transition, loading, variance, &
       tolerance, covariance, converged)
-      ! Solve a stable discrete Lyapunov equation by covariance iteration.
-      real(dp), intent(in) :: transition(:, :), loading(:), variance, tolerance
-      real(dp), allocatable, intent(out) :: covariance(:, :)
-      logical, intent(out) :: converged
+      !! Solve a stable discrete Lyapunov equation by covariance iteration.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: loading(:) !! Loading.
+      real(dp), intent(in) :: variance !! Variance value or matrix.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      real(dp), allocatable, intent(out) :: covariance(:, :) !! Covariance matrix.
+      logical, intent(out) :: converged !! Flag controlling converged.
       real(dp), allocatable :: next_covariance(:, :), noise(:, :)
       real(dp) :: scale
       integer :: iteration, states
@@ -7222,23 +7362,9 @@ contains
       end do
    end subroutine stationary_state_covariance
 
-   pure real(dp) function sample_standard_deviation(values) result(standard_deviation)
-      ! Return the sample standard deviation of a real vector.
-      real(dp), intent(in) :: values(:)
-      real(dp) :: mean_value
-
-      if (size(values) < 2) then
-         standard_deviation = 0.0_dp
-         return
-      end if
-      mean_value = sum(values)/real(size(values), dp)
-      standard_deviation = sqrt(sum((values - mean_value)**2)/ &
-         real(size(values) - 1, dp))
-   end function sample_standard_deviation
-
    pure logical function has_duplicate_integer(values) result(duplicate)
-      ! Report whether an integer vector contains repeated values.
-      integer, intent(in) :: values(:)
+      !! Report whether an integer vector contains repeated values.
+      integer, intent(in) :: values(:) !! Input values.
       integer :: i, j
 
       duplicate = .false.
@@ -7253,8 +7379,9 @@ contains
    end function has_duplicate_integer
 
    pure elemental real(dp) function falling_factorial(value, order) result(product)
-      ! Return value times its requested descending predecessors.
-      integer, intent(in) :: value, order
+      !! Return value times its requested descending predecessors.
+      integer, intent(in) :: value !! Input value.
+      integer, intent(in) :: order !! Model or polynomial order.
       integer :: i
 
       product = 1.0_dp

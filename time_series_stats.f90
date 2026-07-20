@@ -1,9 +1,10 @@
 ! SPDX-License-Identifier: MIT
-! SPDX-FileComment: Original statistical infrastructure for this Fortran library.
-! Shared regression and statistical helpers.
+! SPDX-FileComment: Original time-series statistical infrastructure for this Fortran library.
+! Shared autocorrelation, autoregression, and harmonic-regression helpers.
 module time_series_stats_mod
    use kind_mod, only: dp
-   use time_series_linalg_mod, only: invert_matrix
+   use linalg_mod, only: invert_matrix
+   use stats_mod, only: ols_fit
    implicit none
    private
 
@@ -31,73 +32,105 @@ module time_series_stats_mod
       integer :: info = 0
    end type
 
-   public :: ols_fit, regression_rss, yule_walker_fit, burg_fit, harmonic_regression
-   public :: normal_quantile
+   public :: yule_walker_fit, burg_fit, harmonic_regression
+   public :: acf_values, pacf_values, ccf_values
 
 contains
 
-   pure real(dp) function normal_quantile(probability) result(value)
-      ! Invert the standard normal distribution by monotone bisection.
-      real(dp), intent(in) :: probability
-      real(dp) :: lower, upper, middle
-      integer :: iteration
+   pure function acf_values(y, lag_max, covariance_values) result(a)
+      !! Compute biased autocorrelations or autocovariances through lag_max.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: lag_max !! Lag max.
+      logical, intent(in), optional :: covariance_values !! Flag controlling covariance values.
+      real(dp), allocatable :: a(:)
+      real(dp) :: mu, c0
+      integer :: k, n
+      logical :: return_covariance
 
-      lower = -9.0_dp
-      upper = 9.0_dp
-      do iteration = 1, 100
-         middle = 0.5_dp*(lower + upper)
-         if (0.5_dp*erfc(-middle/sqrt(2.0_dp)) < probability) then
-            lower = middle
-         else
-            upper = middle
-         end if
-      end do
-      value = 0.5_dp*(lower + upper)
-   end function normal_quantile
-
-   pure subroutine ols_fit(x, y, beta, standard_errors, residuals, rss, info)
-      ! Fit ordinary least squares using the shared dense solver.
-      real(dp), intent(in) :: x(:, :), y(:)
-      real(dp), allocatable, intent(out) :: beta(:), standard_errors(:), residuals(:)
-      real(dp), intent(out) :: rss
-      integer, intent(out) :: info
-      real(dp), allocatable :: xtx(:, :), inverse(:, :)
-      real(dp) :: sigma2
-      integer :: i, p
-      p = size(x, 2)
-      if (p == 0) then
-         allocate(beta(0), standard_errors(0), residuals(size(y)))
-         residuals = y
-         rss = sum(y*y)
-         info = 0
+      n = size(y)
+      allocate(a(lag_max + 1))
+      if (n == 0 .or. lag_max < 0 .or. lag_max >= n) then
+         a = 0.0_dp
          return
       end if
-      xtx = matmul(transpose(x), x)
-      call invert_matrix(xtx, inverse, info)
-      if (info /= 0) return
-      allocate(beta(p), standard_errors(p), residuals(size(y)))
-      beta = matmul(inverse, matmul(transpose(x), y))
-      residuals = y - matmul(x, beta)
-      rss = sum(residuals*residuals)
-      sigma2 = rss/real(size(y) - p, dp)
-      do i = 1, p
-         standard_errors(i) = sqrt(max(0.0_dp, sigma2*inverse(i, i)))
+      mu = sum(y)/real(n, dp)
+      do k = 0, lag_max
+         a(k + 1) = sum((y(1:n - k) - mu)*(y(1 + k:n) - mu))/real(n, dp)
       end do
-   end subroutine ols_fit
+      return_covariance = .false.
+      if (present(covariance_values)) return_covariance = covariance_values
+      if (.not. return_covariance) then
+         c0 = a(1)
+         if (c0 > tiny(1.0_dp)) then
+            a = a/c0
+         else
+            a = 0.0_dp
+            a(1) = 1.0_dp
+         end if
+      end if
+   end function acf_values
 
-   pure subroutine regression_rss(x, y, rss, info)
-      ! Return residual sum of squares for a possibly empty regression.
-      real(dp), intent(in) :: x(:, :), y(:)
-      real(dp), intent(out) :: rss
-      integer, intent(out) :: info
-      real(dp), allocatable :: beta(:), se(:), residuals(:)
-      call ols_fit(x, y, beta, se, residuals, rss, info)
-   end subroutine regression_rss
+   pure function pacf_values(y, lag_max) result(pacf)
+      !! Compute partial autocorrelations using Durbin-Levinson recursion.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: lag_max !! Lag max.
+      real(dp), allocatable :: pacf(:)
+      real(dp), allocatable :: rho(:), previous(:), current(:)
+      real(dp) :: reflection, denominator
+      integer :: k, j
+
+      allocate(pacf(max(0, lag_max)))
+      if (lag_max <= 0) return
+      rho = acf_values(y, lag_max)
+      allocate(previous(lag_max), current(lag_max))
+      previous = 0.0_dp
+      previous(1) = rho(2)
+      pacf(1) = previous(1)
+      do k = 2, lag_max
+         denominator = 1.0_dp - sum([(previous(j)*rho(j + 1), j=1, k - 1)])
+         if (abs(denominator) <= tiny(1.0_dp)) then
+            pacf(k:) = 0.0_dp
+            return
+         end if
+         reflection = (rho(k + 1) - &
+            sum([(previous(j)*rho(k - j + 1), j=1, k - 1)]))/denominator
+         current = 0.0_dp
+         do j = 1, k - 1
+            current(j) = previous(j) - reflection*previous(k - j)
+         end do
+         current(k) = reflection
+         pacf(k) = reflection
+         previous = current
+      end do
+   end function pacf_values
+
+   pure function ccf_values(x, y, lag_max) result(correlation)
+      !! Compute normalized cross-correlations at positive and negative lags.
+      real(dp), intent(in) :: x(:) !! Input data or predictor values.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: lag_max !! Lag max.
+      real(dp), allocatable :: correlation(:)
+      real(dp) :: x_mean, y_mean, denominator
+      integer :: k, n
+
+      n = min(size(x), size(y))
+      allocate(correlation(-lag_max:lag_max))
+      correlation = 0.0_dp
+      if (n == 0 .or. lag_max < 0 .or. lag_max >= n) return
+      x_mean = sum(x(:n))/real(n, dp)
+      y_mean = sum(y(:n))/real(n, dp)
+      denominator = sqrt(sum((x(:n) - x_mean)**2)*sum((y(:n) - y_mean)**2))
+      if (denominator <= tiny(1.0_dp)) return
+      do k = 0, lag_max
+         correlation(k) = sum((x(1:n - k) - x_mean)*(y(1 + k:n) - y_mean))/denominator
+         correlation(-k) = sum((x(1 + k:n) - x_mean)*(y(1:n - k) - y_mean))/denominator
+      end do
+   end function ccf_values
 
    pure function yule_walker_fit(series, order) result(out)
-      ! Fit a zero-mean AR model by the Yule-Walker equations.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: order
+      !! Fit a zero-mean AR model by the Yule-Walker equations.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
       type(yule_walker_result_t) :: out
       real(dp), allocatable :: covariance(:), toeplitz(:, :), inverse(:, :), right(:)
       real(dp) :: mean_value
@@ -144,9 +177,9 @@ contains
    end function yule_walker_fit
 
    pure function burg_fit(series, order) result(out)
-      ! Fit a stable AR model by Burg forward-backward error recursion.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: order
+      !! Fit a stable AR model by Burg forward-backward error recursion.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
       type(burg_result_t) :: out
       real(dp), allocatable :: centered(:), forward(:), backward(:), next_forward(:), next_backward(:)
       real(dp), allocatable :: previous(:), sample_covariance(:), toeplitz(:, :), inverse(:, :)
@@ -213,9 +246,11 @@ contains
    end function burg_fit
 
    pure function harmonic_regression(series, periods, horizon, polynomial_order) result(out)
-      ! Fit polynomial trend and Fourier harmonics and extrapolate their signal.
-      real(dp), intent(in) :: series(:), periods(:)
-      integer, intent(in), optional :: horizon, polynomial_order
+      !! Fit polynomial trend and Fourier harmonics and extrapolate their signal.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: periods(:) !! Periods.
+      integer, intent(in), optional :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: polynomial_order !! Polynomial order.
       type(harmonic_regression_result_t) :: out
       real(dp), allocatable :: design(:, :), extended_design(:, :), residuals(:)
       real(dp), allocatable :: beta(:), standard_errors(:)
@@ -261,4 +296,5 @@ contains
       out%periods = periods
       out%polynomial_order = degree
    end function harmonic_regression
+
 end module time_series_stats_mod

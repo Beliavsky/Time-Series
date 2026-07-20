@@ -4,8 +4,8 @@
 module fracdist_mod
    use kind_mod, only: dp
    use fracdist_tables_mod, only: fracdist_table_values
-   use time_series_linalg_mod, only: invert_matrix
-   use itsmr_mod, only: regularized_gamma_q
+   use linalg_mod, only: invert_matrix
+   use special_functions_mod, only: regularized_gamma_q
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite, ieee_quiet_nan, &
       ieee_value
    implicit none
@@ -38,8 +38,9 @@ module fracdist_mod
 contains
 
    pure function fracdist_get_table(iq, iscon) result(out)
-      ! Return the embedded simulated table for one rank and constant choice.
-      integer, intent(in) :: iq, iscon
+      !! Return the embedded simulated table for one rank and constant choice.
+      integer, intent(in) :: iq !! Iq.
+      integer, intent(in) :: iscon !! Iscon.
       type(fracdist_table_t) :: out
 
       allocate(out%b(31), out%probability(221))
@@ -49,8 +50,10 @@ contains
    end function fracdist_get_table
 
    pure function fracdist_blocal(b, estimated_quantile, b_values) result(value)
-      ! Interpolate one simulated quantile locally in the fractional order.
-      real(dp), intent(in) :: b, estimated_quantile(:), b_values(:)
+      !! Interpolate one simulated quantile locally in the fractional order.
+      real(dp), intent(in) :: b !! B.
+      real(dp), intent(in) :: estimated_quantile(:) !! Estimated quantile.
+      real(dp), intent(in) :: b_values(:) !! B values.
       real(dp) :: value
       real(dp), allocatable :: design(:, :), response(:), coefficient(:)
       real(dp) :: weight
@@ -80,11 +83,13 @@ contains
 
    pure function fracdist_fpval(iq, statistic, probabilities, quantiles, &
       chi_square_quantiles, points) result(p_value)
-      ! Interpolate an upper-tail probability from one local response surface.
-      integer, intent(in) :: iq
-      real(dp), intent(in) :: statistic, probabilities(:), quantiles(:)
-      real(dp), intent(in) :: chi_square_quantiles(:)
-      integer, intent(in), optional :: points
+      !! Interpolate an upper-tail probability from one local response surface.
+      integer, intent(in) :: iq !! Iq.
+      real(dp), intent(in) :: statistic !! Statistic.
+      real(dp), intent(in) :: probabilities(:) !! Probability values.
+      real(dp), intent(in) :: quantiles(:) !! Quantiles.
+      real(dp), intent(in) :: chi_square_quantiles(:) !! Chi square quantiles.
+      integer, intent(in), optional :: points !! Points.
       real(dp) :: p_value
       real(dp), allocatable :: design(:, :), response(:), coefficient(:)
       real(dp) :: transformed
@@ -134,11 +139,13 @@ contains
 
    pure function fracdist_fpcrit(iq, significance, probabilities, quantiles, &
       chi_square_quantiles, points) result(critical_value)
-      ! Interpolate a critical value for one upper-tail significance level.
-      integer, intent(in) :: iq
-      real(dp), intent(in) :: significance, probabilities(:), quantiles(:)
-      real(dp), intent(in) :: chi_square_quantiles(:)
-      integer, intent(in), optional :: points
+      !! Interpolate a critical value for one upper-tail significance level.
+      integer, intent(in) :: iq !! Iq.
+      real(dp), intent(in) :: significance !! Significance.
+      real(dp), intent(in) :: probabilities(:) !! Probability values.
+      real(dp), intent(in) :: quantiles(:) !! Quantiles.
+      real(dp), intent(in) :: chi_square_quantiles(:) !! Chi square quantiles.
+      integer, intent(in), optional :: points !! Points.
       real(dp) :: critical_value
       real(dp), allocatable :: design(:, :), response(:), coefficient(:)
       real(dp) :: target_probability, target_quantile
@@ -183,9 +190,11 @@ contains
    end function fracdist_fpcrit
 
    pure function fracdist_p_value(iq, iscon, b, statistic) result(out)
-      ! Calculate a fracdist or low-order chi-square upper-tail probability.
-      integer, intent(in) :: iq, iscon
-      real(dp), intent(in) :: b, statistic
+      !! Calculate a fracdist or low-order chi-square upper-tail probability.
+      integer, intent(in) :: iq !! Iq.
+      integer, intent(in) :: iscon !! Iscon.
+      real(dp), intent(in) :: b !! B.
+      real(dp), intent(in) :: statistic !! Statistic.
       type(fracdist_probability_t) :: out
       type(fracdist_table_t) :: table
       real(dp), allocatable :: local_quantile(:)
@@ -222,9 +231,11 @@ contains
    end function fracdist_p_value
 
    pure function fracdist_critical_values(iq, iscon, b, significance) result(out)
-      ! Calculate fracdist or low-order chi-square critical values.
-      integer, intent(in) :: iq, iscon
-      real(dp), intent(in) :: b, significance(:)
+      !! Calculate fracdist or low-order chi-square critical values.
+      integer, intent(in) :: iq !! Iq.
+      integer, intent(in) :: iscon !! Iscon.
+      real(dp), intent(in) :: b !! B.
+      real(dp), intent(in) :: significance(:) !! Significance.
       type(fracdist_critical_values_t) :: out
       type(fracdist_table_t) :: table
       real(dp), allocatable :: local_quantile(:)
@@ -268,9 +279,9 @@ contains
    end function fracdist_critical_values
 
    pure function fracdist_chi_square_quantile(probability, degrees) result(value)
-      ! Invert a chi-square distribution using the shared incomplete gamma.
-      real(dp), intent(in) :: probability
-      integer, intent(in) :: degrees
+      !! Invert a chi-square distribution using the shared incomplete gamma.
+      real(dp), intent(in) :: probability !! Probability value.
+      integer, intent(in) :: degrees !! Degrees.
       real(dp) :: value
       real(dp) :: lower, upper, target_survival
       integer :: iteration
@@ -306,10 +317,11 @@ contains
    end function fracdist_chi_square_quantile
 
    pure subroutine quadratic_regression(design, response, coefficient, info)
-      ! Fit a three-term response surface by ordinary least squares.
-      real(dp), intent(in) :: design(:, :), response(:)
-      real(dp), allocatable, intent(out) :: coefficient(:)
-      integer, intent(out) :: info
+      !! Fit a three-term response surface by ordinary least squares.
+      real(dp), intent(in) :: design(:, :) !! Design.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), allocatable, intent(out) :: coefficient(:) !! Coefficient.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: cross(:, :), inverse(:, :)
 
       info = 0
@@ -326,8 +338,8 @@ contains
    end subroutine quadratic_regression
 
    pure elemental function round_four(value) result(rounded)
-      ! Round a finite value to four decimal places as in fracdist.
-      real(dp), intent(in) :: value
+      !! Round a finite value to four decimal places as in fracdist.
+      real(dp), intent(in) :: value !! Input value.
       real(dp) :: rounded
 
       rounded = anint(1.0e4_dp*value)/1.0e4_dp

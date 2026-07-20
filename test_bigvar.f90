@@ -5,7 +5,7 @@ program test_bigvar
    use bigvar_mod
    use bigtime_mod, only: bigtime_forecast_t, bigtime_stability_t
    use bigtime_mod, only: bigtime_soft_threshold
-   use time_series_random_mod, only: set_random_seed
+   use random_mod, only: set_random_seed
    implicit none
    type(bigvar_fit_t) :: lag_fit, own_other_fit, sparse_lag_fit
    type(bigvar_fit_t) :: sparse_own_other_fit, zero_fit
@@ -1542,9 +1542,9 @@ program test_bigvar
 contains
 
    subroutine check(condition, message)
-      ! Stop the test program when a condition is false.
-      logical, intent(in) :: condition
-      character(len=*), intent(in) :: message
+      !! Stop the test program when a condition is false.
+      logical, intent(in) :: condition !! Flag controlling condition.
+      character(len=*), intent(in) :: message !! Message.
 
       if (.not. condition) then
          print '(a)', 'FAILED: '//trim(message)

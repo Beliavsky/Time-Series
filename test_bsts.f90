@@ -3,7 +3,7 @@
 program test_bsts
    use kind_mod, only: dp
    use bsts_mod
-   use time_series_calendar_mod, only: date_t
+   use calendar_mod, only: date_t
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite, ieee_value, &
       ieee_quiet_nan
    implicit none
@@ -1810,14 +1810,14 @@ program test_bsts
 contains
 
    pure function identity2() result(matrix)
-      ! Return a two-dimensional identity matrix for factor tests.
+      !! Return a two-dimensional identity matrix for factor tests.
       real(dp) :: matrix(2, 2)
 
       matrix = reshape([1.0_dp, 0.0_dp, 0.0_dp, 1.0_dp], [2, 2])
    end function identity2
 
    pure function identity3() result(matrix)
-      ! Return a three-dimensional identity matrix for prior tests.
+      !! Return a three-dimensional identity matrix for prior tests.
       real(dp) :: matrix(3, 3)
 
       matrix = reshape([1.0_dp, 0.0_dp, 0.0_dp, &
@@ -1825,9 +1825,9 @@ contains
    end function identity3
 
    subroutine check(condition, label)
-      ! Stop the test when an assertion fails.
-      logical, intent(in) :: condition
-      character(*), intent(in) :: label
+      !! Stop the test when an assertion fails.
+      logical, intent(in) :: condition !! Flag controlling condition.
+      character(*), intent(in) :: label !! Label.
 
       if (.not. condition) then
          write (*, '(a)') 'FAILED: '//label

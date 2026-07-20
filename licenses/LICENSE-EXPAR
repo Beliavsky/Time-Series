@@ -1,0 +1,9 @@
+EXPAR Fortran translation license notice
+
+The algorithms in expar.f90 are translated from the EXPAR R package, version
+0.1.0, by Saikath Das, Bishal Gurung, Achal Lama, and KN Singh.
+
+The upstream DESCRIPTION licenses EXPAR under the GNU General Public License,
+version 3. The translated source is distributed under the same terms using
+SPDX identifier GPL-3.0-only. The complete GNU GPL version 3 text is included
+in licenses/LICENSE-ARIMA2.

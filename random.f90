@@ -1,9 +1,9 @@
 ! SPDX-License-Identifier: MIT
 ! SPDX-FileComment: Original random-number infrastructure for this Fortran library.
 ! Shared pseudo-random generation and Gaussian transformation utilities.
-module time_series_random_mod
+module random_mod
    use kind_mod, only: dp
-   use time_series_linalg_mod, only: symmetric_eigen, symmetrize
+   use linalg_mod, only: symmetric_eigen, symmetrize
    implicit none
    private
 
@@ -17,8 +17,8 @@ module time_series_random_mod
 contains
 
    subroutine set_random_seed(seed)
-      ! Expand one integer into the compiler's intrinsic random seed vector.
-      integer, intent(in) :: seed
+      !! Expand one integer into the compiler's intrinsic random seed vector.
+      integer, intent(in) :: seed !! Random-number seed.
       integer, allocatable :: values(:)
       integer :: i, n
 
@@ -31,12 +31,12 @@ contains
    end subroutine set_random_seed
 
    real(dp) function random_uniform() result(value)
-      ! Return one intrinsic uniform variate on the half-open unit interval.
+      !! Return one intrinsic uniform variate on the half-open unit interval.
       call random_number(value)
    end function random_uniform
 
    real(dp) function random_standard_normal() result(value)
-      ! Return one standard-normal variate using a Box-Muller transform.
+      !! Return one standard-normal variate using a Box-Muller transform.
       real(dp) :: u1, u2
 
       call random_number(u1)
@@ -46,9 +46,9 @@ contains
    end function random_standard_normal
 
    recursive real(dp) function random_gamma(shape, scale) result(value)
-      ! Return a gamma variate using the Marsaglia-Tsang method.
-      real(dp), intent(in) :: shape
-      real(dp), intent(in), optional :: scale
+      !! Return a gamma variate using the Marsaglia-Tsang method.
+      real(dp), intent(in) :: shape !! Shape.
+      real(dp), intent(in), optional :: scale !! Scale.
       real(dp) :: factor, d, c, normal, uniform, candidate
 
       factor = 1.0_dp
@@ -76,8 +76,8 @@ contains
    end function random_gamma
 
    real(dp) function random_standard_student(degrees) result(value)
-      ! Return a Student-t variate standardized to unit variance.
-      real(dp), intent(in) :: degrees
+      !! Return a Student-t variate standardized to unit variance.
+      real(dp), intent(in) :: degrees !! Degrees.
       real(dp) :: chi_square
 
       if (degrees <= 2.0_dp) then
@@ -89,8 +89,9 @@ contains
    end function random_standard_student
 
    real(dp) function random_standard_johnson_su(skew, shape) result(value)
-      ! Return the standardized Johnson SU variate used by tsissm.
-      real(dp), intent(in) :: skew, shape
+      !! Return the standardized Johnson SU variate used by tsissm.
+      real(dp), intent(in) :: skew !! Skew.
+      real(dp), intent(in) :: shape !! Shape.
       real(dp) :: c, omega, reciprocal_shape, w
 
       if (shape <= 0.0_dp) then
@@ -106,8 +107,8 @@ contains
    end function random_standard_johnson_su
 
    subroutine random_standard_normal_matrix(draws)
-      ! Fill a matrix with independent Box-Muller standard-normal variates.
-      real(dp), intent(out) :: draws(:, :)
+      !! Fill a matrix with independent Box-Muller standard-normal variates.
+      real(dp), intent(out) :: draws(:, :) !! Draws.
       real(dp) :: u1, u2, radius, angle
       integer :: linear_index, total, row, column
 
@@ -133,10 +134,12 @@ contains
    end subroutine random_standard_normal_matrix
 
    pure subroutine multivariate_normal_from_standard(mean, covariance, standard, draw, info)
-      ! Transform independent standard normals into one multivariate Gaussian draw.
-      real(dp), intent(in) :: mean(:), covariance(:, :), standard(:)
-      real(dp), intent(out) :: draw(:)
-      integer, intent(out) :: info
+      !! Transform independent standard normals into one multivariate Gaussian draw.
+      real(dp), intent(in) :: mean(:) !! Mean value or vector.
+      real(dp), intent(in) :: covariance(:, :) !! Covariance matrix.
+      real(dp), intent(in) :: standard(:) !! Standard.
+      real(dp), intent(out) :: draw(:) !! Draw.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: eigenvalues(:), eigenvectors(:, :)
       real(dp) :: tolerance
 
@@ -156,10 +159,11 @@ contains
    end subroutine multivariate_normal_from_standard
 
    subroutine random_multivariate_normal(mean, covariance, draw, info)
-      ! Draw one multivariate Gaussian variate using the shared intrinsic stream.
-      real(dp), intent(in) :: mean(:), covariance(:, :)
-      real(dp), intent(out) :: draw(:)
-      integer, intent(out) :: info
+      !! Draw one multivariate Gaussian variate using the shared intrinsic stream.
+      real(dp), intent(in) :: mean(:) !! Mean value or vector.
+      real(dp), intent(in) :: covariance(:, :) !! Covariance matrix.
+      real(dp), intent(out) :: draw(:) !! Draw.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: standard(:, :)
 
       allocate(standard(size(mean), 1))
@@ -168,10 +172,11 @@ contains
    end subroutine random_multivariate_normal
 
    subroutine random_multivariate_normal_matrix(mean, covariance, draws, info)
-      ! Fill rows with multivariate Gaussian draws using one factorization.
-      real(dp), intent(in) :: mean(:), covariance(:, :)
-      real(dp), intent(out) :: draws(:, :)
-      integer, intent(out) :: info
+      !! Fill rows with multivariate Gaussian draws using one factorization.
+      real(dp), intent(in) :: mean(:) !! Mean value or vector.
+      real(dp), intent(in) :: covariance(:, :) !! Covariance matrix.
+      real(dp), intent(out) :: draws(:, :) !! Draws.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: eigenvalues(:), eigenvectors(:, :)
       real(dp), allocatable :: factor(:, :), standard(:, :)
       real(dp) :: tolerance
@@ -199,4 +204,4 @@ contains
          spread(mean, 1, size(draws, 1))
       info = 0
    end subroutine random_multivariate_normal_matrix
-end module time_series_random_mod
+end module random_mod

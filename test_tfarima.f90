@@ -1113,9 +1113,9 @@ program test_tfarima
 contains
 
    subroutine check(condition, label)
-      ! Stop the test when an assertion fails.
-      logical, intent(in) :: condition
-      character(*), intent(in) :: label
+      !! Stop the test when an assertion fails.
+      logical, intent(in) :: condition !! Flag controlling condition.
+      character(*), intent(in) :: label !! Label.
 
       if (.not. condition) then
          write (*, '(a)') 'FAILED: '//label
@@ -1124,9 +1124,11 @@ contains
    end subroutine check
 
    subroutine check_close(actual, expected, tolerance, label)
-      ! Compare two real vectors within an absolute tolerance.
-      real(dp), intent(in) :: actual(:), expected(:), tolerance
-      character(*), intent(in) :: label
+      !! Compare two real vectors within an absolute tolerance.
+      real(dp), intent(in) :: actual(:) !! Observed values used for evaluation.
+      real(dp), intent(in) :: expected(:) !! Expected.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      character(*), intent(in) :: label !! Label.
 
       call check(size(actual) == size(expected), label//' size')
       if (size(actual) == size(expected)) then

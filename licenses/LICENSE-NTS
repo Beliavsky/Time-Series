@@ -1,0 +1,6 @@
+The algorithms in nts.f90 are translated from version 1.1.3 of the R package
+NTS, authored by Ruey Tsay, Rong Chen, and Xialu Liu.
+
+The upstream package declares its license as GPL (>= 2). The translation is
+therefore distributed under GPL-2.0-or-later. The GNU General Public License
+text is available at https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.

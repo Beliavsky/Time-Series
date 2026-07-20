@@ -1,0 +1,17 @@
+GMDH: Short-Term Forecasting via GMDH-Type Neural Network Algorithms
+Copyright (C) 2016 Osman Dag and Ceylan Yozgatligil
+
+The translated GMDH algorithms are distributed under the terms of the GNU
+General Public License as published by the Free Software Foundation, version 2
+or, at your option, any later version.
+
+This program is free software: you can redistribute it and/or modify it under
+those terms. This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY, without even the implied warranty of MERCHANTABILITY
+or FITNESS FOR A PARTICULAR PURPOSE.
+
+The original package metadata and copyright notice are retained from GMDH at
+https://cran.r-project.org/package=GMDH.
+
+A copy of GPL version 2 is available at
+https://www.gnu.org/licenses/old-licenses/gpl-2.0.html.

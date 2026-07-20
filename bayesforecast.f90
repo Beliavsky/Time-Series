@@ -3,7 +3,9 @@
 ! Native posterior kernels translated from the GPL-2 bayesforecast package.
 module bayesforecast_mod
    use kind_mod, only: dp
-   use time_series_random_mod, only: random_uniform, random_standard_normal, random_gamma
+   use stats_mod, only: sort
+   use special_functions_mod, only: normal_log_density
+   use random_mod, only: random_uniform, random_standard_normal, random_gamma
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
    implicit none
    private
@@ -82,9 +84,9 @@ module bayesforecast_mod
 
    abstract interface
       pure function bf_log_posterior_interface(parameters) result(value)
-         ! Evaluate a log posterior at a parameter vector.
+         !! Evaluate a log posterior at a parameter vector.
          import dp
-         real(dp), intent(in) :: parameters(:)
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: value
       end function bf_log_posterior_interface
    end interface
@@ -101,9 +103,9 @@ module bayesforecast_mod
 contains
 
    pure function bf_log_prior(value, specification) result(log_density)
-      ! Evaluate one bayesforecast prior encoded as location, scale, df, and code.
-      real(dp), intent(in) :: value
-      real(dp), intent(in) :: specification(4)
+      !! Evaluate one bayesforecast prior encoded as location, scale, df, and code.
+      real(dp), intent(in) :: value !! Input value.
+      real(dp), intent(in) :: specification(4) !! Specification.
       real(dp) :: log_density
       real(dp) :: location, scale, degrees, pi
       integer :: code
@@ -158,11 +160,17 @@ contains
 
    pure function bf_sarima_filter(series, sigma, intercept, ar, ma, seasonal_ar, &
       seasonal_ma, period, regressors, regression) result(out)
-      ! Evaluate the package's additive seasonal ARIMA/ARIMAX recursion.
-      real(dp), intent(in) :: series(:), sigma, intercept, ar(:), ma(:)
-      real(dp), intent(in) :: seasonal_ar(:), seasonal_ma(:)
-      integer, intent(in) :: period
-      real(dp), intent(in), optional :: regressors(:, :), regression(:)
+      !! Evaluate the package's additive seasonal ARIMA/ARIMAX recursion.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: sigma !! Scale parameter or standard deviation.
+      real(dp), intent(in) :: intercept !! Model intercept.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: seasonal_ar(:) !! Seasonal autoregressive.
+      real(dp), intent(in) :: seasonal_ma(:) !! Seasonal moving-average.
+      integer, intent(in) :: period !! Seasonal period.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: regression(:) !! Regression.
       type(bf_filter_t) :: out
       integer :: n, t, lag
 
@@ -207,11 +215,19 @@ contains
    pure function bf_ets_filter(series, sigma, level_smoothing, initial_level, &
       trend_smoothing, initial_trend, damping, seasonal_smoothing, initial_seasonal, &
       regressors, regression, degrees_of_freedom) result(out)
-      ! Evaluate local-level, Holt, damped, and seasonal ETS state recursions.
-      real(dp), intent(in) :: series(:), sigma, level_smoothing, initial_level
-      real(dp), intent(in), optional :: trend_smoothing, initial_trend, damping, seasonal_smoothing
-      real(dp), intent(in), optional :: initial_seasonal(:), regressors(:, :), regression(:)
-      real(dp), intent(in), optional :: degrees_of_freedom
+      !! Evaluate local-level, Holt, damped, and seasonal ETS state recursions.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: sigma !! Scale parameter or standard deviation.
+      real(dp), intent(in) :: level_smoothing !! Level smoothing.
+      real(dp), intent(in) :: initial_level !! Initial level.
+      real(dp), intent(in), optional :: trend_smoothing !! Trend smoothing.
+      real(dp), intent(in), optional :: initial_trend !! Initial trend.
+      real(dp), intent(in), optional :: damping !! Damping.
+      real(dp), intent(in), optional :: seasonal_smoothing !! Seasonal smoothing.
+      real(dp), intent(in), optional :: initial_seasonal(:) !! Initial seasonal.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: regression(:) !! Regression.
+      real(dp), intent(in), optional :: degrees_of_freedom !! Degrees of freedom.
       type(bf_ets_filter_t) :: out
       logical :: has_trend, has_seasonal
       real(dp) :: trend_alpha, damp, seasonal_alpha
@@ -280,12 +296,21 @@ contains
    pure function bf_garch_filter(series, variance_constant, intercept, ar, ma, arch, garch, &
       mean_garch, asymmetry_type, asymmetry_scale, asymmetry_shape, regressors, regression, &
       degrees_of_freedom) result(out)
-      ! Evaluate Gaussian or Student asymmetric ARMA-GARCH recursions.
-      real(dp), intent(in) :: series(:), variance_constant, intercept
-      real(dp), intent(in) :: ar(:), ma(:), arch(:), garch(:), mean_garch(:)
-      integer, intent(in) :: asymmetry_type
-      real(dp), intent(in) :: asymmetry_scale, asymmetry_shape
-      real(dp), intent(in), optional :: regressors(:, :), regression(:), degrees_of_freedom
+      !! Evaluate Gaussian or Student asymmetric ARMA-GARCH recursions.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: variance_constant !! Variance constant.
+      real(dp), intent(in) :: intercept !! Model intercept.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: arch(:) !! Arch.
+      real(dp), intent(in) :: garch(:) !! Garch.
+      real(dp), intent(in) :: mean_garch(:) !! Mean garch.
+      integer, intent(in) :: asymmetry_type !! Asymmetry type.
+      real(dp), intent(in) :: asymmetry_scale !! Asymmetry scale.
+      real(dp), intent(in) :: asymmetry_shape !! Asymmetry shape.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: regression(:) !! Regression.
+      real(dp), intent(in), optional :: degrees_of_freedom !! Degrees of freedom.
       type(bf_filter_t) :: out
       real(dp), allocatable :: variance(:)
       real(dp) :: asymmetric
@@ -336,10 +361,17 @@ contains
 
    pure function bf_stochastic_volatility_filter(series, log_variance, state_mean, persistence, &
       state_scale, intercept, ar, ma, regressors, regression) result(out)
-      ! Evaluate the stochastic-volatility latent-state and observation densities.
-      real(dp), intent(in) :: series(:), log_variance(:), state_mean, persistence, state_scale
-      real(dp), intent(in) :: intercept, ar(:), ma(:)
-      real(dp), intent(in), optional :: regressors(:, :), regression(:)
+      !! Evaluate the stochastic-volatility latent-state and observation densities.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: log_variance(:) !! Log variance.
+      real(dp), intent(in) :: state_mean !! State mean.
+      real(dp), intent(in) :: persistence !! Persistence.
+      real(dp), intent(in) :: state_scale !! State scale.
+      real(dp), intent(in) :: intercept !! Model intercept.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: regression(:) !! Regression.
       type(bf_sv_filter_t) :: out
       integer :: n, t, lag
 
@@ -380,19 +412,11 @@ contains
          sum(out%state_log_likelihood)
    end function bf_stochastic_volatility_filter
 
-   pure elemental function normal_log_density(value, scale) result(log_density)
-      ! Evaluate a centered normal log density.
-      real(dp), intent(in) :: value, scale
-      real(dp) :: log_density
-
-      log_density = -huge(1.0_dp)
-      if (scale > 0.0_dp) log_density = -0.5_dp*log(2.0_dp*acos(-1.0_dp)*scale**2) - &
-         0.5_dp*(value/scale)**2
-   end function normal_log_density
-
    pure elemental function student_log_density(value, scale, degrees) result(log_density)
-      ! Evaluate a centered Student-t log density.
-      real(dp), intent(in) :: value, scale, degrees
+      !! Evaluate a centered Student-t log density.
+      real(dp), intent(in) :: value !! Input value.
+      real(dp), intent(in) :: scale !! Scale.
+      real(dp), intent(in) :: degrees !! Degrees.
       real(dp) :: log_density
 
       log_density = -huge(1.0_dp)
@@ -403,9 +427,10 @@ contains
    end function student_log_density
 
    pure elemental function asymmetry_function(value, shape, asymmetry_type) result(result_value)
-      ! Evaluate the package's logistic or exponential GARCH news function.
-      real(dp), intent(in) :: value, shape
-      integer, intent(in) :: asymmetry_type
+      !! Evaluate the package's logistic or exponential GARCH news function.
+      real(dp), intent(in) :: value !! Input value.
+      real(dp), intent(in) :: shape !! Shape.
+      integer, intent(in) :: asymmetry_type !! Asymmetry type.
       real(dp) :: result_value, weight
 
       weight = 1.0_dp
@@ -416,10 +441,13 @@ contains
 
    function bf_metropolis_sample(log_posterior, initial, proposal_scale, draw_count, &
       burnin, thin) result(out)
-      ! Draw posterior samples with component-scaled random-walk Metropolis.
-      procedure(bf_log_posterior_interface) :: log_posterior
-      real(dp), intent(in) :: initial(:), proposal_scale(:)
-      integer, intent(in) :: draw_count, burnin, thin
+      !! Draw posterior samples with component-scaled random-walk Metropolis.
+      procedure(bf_log_posterior_interface) :: log_posterior !! Log posterior callback procedure.
+      real(dp), intent(in) :: initial(:) !! Initial value.
+      real(dp), intent(in) :: proposal_scale(:) !! Proposal scale.
+      integer, intent(in) :: draw_count !! Number of draw.
+      integer, intent(in) :: burnin !! Number of initial simulation draws to discard.
+      integer, intent(in) :: thin !! Thin.
       type(bf_mcmc_t) :: out
       real(dp), allocatable :: current(:), proposal(:)
       real(dp) :: current_density, proposal_density, uniform_draw
@@ -466,8 +494,9 @@ contains
    end function bf_metropolis_sample
 
    pure function bf_posterior_interval(draws, probability) result(interval)
-      ! Return equal-tail posterior intervals for each sampled parameter.
-      real(dp), intent(in) :: draws(:, :), probability
+      !! Return equal-tail posterior intervals for each sampled parameter.
+      real(dp), intent(in) :: draws(:, :) !! Draws.
+      real(dp), intent(in) :: probability !! Probability value.
       real(dp), allocatable :: interval(:, :)
       real(dp), allocatable :: ordered(:)
       real(dp) :: lower_position, upper_position
@@ -484,15 +513,16 @@ contains
       upper_position = 0.5_dp*(1.0_dp + probability)*real(draw_count - 1, dp) + 1.0_dp
       do parameter = 1, parameter_count
          ordered = draws(:, parameter)
-         call sort_values(ordered)
+         call sort(ordered)
          interval(parameter, 1) = interpolated_order_statistic(ordered, lower_position)
          interval(parameter, 2) = interpolated_order_statistic(ordered, upper_position)
       end do
    end function bf_posterior_interval
 
    pure function bf_predictive_error(predictive_draws, observations) result(error)
-      ! Subtract posterior predictive draws from observed values.
-      real(dp), intent(in) :: predictive_draws(:, :), observations(:)
+      !! Subtract posterior predictive draws from observed values.
+      real(dp), intent(in) :: predictive_draws(:, :) !! Predictive simulation draws.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
       real(dp), allocatable :: error(:, :)
 
       if (size(predictive_draws, 2) /= size(observations)) then
@@ -503,8 +533,8 @@ contains
    end function bf_predictive_error
 
    pure function bf_waic(pointwise_log_likelihood) result(out)
-      ! Compute WAIC from draws by observation pointwise log likelihoods.
-      real(dp), intent(in) :: pointwise_log_likelihood(:, :)
+      !! Compute WAIC from draws by observation pointwise log likelihoods.
+      real(dp), intent(in) :: pointwise_log_likelihood(:, :) !! Pointwise log likelihood.
       type(bf_information_criteria_t) :: out
       real(dp), allocatable :: shifted(:)
       real(dp) :: maximum, mean_value
@@ -528,8 +558,9 @@ contains
    end function bf_waic
 
    pure function bf_log_prior_sum(values, specifications) result(log_density)
-      ! Sum independently encoded bayesforecast prior log densities.
-      real(dp), intent(in) :: values(:), specifications(:, :)
+      !! Sum independently encoded bayesforecast prior log densities.
+      real(dp), intent(in) :: values(:) !! Input values.
+      real(dp), intent(in) :: specifications(:, :) !! Specifications.
       real(dp) :: log_density
       integer :: i
 
@@ -543,17 +574,20 @@ contains
 
    pure function bf_log_posterior(log_likelihood, parameter_values, prior_specifications) &
       result(value)
-      ! Combine any translated model likelihood with its independent priors.
-      real(dp), intent(in) :: log_likelihood, parameter_values(:), prior_specifications(:, :)
+      !! Combine any translated model likelihood with its independent priors.
+      real(dp), intent(in) :: log_likelihood !! Log-likelihood value.
+      real(dp), intent(in) :: parameter_values(:) !! Parameter values.
+      real(dp), intent(in) :: prior_specifications(:, :) !! Prior specifications.
       real(dp) :: value
 
       value = log_likelihood + bf_log_prior_sum(parameter_values, prior_specifications)
    end function bf_log_posterior
 
    pure function bf_information_criteria(log_likelihood, parameter_count, observation_count) result(out)
-      ! Compute log likelihood, AIC, corrected AIC, and BIC.
-      real(dp), intent(in) :: log_likelihood
-      integer, intent(in) :: parameter_count, observation_count
+      !! Compute log likelihood, AIC, corrected AIC, and BIC.
+      real(dp), intent(in) :: log_likelihood !! Log-likelihood value.
+      integer, intent(in) :: parameter_count !! Number of parameter.
+      integer, intent(in) :: observation_count !! Observation count.
       type(bf_information_criteria_t) :: out
 
       if (parameter_count < 0 .or. observation_count < 1) then
@@ -572,9 +606,10 @@ contains
 
    pure elemental function bf_bayes_factor(first_log_marginal, second_log_marginal, &
       log_scale) result(value)
-      ! Compare two supplied log marginal likelihoods on log or natural scale.
-      real(dp), intent(in) :: first_log_marginal, second_log_marginal
-      logical, intent(in), optional :: log_scale
+      !! Compare two supplied log marginal likelihoods on log or natural scale.
+      real(dp), intent(in) :: first_log_marginal !! First log marginal.
+      real(dp), intent(in) :: second_log_marginal !! Second log marginal.
+      logical, intent(in), optional :: log_scale !! Flag controlling log scale.
       real(dp) :: value
       logical :: return_log
 
@@ -587,12 +622,19 @@ contains
    pure function bf_sarima_log_posterior(series, sigma, intercept, ar, ma, seasonal_ar, &
       seasonal_ma, period, parameter_values, prior_specifications, regressors, regression) &
       result(log_posterior)
-      ! Combine the SARIMA likelihood with independently specified parameter priors.
-      real(dp), intent(in) :: series(:), sigma, intercept, ar(:), ma(:)
-      real(dp), intent(in) :: seasonal_ar(:), seasonal_ma(:), parameter_values(:)
-      real(dp), intent(in) :: prior_specifications(:, :)
-      integer, intent(in) :: period
-      real(dp), intent(in), optional :: regressors(:, :), regression(:)
+      !! Combine the SARIMA likelihood with independently specified parameter priors.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: sigma !! Scale parameter or standard deviation.
+      real(dp), intent(in) :: intercept !! Model intercept.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: seasonal_ar(:) !! Seasonal autoregressive.
+      real(dp), intent(in) :: seasonal_ma(:) !! Seasonal moving-average.
+      real(dp), intent(in) :: parameter_values(:) !! Parameter values.
+      real(dp), intent(in) :: prior_specifications(:, :) !! Prior specifications.
+      integer, intent(in) :: period !! Seasonal period.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: regression(:) !! Regression.
       real(dp) :: log_posterior
       type(bf_filter_t) :: filtered
 
@@ -612,9 +654,11 @@ contains
    end function bf_sarima_log_posterior
 
    pure function bf_difference(series, ordinary_order, seasonal_order, period) result(out)
-      ! Difference a series while retaining boundaries for exact inversion.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: ordinary_order, seasonal_order, period
+      !! Difference a series while retaining boundaries for exact inversion.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: ordinary_order !! Ordinary order.
+      integer, intent(in) :: seasonal_order !! Seasonal order.
+      integer, intent(in) :: period !! Seasonal period.
       type(bf_difference_t) :: out
       real(dp), allocatable :: working(:)
       integer :: i, n
@@ -643,9 +687,9 @@ contains
    end function bf_difference
 
    pure function bf_inverse_difference(values, difference) result(series)
-      ! Undo forecast differencing using stored final observed boundaries.
-      real(dp), intent(in) :: values(:)
-      type(bf_difference_t), intent(in) :: difference
+      !! Undo forecast differencing using stored final observed boundaries.
+      real(dp), intent(in) :: values(:) !! Input values.
+      type(bf_difference_t), intent(in) :: difference !! Difference.
       real(dp), allocatable :: series(:), restored(:)
       integer :: i, t, period
 
@@ -675,12 +719,21 @@ contains
 
    function bf_sarima_predict(series, sigma, intercept, ar, ma, seasonal_ar, seasonal_ma, &
       period, horizon, draw_count, probability, regressors, future_regressors, regression) result(out)
-      ! Simulate SARIMA posterior predictive paths for fixed parameter values.
-      real(dp), intent(in) :: series(:), sigma, intercept, ar(:), ma(:)
-      real(dp), intent(in) :: seasonal_ar(:), seasonal_ma(:)
-      integer, intent(in) :: period, horizon, draw_count
-      real(dp), intent(in) :: probability
-      real(dp), intent(in), optional :: regressors(:, :), future_regressors(:, :), regression(:)
+      !! Simulate SARIMA posterior predictive paths for fixed parameter values.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: sigma !! Scale parameter or standard deviation.
+      real(dp), intent(in) :: intercept !! Model intercept.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: seasonal_ar(:) !! Seasonal autoregressive.
+      real(dp), intent(in) :: seasonal_ma(:) !! Seasonal moving-average.
+      integer, intent(in) :: period !! Seasonal period.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: draw_count !! Number of draw.
+      real(dp), intent(in) :: probability !! Probability value.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: future_regressors(:, :) !! Future regressors.
+      real(dp), intent(in), optional :: regression(:) !! Regression.
       type(bf_predictive_t) :: out
       type(bf_filter_t) :: history_filter
       real(dp), allocatable :: extended(:), residual(:)
@@ -750,14 +803,23 @@ contains
       draw_count, probability, trend_smoothing, initial_trend, damping, &
       seasonal_smoothing, initial_seasonal, degrees_of_freedom, regressors, &
       future_regressors, regression) result(out)
-      ! Simulate posterior predictive paths from a fixed ETS parameter draw.
-      real(dp), intent(in) :: series(:), sigma, level_smoothing, initial_level
-      integer, intent(in) :: horizon, draw_count
-      real(dp), intent(in) :: probability
-      real(dp), intent(in), optional :: trend_smoothing, initial_trend, damping
-      real(dp), intent(in), optional :: seasonal_smoothing, initial_seasonal(:)
-      real(dp), intent(in), optional :: degrees_of_freedom
-      real(dp), intent(in), optional :: regressors(:, :), future_regressors(:, :), regression(:)
+      !! Simulate posterior predictive paths from a fixed ETS parameter draw.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: sigma !! Scale parameter or standard deviation.
+      real(dp), intent(in) :: level_smoothing !! Level smoothing.
+      real(dp), intent(in) :: initial_level !! Initial level.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: draw_count !! Number of draw.
+      real(dp), intent(in) :: probability !! Probability value.
+      real(dp), intent(in), optional :: trend_smoothing !! Trend smoothing.
+      real(dp), intent(in), optional :: initial_trend !! Initial trend.
+      real(dp), intent(in), optional :: damping !! Damping.
+      real(dp), intent(in), optional :: seasonal_smoothing !! Seasonal smoothing.
+      real(dp), intent(in), optional :: initial_seasonal(:) !! Initial seasonal.
+      real(dp), intent(in), optional :: degrees_of_freedom !! Degrees of freedom.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: future_regressors(:, :) !! Future regressors.
+      real(dp), intent(in), optional :: regression(:) !! Regression.
       type(bf_predictive_t) :: out
       type(bf_ets_filter_t) :: history
       real(dp), allocatable :: seasonal_path(:)
@@ -850,13 +912,25 @@ contains
    function bf_garch_predict(series, variance_constant, intercept, ar, ma, arch, garch, &
       mean_garch, asymmetry_type, asymmetry_scale, asymmetry_shape, horizon, draw_count, &
       probability, degrees_of_freedom, regressors, future_regressors, regression) result(out)
-      ! Simulate predictive paths from a fixed asymmetric ARMA-GARCH draw.
-      real(dp), intent(in) :: series(:), variance_constant, intercept
-      real(dp), intent(in) :: ar(:), ma(:), arch(:), garch(:), mean_garch(:)
-      integer, intent(in) :: asymmetry_type, horizon, draw_count
-      real(dp), intent(in) :: asymmetry_scale, asymmetry_shape, probability
-      real(dp), intent(in), optional :: degrees_of_freedom
-      real(dp), intent(in), optional :: regressors(:, :), future_regressors(:, :), regression(:)
+      !! Simulate predictive paths from a fixed asymmetric ARMA-GARCH draw.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: variance_constant !! Variance constant.
+      real(dp), intent(in) :: intercept !! Model intercept.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: arch(:) !! Arch.
+      real(dp), intent(in) :: garch(:) !! Garch.
+      real(dp), intent(in) :: mean_garch(:) !! Mean garch.
+      integer, intent(in) :: asymmetry_type !! Asymmetry type.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: draw_count !! Number of draw.
+      real(dp), intent(in) :: asymmetry_scale !! Asymmetry scale.
+      real(dp), intent(in) :: asymmetry_shape !! Asymmetry shape.
+      real(dp), intent(in) :: probability !! Probability value.
+      real(dp), intent(in), optional :: degrees_of_freedom !! Degrees of freedom.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: future_regressors(:, :) !! Future regressors.
+      real(dp), intent(in), optional :: regression(:) !! Regression.
       type(bf_predictive_t) :: out
       type(bf_filter_t) :: history
       real(dp), allocatable :: extended(:), residual(:), scale(:)
@@ -931,11 +1005,21 @@ contains
    function bf_stochastic_volatility_predict(series, log_variance, state_mean, persistence, &
       state_scale, intercept, ar, ma, horizon, draw_count, probability, regressors, &
       future_regressors, regression) result(out)
-      ! Simulate stochastic-volatility latent states and observations forward.
-      real(dp), intent(in) :: series(:), log_variance(:), state_mean, persistence, state_scale
-      real(dp), intent(in) :: intercept, ar(:), ma(:), probability
-      integer, intent(in) :: horizon, draw_count
-      real(dp), intent(in), optional :: regressors(:, :), future_regressors(:, :), regression(:)
+      !! Simulate stochastic-volatility latent states and observations forward.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: log_variance(:) !! Log variance.
+      real(dp), intent(in) :: state_mean !! State mean.
+      real(dp), intent(in) :: persistence !! Persistence.
+      real(dp), intent(in) :: state_scale !! State scale.
+      real(dp), intent(in) :: intercept !! Model intercept.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: probability !! Probability value.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: draw_count !! Number of draw.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: future_regressors(:, :) !! Future regressors.
+      real(dp), intent(in), optional :: regression(:) !! Regression.
       type(bf_predictive_t) :: out
       type(bf_sv_filter_t) :: history
       real(dp), allocatable :: extended(:), residual(:)
@@ -991,9 +1075,9 @@ contains
    end function bf_stochastic_volatility_predict
 
    subroutine finish_predictive(out, probability)
-      ! Complete predictive means, intervals, and horizon metadata.
-      type(bf_predictive_t), intent(inout) :: out
-      real(dp), intent(in) :: probability
+      !! Complete predictive means, intervals, and horizon metadata.
+      type(bf_predictive_t), intent(inout) :: out !! Procedure result, updated in place.
+      real(dp), intent(in) :: probability !! Probability value.
 
       allocate(out%mean(size(out%draws, 2)))
       out%mean = sum(out%draws, 1)/real(size(out%draws, 1), dp)
@@ -1002,35 +1086,18 @@ contains
    end subroutine finish_predictive
 
    function random_student(degrees) result(value)
-      ! Draw a standardized Student-t random variate.
-      real(dp), intent(in) :: degrees
+      !! Draw a standardized Student-t random variate.
+      real(dp), intent(in) :: degrees !! Degrees.
       real(dp) :: value, chi_square
 
       chi_square = 2.0_dp*random_gamma(0.5_dp*degrees)
       value = random_standard_normal()/sqrt(chi_square/degrees)
    end function random_student
 
-   pure subroutine sort_values(values)
-      ! Sort a real vector into ascending order by insertion.
-      real(dp), intent(inout) :: values(:)
-      real(dp) :: held
-      integer :: i, j
-
-      do i = 2, size(values)
-         held = values(i)
-         j = i - 1
-         do while (j >= 1)
-            if (values(j) <= held) exit
-            values(j + 1) = values(j)
-            j = j - 1
-         end do
-         values(j + 1) = held
-      end do
-   end subroutine sort_values
-
    pure function interpolated_order_statistic(values, position) result(value)
-      ! Interpolate a sorted vector at a one-based fractional position.
-      real(dp), intent(in) :: values(:), position
+      !! Interpolate a sorted vector at a one-based fractional position.
+      real(dp), intent(in) :: values(:) !! Input values.
+      real(dp), intent(in) :: position !! Position.
       real(dp) :: value, fraction
       integer :: lower
 

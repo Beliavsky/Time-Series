@@ -1,0 +1,11 @@
+fracdist Fortran translation license notice
+
+The algorithms in fracdist.f90 and numeric tables in fracdist_tables.f90 are
+translated from the fracdist R package, version 0.1.1, by Lealand Morin.
+Upstream source files and data retain their stated copyright notices.
+
+The upstream DESCRIPTION licenses fracdist under the GNU General Public
+License, version 3.
+
+GNU GPL 3.0:
+https://www.gnu.org/licenses/gpl-3.0.html

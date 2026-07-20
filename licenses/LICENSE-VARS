@@ -1,0 +1,11 @@
+vars Fortran translation license notice
+
+The algorithms in vars.f90 are translated from the vars R package, version
+1.6-1, by Bernhard Pfaff with contributions by Matthieu Stigler.
+
+The upstream DESCRIPTION licenses vars under the GNU General Public License,
+version 2 or later. The translated source is distributed under the same terms
+using SPDX identifier GPL-2.0-or-later.
+
+GNU GPL 2.0:
+https://www.gnu.org/licenses/old-licenses/gpl-2.0.html

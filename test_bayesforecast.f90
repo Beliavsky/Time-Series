@@ -3,7 +3,7 @@
 program test_bayesforecast
    use kind_mod, only: dp
    use bayesforecast_mod
-   use time_series_random_mod, only: set_random_seed
+   use random_mod, only: set_random_seed
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
    implicit none
    type(bf_filter_t) :: sarima, garch
@@ -115,17 +115,17 @@ program test_bayesforecast
 contains
 
    pure function standard_normal_posterior(parameters) result(value)
-      ! Evaluate an unnormalized standard-normal posterior.
-      real(dp), intent(in) :: parameters(:)
+      !! Evaluate an unnormalized standard-normal posterior.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
       real(dp) :: value
 
       value = -0.5_dp*dot_product(parameters, parameters)
    end function standard_normal_posterior
 
    subroutine check(ok, name)
-      ! Stop the test program when a named assertion fails.
-      logical, intent(in) :: ok
-      character(len=*), intent(in) :: name
+      !! Stop the test program when a named assertion fails.
+      logical, intent(in) :: ok !! Flag controlling ok.
+      character(len=*), intent(in) :: name !! Name.
 
       if (.not. ok) then
          print '(a)', 'FAILED: '//name

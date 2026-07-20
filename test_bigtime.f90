@@ -3,7 +3,7 @@
 program test_bigtime
    use kind_mod, only: dp
    use bigtime_mod
-   use time_series_random_mod, only: set_random_seed
+   use random_mod, only: set_random_seed
    implicit none
    type(bigtime_var_fit_t) :: lasso_fit, hlag_fit, zero_fit
    type(bigtime_var_path_t) :: path
@@ -455,9 +455,9 @@ program test_bigtime
 contains
 
    subroutine check(condition, message)
-      ! Stop the test program when a condition is false.
-      logical, intent(in) :: condition
-      character(len=*), intent(in) :: message
+      !! Stop the test program when a condition is false.
+      logical, intent(in) :: condition !! Flag controlling condition.
+      character(len=*), intent(in) :: message !! Message.
 
       if (.not. condition) then
          print '(a)', 'FAILED: '//trim(message)

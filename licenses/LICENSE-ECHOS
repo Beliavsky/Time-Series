@@ -1,0 +1,7 @@
+The algorithms in echos.f90 are translated from version 1.0.4 of the R package
+echos, authored by Alexander Haeusser.
+
+The upstream package declares its license as GPL-3. The translation is
+therefore distributed under GPL-3.0-only. The GNU General Public License text
+is available at https://www.gnu.org/licenses/gpl-3.0.txt.
+

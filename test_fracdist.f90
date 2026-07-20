@@ -57,9 +57,9 @@ program test_fracdist
 contains
 
    subroutine check(condition, message)
-      ! Stop the test program when a condition fails.
-      logical, intent(in) :: condition
-      character(len=*), intent(in) :: message
+      !! Stop the test program when a condition fails.
+      logical, intent(in) :: condition !! Flag controlling condition.
+      character(len=*), intent(in) :: message !! Message.
 
       if (.not. condition) then
          print '(a)', 'FAILED: '//trim(message)

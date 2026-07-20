@@ -3,10 +3,13 @@
 ! Numerical translations from the Artistic-2.0 MTS package.
 module mts_mod
    use kind_mod, only: dp
-   use time_series_linalg_mod, only: invert_matrix, inverse_logdet, cholesky_lower, symmetric_eigen
-   use time_series_random_mod, only: random_multivariate_normal
-   use time_series_stats_mod, only: normal_quantile
-   use time_series_optimization_mod, only: optimization_result_t, bfgs_minimize_fd, &
+   use linalg_mod, only: invert_matrix, inverse_logdet, cholesky_lower, &
+      symmetric_eigen, identity_matrix
+   use random_mod, only: random_multivariate_normal
+   use stats_mod, only: normal_quantile, sort
+   use stats_mod, only: sample_covariance_shared => covariance
+   use stats_mod, only: data_correlation_matrix => correlation_matrix
+   use optimization_mod, only: optimization_result_t, bfgs_minimize_fd, &
       finite_difference_hessian
    use urca_mod, only: johansen_result_t, johansen_test
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
@@ -799,8 +802,8 @@ module mts_mod
 contains
 
    pure function diagonal_values(matrix) result(values)
-      ! Return the main diagonal of a rectangular matrix.
-      real(dp), intent(in) :: matrix(:, :)
+      !! Return the main diagonal of a rectangular matrix.
+      real(dp), intent(in) :: matrix(:, :) !! Input matrix.
       real(dp) :: values(min(size(matrix, 1), size(matrix, 2)))
       integer :: i
 
@@ -809,22 +812,11 @@ contains
       end do
    end function diagonal_values
 
-   pure function identity_matrix(dimension) result(matrix)
-      ! Return a square identity matrix.
-      integer, intent(in) :: dimension
-      real(dp) :: matrix(dimension, dimension)
-      integer :: i
-
-      matrix = 0.0_dp
-      do i = 1, dimension
-         matrix(i, i) = 1.0_dp
-      end do
-   end function identity_matrix
-
    pure function mts_matrix_filter(data, weights, initial) result(filtered)
-      ! Apply a recursive multivariate matrix-polynomial filter.
-      real(dp), intent(in) :: data(:, :), weights(:, :, :)
-      real(dp), intent(in), optional :: initial(:, :)
+      !! Apply a recursive multivariate matrix-polynomial filter.
+      real(dp), intent(in) :: data(:, :) !! Data.
+      real(dp), intent(in) :: weights(:, :, :) !! Observation or objective weights.
+      real(dp), intent(in), optional :: initial(:, :) !! Initial value.
       real(dp), allocatable :: filtered(:, :)
       real(dp), allocatable :: work(:, :)
       integer :: n, dimension, order, initial_count, t, lag, source
@@ -849,10 +841,12 @@ contains
 
    pure function mts_ecm_known_fit(series, level_order, cointegrating_process, &
       include_constant, estimated) result(out)
-      ! Fit an ECM by least squares for supplied cointegrating processes.
-      real(dp), intent(in) :: series(:, :), cointegrating_process(:, :)
-      integer, intent(in) :: level_order
-      logical, intent(in), optional :: include_constant, estimated(:, :)
+      !! Fit an ECM by least squares for supplied cointegrating processes.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: cointegrating_process(:, :) !! Cointegrating process.
+      integer, intent(in) :: level_order !! Level order.
+      logical, intent(in), optional :: include_constant !! Whether to include the constant.
+      logical, intent(in), optional :: estimated(:, :) !! Flag controlling estimated.
       type(mts_ecm_known_fit_t) :: out
       real(dp), allocatable :: differences(:, :), adjusted_process(:, :), design(:, :), response(:, :)
       real(dp), allocatable :: selected_design(:, :), xtx(:, :), inverse(:, :), beta(:)
@@ -951,10 +945,11 @@ contains
    end function mts_ecm_known_fit
 
    pure function mts_ecm_known_refine(series, cointegrating_process, fit, threshold) result(out)
-      ! Refit a known-process ECM after thresholding coefficient t ratios.
-      real(dp), intent(in) :: series(:, :), cointegrating_process(:, :)
-      type(mts_ecm_known_fit_t), intent(in) :: fit
-      real(dp), intent(in), optional :: threshold
+      !! Refit a known-process ECM after thresholding coefficient t ratios.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: cointegrating_process(:, :) !! Cointegrating process.
+      type(mts_ecm_known_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in), optional :: threshold !! Decision or truncation threshold.
       type(mts_ecm_known_fit_t) :: out
       logical, allocatable :: mask(:, :)
       real(dp) :: cutoff
@@ -973,12 +968,15 @@ contains
 
    pure function mts_ecm_normalized_fit(series, level_order, initial_cointegration, &
       include_constant, short_run_estimated, initial, max_iterations, tolerance) result(out)
-      ! Jointly fit an identity-normalized reduced-rank ECM.
-      real(dp), intent(in) :: series(:, :), initial_cointegration(:, :)
-      integer, intent(in) :: level_order
-      logical, intent(in), optional :: include_constant, short_run_estimated(:, :)
-      real(dp), intent(in), optional :: initial(:), tolerance
-      integer, intent(in), optional :: max_iterations
+      !! Jointly fit an identity-normalized reduced-rank ECM.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: initial_cointegration(:, :) !! Initial cointegration.
+      integer, intent(in) :: level_order !! Level order.
+      logical, intent(in), optional :: include_constant !! Whether to include the constant.
+      logical, intent(in), optional :: short_run_estimated(:, :) !! Flag controlling short run estimated.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(mts_ecm_normalized_fit_t) :: out
       type(mts_ecm_known_fit_t) :: preliminary
       type(optimization_result_t) :: optimization
@@ -1096,8 +1094,8 @@ contains
    contains
 
       pure function objective(free_parameters) result(value)
-         ! Return the concentrated negative likelihood for normalized ECM parameters.
-         real(dp), intent(in) :: free_parameters(:)
+         !! Return the concentrated negative likelihood for normalized ECM parameters.
+         real(dp), intent(in) :: free_parameters(:) !! Free parameters.
          real(dp) :: value, likelihood
          real(dp) :: full_parameters(total_count)
          real(dp), allocatable :: loading(:, :), cointegration(:, :), short_run(:, :)
@@ -1117,12 +1115,15 @@ contains
 
       pure subroutine evaluate(values, loading, cointegration, short_run, residual_values, &
          sigma, likelihood, evaluation_status)
-         ! Unpack normalized ECM parameters and evaluate innovations.
-         real(dp), intent(in) :: values(:)
-         real(dp), allocatable, intent(out) :: loading(:, :), cointegration(:, :), short_run(:, :)
-         real(dp), allocatable, intent(out) :: residual_values(:, :), sigma(:, :)
-         real(dp), intent(out) :: likelihood
-         integer, intent(out) :: evaluation_status
+         !! Unpack normalized ECM parameters and evaluate innovations.
+         real(dp), intent(in) :: values(:) !! Input values.
+         real(dp), allocatable, intent(out) :: loading(:, :) !! Loading.
+         real(dp), allocatable, intent(out) :: cointegration(:, :) !! Cointegration.
+         real(dp), allocatable, intent(out) :: short_run(:, :) !! Short run.
+         real(dp), allocatable, intent(out) :: residual_values(:, :) !! Residual values.
+         real(dp), allocatable, intent(out) :: sigma(:, :) !! Scale parameter or standard deviation.
+         real(dp), intent(out) :: likelihood !! Likelihood.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          real(dp), allocatable :: differences(:, :), covariance_inverse(:, :)
          real(dp) :: logdet
          integer :: rows, start, t, lag, column
@@ -1175,11 +1176,12 @@ contains
 
    pure function mts_ecm_normalized_refine(series, fit, threshold, &
       max_iterations, tolerance) result(out)
-      ! Refit a normalized ECM after thresholding short-run parameters.
-      real(dp), intent(in) :: series(:, :)
-      type(mts_ecm_normalized_fit_t), intent(in) :: fit
-      real(dp), intent(in), optional :: threshold, tolerance
-      integer, intent(in), optional :: max_iterations
+      !! Refit a normalized ECM after thresholding short-run parameters.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      type(mts_ecm_normalized_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in), optional :: threshold !! Decision or truncation threshold.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(mts_ecm_normalized_fit_t) :: out
       logical, allocatable :: mask(:, :)
       real(dp) :: cutoff
@@ -1197,9 +1199,9 @@ contains
    end function mts_ecm_normalized_refine
 
    pure function mts_reverse_mq(series, max_lag) result(out)
-      ! Compute reversed multivariate Ljung-Box tests through a maximum lag.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: max_lag
+      !! Compute reversed multivariate Ljung-Box tests through a maximum lag.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       type(mts_reverse_mq_t) :: out
       real(dp), allocatable :: centered(:, :), covariance(:, :), inverse(:, :), lag_covariance(:, :)
       real(dp), allocatable :: scale(:), product(:, :)
@@ -1247,10 +1249,12 @@ contains
    end function mts_reverse_mq
 
    pure function mts_eccm(series, max_ar, max_ma, include_mean, reversed) result(out)
-      ! Compute iterated-regression extended cross-correlation order tables.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: max_ar, max_ma
-      logical, intent(in), optional :: include_mean, reversed
+      !! Compute iterated-regression extended cross-correlation order tables.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: max_ar !! Maximum autoregressive.
+      integer, intent(in) :: max_ma !! Maximum moving-average.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      logical, intent(in), optional :: reversed !! Flag controlling reversed.
       type(mts_eccm_t) :: out
       type(mts_var_fit_t) :: var_fit
       type(mts_reverse_mq_t) :: reverse_test
@@ -1354,9 +1358,11 @@ contains
    end function mts_eccm
 
    pure function mts_corner(output_series, input_series, row_count, column_count) result(out)
-      ! Compute transfer-function corner determinants from prewhitened series.
-      real(dp), intent(in) :: output_series(:), input_series(:)
-      integer, intent(in) :: row_count, column_count
+      !! Compute transfer-function corner determinants from prewhitened series.
+      real(dp), intent(in) :: output_series(:) !! Output series.
+      real(dp), intent(in) :: input_series(:) !! Input series.
+      integer, intent(in) :: row_count !! Number of row.
+      integer, intent(in) :: column_count !! Number of column.
       type(mts_corner_t) :: out
       real(dp), allocatable :: y(:), x(:), matrix(:, :)
       real(dp) :: sy, sx, maximum
@@ -1418,8 +1424,8 @@ contains
    end function mts_corner
 
    pure function matrix_determinant(matrix) result(value)
-      ! Compute a square-matrix determinant by pivoted elimination.
-      real(dp), intent(in) :: matrix(:, :)
+      !! Compute a square-matrix determinant by pivoted elimination.
+      real(dp), intent(in) :: matrix(:, :) !! Input matrix.
       real(dp) :: value
       real(dp), allocatable :: work(:, :), row_values(:)
       real(dp) :: pivot
@@ -1451,12 +1457,14 @@ contains
 
    pure function mts_vma_exact_fit(series, order, include_mean, initial, estimated, &
       max_iterations, tolerance) result(out)
-      ! Fit a VMA model by its exact finite-sample Gaussian likelihood.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: order
-      logical, intent(in), optional :: include_mean, estimated(:)
-      real(dp), intent(in), optional :: initial(:), tolerance
-      integer, intent(in), optional :: max_iterations
+      !! Fit a VMA model by its exact finite-sample Gaussian likelihood.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      logical, intent(in), optional :: estimated(:) !! Flag controlling estimated.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(mts_vma_exact_fit_t) :: out
       type(optimization_result_t) :: optimization
       real(dp), allocatable :: parameters(:), free_values(:), hessian(:, :), inverse(:, :)
@@ -1538,8 +1546,8 @@ contains
    contains
 
       pure function objective(free_parameters) result(value)
-         ! Return the exact negative Gaussian log likelihood.
-         real(dp), intent(in) :: free_parameters(:)
+         !! Return the exact negative Gaussian log likelihood.
+         real(dp), intent(in) :: free_parameters(:) !! Free parameters.
          real(dp) :: value, likelihood
          real(dp) :: full_parameters(parameter_count)
          real(dp), allocatable :: residual_values(:, :)
@@ -1557,12 +1565,12 @@ contains
       end function objective
 
       pure subroutine evaluate(values, model, residual_values, likelihood, evaluation_status)
-         ! Build the block covariance and evaluate the finite-sample likelihood.
-         real(dp), intent(in) :: values(:)
-         type(mts_varma_model_t), intent(out) :: model
-         real(dp), allocatable, intent(out) :: residual_values(:, :)
-         real(dp), intent(out) :: likelihood
-         integer, intent(out) :: evaluation_status
+         !! Build the block covariance and evaluate the finite-sample likelihood.
+         real(dp), intent(in) :: values(:) !! Input values.
+         type(mts_varma_model_t), intent(out) :: model !! Model specification.
+         real(dp), allocatable, intent(out) :: residual_values(:, :) !! Residual values.
+         real(dp), intent(out) :: likelihood !! Likelihood.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          real(dp), allocatable :: centered(:, :), coefficient(:, :, :), gamma(:, :, :)
          real(dp), allocatable :: full_covariance(:, :), full_inverse(:, :), vector(:)
          real(dp) :: logdet, quadratic
@@ -1639,11 +1647,13 @@ contains
 
    pure function mts_vma_exact_refine(series, fit, threshold, max_steps, &
       max_iterations, tolerance) result(out)
-      ! Refine exact VMA estimates by backward t-ratio elimination.
-      real(dp), intent(in) :: series(:, :)
-      type(mts_vma_exact_fit_t), intent(in) :: fit
-      real(dp), intent(in), optional :: threshold, tolerance
-      integer, intent(in), optional :: max_steps, max_iterations
+      !! Refine exact VMA estimates by backward t-ratio elimination.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      type(mts_vma_exact_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in), optional :: threshold !! Decision or truncation threshold.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_steps !! Maximum steps.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(mts_vma_exact_refinement_t) :: out
       logical, allocatable :: mask(:)
       real(dp) :: cutoff, ratio, smallest
@@ -1691,9 +1701,9 @@ contains
    end function mts_vma_exact_refine
 
    pure function mts_apca(data, component_count) result(out)
-      ! Perform asymptotic PCA by interchanging observations and variables.
-      real(dp), intent(in) :: data(:, :)
-      integer, intent(in) :: component_count
+      !! Perform asymptotic PCA by interchanging observations and variables.
+      real(dp), intent(in) :: data(:, :) !! Data.
+      integer, intent(in) :: component_count !! Number of component.
       type(mts_apca_t) :: out
       real(dp), allocatable :: work(:, :), centered(:, :), covariance(:, :)
       real(dp), allocatable :: eigenvalues(:), eigenvectors(:, :)
@@ -1725,9 +1735,11 @@ contains
    end function mts_apca
 
    pure function mts_diffusion_forecast(response, predictors, origin, factor_count) result(out)
-      ! Produce Stock-Watson diffusion-index out-of-sample forecasts.
-      real(dp), intent(in) :: response(:), predictors(:, :)
-      integer, intent(in) :: origin, factor_count
+      !! Produce Stock-Watson diffusion-index out-of-sample forecasts.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      integer, intent(in) :: origin !! Origin.
+      integer, intent(in) :: factor_count !! Number of factor.
       type(mts_diffusion_forecast_t) :: out
       real(dp), allocatable :: standardized(:, :), covariance(:, :), eigenvalues(:), eigenvectors(:, :)
       real(dp), allocatable :: design(:, :), xtx(:, :), inverse(:, :), fitted(:)
@@ -1780,9 +1792,10 @@ contains
    end function mts_diffusion_forecast
 
    pure function mts_multivariate_regression(response, predictors, include_constant) result(out)
-      ! Fit a multivariate multiple linear regression by least squares.
-      real(dp), intent(in) :: response(:, :), predictors(:, :)
-      logical, intent(in), optional :: include_constant
+      !! Fit a multivariate multiple linear regression by least squares.
+      real(dp), intent(in) :: response(:, :) !! Response observations.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      logical, intent(in), optional :: include_constant !! Whether to include the constant.
       type(mts_multivariate_regression_t) :: out
       real(dp), allocatable :: design(:, :), xtx(:, :), inverse(:, :)
       logical :: use_constant
@@ -1828,11 +1841,11 @@ contains
    end function mts_multivariate_regression
 
    pure function mts_var_chi(series, order, include_mean, threshold) result(out)
-      ! Test the joint null that individually weak VAR coefficients are zero.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: order
-      logical, intent(in), optional :: include_mean
-      real(dp), intent(in), optional :: threshold
+      !! Test the joint null that individually weak VAR coefficients are zero.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      real(dp), intent(in), optional :: threshold !! Decision or truncation threshold.
       type(mts_var_chi_t) :: out
       real(dp), allocatable :: design(:, :), response(:, :), xtx(:, :), inverse(:, :)
       real(dp), allocatable :: full_covariance(:, :), flattened(:), standard_errors(:), target_inverse(:, :)
@@ -1904,10 +1917,10 @@ contains
    end function mts_var_chi
 
    pure function mts_var_fore(fit, history, horizon) result(out)
-      ! Provide the MTS VARfore interface through the shared VAR forecast engine.
-      type(mts_var_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: history(:, :)
-      integer, intent(in) :: horizon
+      !! Provide the MTS VARfore interface through the shared VAR forecast engine.
+      type(mts_var_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: history(:, :) !! History.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(mts_var_forecast_t) :: out
 
       out = mts_var_forecast(fit, history, horizon)
@@ -1915,12 +1928,15 @@ contains
 
    pure function mts_transfer_fit(response, input, noise_order, transfer_order, &
       initial, estimated, max_iterations, tolerance) result(out)
-      ! Fit a one-input rational transfer function with ARMA disturbances.
-      real(dp), intent(in) :: response(:), input(:)
-      integer, intent(in) :: noise_order(3), transfer_order(3)
-      real(dp), intent(in), optional :: initial(:), tolerance
-      logical, intent(in), optional :: estimated(:)
-      integer, intent(in), optional :: max_iterations
+      !! Fit a one-input rational transfer function with ARMA disturbances.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: input(:) !! Input.
+      integer, intent(in) :: noise_order(3) !! Noise order.
+      integer, intent(in) :: transfer_order(3) !! Transfer order.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      logical, intent(in), optional :: estimated(:) !! Flag controlling estimated.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(mts_transfer_fit_t) :: out
       type(optimization_result_t) :: optimization
       real(dp), allocatable :: y(:), x(:), parameters(:), free_values(:), hessian(:, :), inverse(:, :)
@@ -2021,8 +2037,8 @@ contains
    contains
 
       pure function objective(free_parameters) result(value)
-         ! Return the concentrated negative Gaussian log likelihood.
-         real(dp), intent(in) :: free_parameters(:)
+         !! Return the concentrated negative Gaussian log likelihood.
+         real(dp), intent(in) :: free_parameters(:) !! Free parameters.
          real(dp) :: value, variance, likelihood
          real(dp) :: full_parameters(count_parameters)
          real(dp), allocatable :: filtered(:), disturbance(:), innovations(:)
@@ -2041,11 +2057,14 @@ contains
 
       pure subroutine evaluate(values, filtered, disturbance, innovations, variance, &
          likelihood, evaluation_status)
-         ! Filter the input and recursively compute ARMA innovations.
-         real(dp), intent(in) :: values(:)
-         real(dp), allocatable, intent(out) :: filtered(:), disturbance(:), innovations(:)
-         real(dp), intent(out) :: variance, likelihood
-         integer, intent(out) :: evaluation_status
+         !! Filter the input and recursively compute ARMA innovations.
+         real(dp), intent(in) :: values(:) !! Input values.
+         real(dp), allocatable, intent(out) :: filtered(:) !! Filtered.
+         real(dp), allocatable, intent(out) :: disturbance(:) !! Disturbance.
+         real(dp), allocatable, intent(out) :: innovations(:) !! Model innovations.
+         real(dp), intent(out) :: variance !! Variance value or matrix.
+         real(dp), intent(out) :: likelihood !! Likelihood.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          integer :: t, lag, start, effective, offset
 
          allocate(filtered(n), disturbance(n), innovations(n))
@@ -2090,13 +2109,21 @@ contains
    pure function mts_transfer2_fit(response, input1, noise_order, seasonal_order, season, &
       transfer_order1, input2, transfer_order2, deterministic, equilibrium, initial, &
       estimated, max_iterations, tolerance) result(out)
-      ! Fit a two-input transfer model with multiplicative seasonal ARMA noise.
-      real(dp), intent(in) :: response(:), input1(:)
-      integer, intent(in) :: noise_order(3), seasonal_order(3), season, transfer_order1(3)
-      real(dp), intent(in), optional :: input2(:), deterministic(:), equilibrium(:)
-      integer, intent(in), optional :: transfer_order2(3), max_iterations
-      real(dp), intent(in), optional :: initial(:), tolerance
-      logical, intent(in), optional :: estimated(:)
+      !! Fit a two-input transfer model with multiplicative seasonal ARMA noise.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: input1(:) !! Input1.
+      integer, intent(in) :: noise_order(3) !! Noise order.
+      integer, intent(in) :: seasonal_order(3) !! Seasonal order.
+      integer, intent(in) :: season !! Season.
+      integer, intent(in) :: transfer_order1(3) !! Transfer order1.
+      real(dp), intent(in), optional :: input2(:) !! Input2.
+      real(dp), intent(in), optional :: deterministic(:) !! Deterministic.
+      real(dp), intent(in), optional :: equilibrium(:) !! Equilibrium.
+      integer, intent(in), optional :: transfer_order2(3) !! Transfer order2.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      logical, intent(in), optional :: estimated(:) !! Flag controlling estimated.
       type(mts_transfer2_fit_t) :: out
       type(optimization_result_t) :: optimization
       real(dp), allocatable :: data(:, :), parameters(:), free_values(:), hessian(:, :), inverse(:, :)
@@ -2277,8 +2304,8 @@ contains
    contains
 
       pure function objective(free_parameters) result(value)
-         ! Return the concentrated negative likelihood for the two-input model.
-         real(dp), intent(in) :: free_parameters(:)
+         !! Return the concentrated negative likelihood for the two-input model.
+         real(dp), intent(in) :: free_parameters(:) !! Free parameters.
          real(dp) :: value, variance, likelihood
          real(dp) :: full_parameters(parameter_count)
          real(dp), allocatable :: filtered1(:), filtered2(:), disturbance(:), innovations(:)
@@ -2297,11 +2324,15 @@ contains
 
       pure subroutine evaluate(values, filtered1, filtered2, disturbance, innovations, &
          variance, likelihood, evaluation_status)
-         ! Evaluate filtered inputs and multiplicative seasonal ARMA innovations.
-         real(dp), intent(in) :: values(:)
-         real(dp), allocatable, intent(out) :: filtered1(:), filtered2(:), disturbance(:), innovations(:)
-         real(dp), intent(out) :: variance, likelihood
-         integer, intent(out) :: evaluation_status
+         !! Evaluate filtered inputs and multiplicative seasonal ARMA innovations.
+         real(dp), intent(in) :: values(:) !! Input values.
+         real(dp), allocatable, intent(out) :: filtered1(:) !! Filtered1.
+         real(dp), allocatable, intent(out) :: filtered2(:) !! Filtered2.
+         real(dp), allocatable, intent(out) :: disturbance(:) !! Disturbance.
+         real(dp), allocatable, intent(out) :: innovations(:) !! Model innovations.
+         real(dp), intent(out) :: variance !! Variance value or matrix.
+         real(dp), intent(out) :: likelihood !! Likelihood.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          real(dp), allocatable :: regular(:)
          integer :: t, lag, position, ar_position, ma_position, sar_position, sma_position
          integer :: start, effective
@@ -2395,14 +2426,21 @@ contains
       noise_order, seasonal_order, transfer_order1, input2, future_input2, &
       transfer_order2, deterministic, future_deterministic, equilibrium, &
       future_equilibrium) result(out)
-      ! Forecast a fitted two-input transfer model with zero future innovations.
-      type(mts_transfer2_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: response(:), input1(:), future_input1(:)
-      integer, intent(in) :: noise_order(3), seasonal_order(3), transfer_order1(3)
-      real(dp), intent(in), optional :: input2(:), future_input2(:)
-      integer, intent(in), optional :: transfer_order2(3)
-      real(dp), intent(in), optional :: deterministic(:), future_deterministic(:)
-      real(dp), intent(in), optional :: equilibrium(:), future_equilibrium(:)
+      !! Forecast a fitted two-input transfer model with zero future innovations.
+      type(mts_transfer2_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: input1(:) !! Input1.
+      real(dp), intent(in) :: future_input1(:) !! Future input1.
+      integer, intent(in) :: noise_order(3) !! Noise order.
+      integer, intent(in) :: seasonal_order(3) !! Seasonal order.
+      integer, intent(in) :: transfer_order1(3) !! Transfer order1.
+      real(dp), intent(in), optional :: input2(:) !! Input2.
+      real(dp), intent(in), optional :: future_input2(:) !! Future input2.
+      integer, intent(in), optional :: transfer_order2(3) !! Transfer order2.
+      real(dp), intent(in), optional :: deterministic(:) !! Deterministic.
+      real(dp), intent(in), optional :: future_deterministic(:) !! Future deterministic.
+      real(dp), intent(in), optional :: equilibrium(:) !! Equilibrium.
+      real(dp), intent(in), optional :: future_equilibrium(:) !! Future equilibrium.
       type(mts_transfer_forecast_t) :: out
       type(mts_transfer2_fit_t) :: candidate
       real(dp), allocatable :: y(:), x1(:), x2(:), det(:), eq(:)
@@ -2496,12 +2534,22 @@ contains
    pure function mts_transfer2_backtest(response, input1, origin, noise_order, &
       seasonal_order, season, transfer_order1, initial, estimated, input2, &
       transfer_order2, deterministic, equilibrium, max_iterations, tolerance) result(out)
-      ! Run rolling one-step re-estimation and forecasts for a transfer model.
-      real(dp), intent(in) :: response(:), input1(:), initial(:)
-      integer, intent(in) :: origin, noise_order(3), seasonal_order(3), season, transfer_order1(3)
-      logical, intent(in) :: estimated(:)
-      real(dp), intent(in), optional :: input2(:), deterministic(:), equilibrium(:), tolerance
-      integer, intent(in), optional :: transfer_order2(3), max_iterations
+      !! Run rolling one-step re-estimation and forecasts for a transfer model.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: input1(:) !! Input1.
+      real(dp), intent(in) :: initial(:) !! Initial value.
+      integer, intent(in) :: origin !! Origin.
+      integer, intent(in) :: noise_order(3) !! Noise order.
+      integer, intent(in) :: seasonal_order(3) !! Seasonal order.
+      integer, intent(in) :: season !! Season.
+      integer, intent(in) :: transfer_order1(3) !! Transfer order1.
+      logical, intent(in) :: estimated(:) !! Flag controlling estimated.
+      real(dp), intent(in), optional :: input2(:) !! Input2.
+      real(dp), intent(in), optional :: deterministic(:) !! Deterministic.
+      real(dp), intent(in), optional :: equilibrium(:) !! Equilibrium.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: transfer_order2(3) !! Transfer order2.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(mts_transfer_backtest_t) :: out
       type(mts_transfer2_fit_t) :: fitted, candidate
       real(dp), allocatable :: y(:), start(:)
@@ -2545,10 +2593,11 @@ contains
    contains
 
       pure function fit_sample(y_values, observations, starting, mask_values) result(model)
-         ! Fit one rolling sample while preserving the optional regressor layout.
-         real(dp), intent(in) :: y_values(:), starting(:)
-         integer, intent(in) :: observations
-         logical, intent(in) :: mask_values(:)
+         !! Fit one rolling sample while preserving the optional regressor layout.
+         real(dp), intent(in) :: y_values(:) !! Y values.
+         real(dp), intent(in) :: starting(:) !! Starting.
+         integer, intent(in) :: observations !! Observed time-series values.
+         logical, intent(in) :: mask_values(:) !! Flag controlling mask values.
          type(mts_transfer2_fit_t) :: model
 
          if (present(input2) .and. present(deterministic) .and. present(equilibrium)) then
@@ -2596,12 +2645,15 @@ contains
 
    pure function mts_regts_fit(response, regressors, order, include_mean, initial, &
       estimated, max_iterations, tolerance) result(out)
-      ! Fit multivariate regression with jointly estimated VAR disturbances.
-      real(dp), intent(in) :: response(:, :), regressors(:, :)
-      integer, intent(in) :: order
-      logical, intent(in), optional :: include_mean, estimated(:, :)
-      real(dp), intent(in), optional :: initial(:), tolerance
-      integer, intent(in), optional :: max_iterations
+      !! Fit multivariate regression with jointly estimated VAR disturbances.
+      real(dp), intent(in) :: response(:, :) !! Response observations.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      integer, intent(in) :: order !! Model or polynomial order.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      logical, intent(in), optional :: estimated(:, :) !! Flag controlling estimated.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(mts_regts_fit_t) :: out
       type(optimization_result_t) :: optimization
       type(mts_var_fit_t) :: var_start
@@ -2724,8 +2776,8 @@ contains
    contains
 
       pure function objective(free_parameters) result(value)
-         ! Return the concentrated negative likelihood for free parameters.
-         real(dp), intent(in) :: free_parameters(:)
+         !! Return the concentrated negative likelihood for free parameters.
+         real(dp), intent(in) :: free_parameters(:) !! Free parameters.
          real(dp) :: value, likelihood
          real(dp) :: full_parameters(parameter_count)
          real(dp), allocatable :: beta(:, :), ar(:, :, :), residual_values(:, :), sigma(:, :)
@@ -2743,12 +2795,14 @@ contains
 
       pure subroutine evaluate(values, beta, ar, residual_values, sigma, likelihood, &
          evaluation_status)
-         ! Unpack coefficients and evaluate regression VAR innovations.
-         real(dp), intent(in) :: values(:)
-         real(dp), allocatable, intent(out) :: beta(:, :), ar(:, :, :)
-         real(dp), allocatable, intent(out) :: residual_values(:, :), sigma(:, :)
-         real(dp), intent(out) :: likelihood
-         integer, intent(out) :: evaluation_status
+         !! Unpack coefficients and evaluate regression VAR innovations.
+         real(dp), intent(in) :: values(:) !! Input values.
+         real(dp), allocatable, intent(out) :: beta(:, :) !! Regression or model coefficients.
+         real(dp), allocatable, intent(out) :: ar(:, :, :) !! Autoregressive coefficients.
+         real(dp), allocatable, intent(out) :: residual_values(:, :) !! Residual values.
+         real(dp), allocatable, intent(out) :: sigma(:, :) !! Scale parameter or standard deviation.
+         real(dp), intent(out) :: likelihood !! Likelihood.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          real(dp), allocatable :: raw_residual(:, :), covariance_inverse(:, :)
          real(dp) :: logdet
          integer :: current_equation, current_lag, current_offset, t
@@ -2788,11 +2842,14 @@ contains
 
    pure function mts_regts_refine(response, regressors, fit, threshold, max_steps, &
       max_iterations, tolerance) result(out)
-      ! Remove insignificant regression or VAR-error parameters and refit.
-      real(dp), intent(in) :: response(:, :), regressors(:, :)
-      type(mts_regts_fit_t), intent(in) :: fit
-      real(dp), intent(in), optional :: threshold, tolerance
-      integer, intent(in), optional :: max_steps, max_iterations
+      !! Remove insignificant regression or VAR-error parameters and refit.
+      real(dp), intent(in) :: response(:, :) !! Response observations.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      type(mts_regts_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in), optional :: threshold !! Decision or truncation threshold.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_steps !! Maximum steps.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(mts_regts_refinement_t) :: out
       logical, allocatable :: mask(:, :), flat_mask(:)
       real(dp) :: cutoff, ratio, smallest
@@ -2842,9 +2899,11 @@ contains
    end function mts_regts_refine
 
    pure function mts_regts_forecast(fit, response, regressors, future_regressors) result(out)
-      ! Forecast regression responses and VAR-error uncertainty.
-      type(mts_regts_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: response(:, :), regressors(:, :), future_regressors(:, :)
+      !! Forecast regression responses and VAR-error uncertainty.
+      type(mts_regts_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: response(:, :) !! Response observations.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: future_regressors(:, :) !! Future regressors.
       type(mts_var_forecast_t) :: out
       type(mts_var_fit_t) :: error_model
       type(mts_var_forecast_t) :: error_forecast
@@ -2886,10 +2945,11 @@ contains
    end function mts_regts_forecast
 
    pure function mts_var(series, order, include_mean, estimated) result(out)
-      ! Fit a consecutive-lag VAR model by equation-wise least squares.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: order
-      logical, intent(in), optional :: include_mean, estimated(:, :)
+      !! Fit a consecutive-lag VAR model by equation-wise least squares.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      logical, intent(in), optional :: estimated(:, :) !! Flag controlling estimated.
       type(mts_var_fit_t) :: out
       integer, allocatable :: lags(:)
       integer :: i
@@ -2903,10 +2963,11 @@ contains
    end function mts_var
 
    pure function mts_vars(series, lags, include_mean, estimated) result(out)
-      ! Fit a selected-lag VAR model with optional equation-specific masks.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: lags(:)
-      logical, intent(in), optional :: include_mean, estimated(:, :)
+      !! Fit a selected-lag VAR model with optional equation-specific masks.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: lags(:) !! Lags.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      logical, intent(in), optional :: estimated(:, :) !! Flag controlling estimated.
       type(mts_var_fit_t) :: out
       real(dp), allocatable :: design(:, :), response(:, :), xtx(:, :), inverse(:, :), beta(:)
       real(dp), allocatable :: equation_residual(:)
@@ -3005,9 +3066,9 @@ contains
    end function mts_vars
 
    pure function mts_var_psi(ar, max_lag) result(psi)
-      ! Compute VAR MA-representation matrices from lag zero through max_lag.
-      real(dp), intent(in) :: ar(:, :, :)
-      integer, intent(in) :: max_lag
+      !! Compute VAR MA-representation matrices from lag zero through max_lag.
+      real(dp), intent(in) :: ar(:, :, :) !! Autoregressive coefficients.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: psi(:, :, :)
       integer :: dimension, p, lag, j, i
 
@@ -3032,10 +3093,10 @@ contains
    end function mts_var_psi
 
    pure function mts_var_forecast(model, history, horizon) result(out)
-      ! Forecast a fitted VAR and accumulate innovation forecast covariance.
-      type(mts_var_fit_t), intent(in) :: model
-      real(dp), intent(in) :: history(:, :)
-      integer, intent(in) :: horizon
+      !! Forecast a fitted VAR and accumulate innovation forecast covariance.
+      type(mts_var_fit_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in) :: history(:, :) !! History.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(mts_var_forecast_t) :: out
       real(dp), allocatable :: extended(:, :), psi(:, :, :)
       integer :: n, dimension, step, lag, i
@@ -3071,10 +3132,10 @@ contains
    end function mts_var_forecast
 
    pure function mts_var_irf(model, max_lag, shock_factor) result(out)
-      ! Compute orthogonalized and generalized VAR impulse responses.
-      type(mts_var_fit_t), intent(in) :: model
-      integer, intent(in) :: max_lag
-      real(dp), intent(in), optional :: shock_factor(:, :)
+      !! Compute orthogonalized and generalized VAR impulse responses.
+      type(mts_var_fit_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      real(dp), intent(in), optional :: shock_factor(:, :) !! Shock factor.
       type(mts_var_irf_t) :: out
       real(dp), allocatable :: factor(:, :)
       integer :: dimension, lag, shock, status
@@ -3126,10 +3187,10 @@ contains
    end function mts_var_irf
 
    pure function mts_fevd(model, max_horizon, generalized) result(out)
-      ! Decompose VAR forecast-error variance into normalized shock contributions.
-      type(mts_var_fit_t), intent(in) :: model
-      integer, intent(in) :: max_horizon
-      logical, intent(in), optional :: generalized
+      !! Decompose VAR forecast-error variance into normalized shock contributions.
+      type(mts_var_fit_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: max_horizon !! Maximum horizon.
+      logical, intent(in), optional :: generalized !! Flag controlling generalized.
       type(mts_fevd_t) :: out
       type(mts_var_irf_t) :: responses
       real(dp), allocatable :: numerator(:, :), total(:), covariance(:, :)
@@ -3182,10 +3243,13 @@ contains
 
    pure function mts_varx(endogenous, exogenous, ar_order, exogenous_order, &
       include_mean, estimated) result(out)
-      ! Fit a VARX model with contemporaneous and distributed exogenous lags.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      integer, intent(in) :: ar_order, exogenous_order
-      logical, intent(in), optional :: include_mean, estimated(:, :)
+      !! Fit a VARX model with contemporaneous and distributed exogenous lags.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: exogenous_order !! Exogenous order.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      logical, intent(in), optional :: estimated(:, :) !! Flag controlling estimated.
       type(mts_varx_fit_t) :: out
       real(dp), allocatable :: design(:, :), response(:, :), xtx(:, :), inverse(:, :), beta(:), residual(:)
       logical, allocatable :: mask(:, :)
@@ -3297,10 +3361,12 @@ contains
 
    pure function mts_varx_forecast(model, endogenous_history, exogenous_history, &
       future_exogenous, horizon) result(out)
-      ! Forecast VARX using supplied future exogenous observations.
-      type(mts_varx_fit_t), intent(in) :: model
-      real(dp), intent(in) :: endogenous_history(:, :), exogenous_history(:, :), future_exogenous(:, :)
-      integer, intent(in) :: horizon
+      !! Forecast VARX using supplied future exogenous observations.
+      type(mts_varx_fit_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in) :: endogenous_history(:, :) !! Endogenous history.
+      real(dp), intent(in) :: exogenous_history(:, :) !! Exogenous history.
+      real(dp), intent(in) :: future_exogenous(:, :) !! Future exogenous.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(mts_var_forecast_t) :: out
       real(dp), allocatable :: extended_y(:, :), extended_x(:, :), psi(:, :, :)
       integer :: n, dimension, exogenous_dimension, step, lag, i
@@ -3347,9 +3413,9 @@ contains
    end function mts_varx_forecast
 
    pure function mts_varx_irf(model, max_lag) result(out)
-      ! Compute endogenous and exogenous VARX dynamic responses.
-      type(mts_varx_fit_t), intent(in) :: model
-      integer, intent(in) :: max_lag
+      !! Compute endogenous and exogenous VARX dynamic responses.
+      type(mts_varx_fit_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       type(mts_varx_irf_t) :: out
       real(dp), allocatable :: psi(:, :, :)
       integer :: dimension, exogenous_dimension, lag, j
@@ -3386,9 +3452,11 @@ contains
    end function mts_varx_irf
 
    pure function mts_varx_order(endogenous, exogenous, max_ar_order, max_exogenous_order) result(out)
-      ! Select endogenous and exogenous VARX lag orders by information criteria.
-      real(dp), intent(in) :: endogenous(:, :), exogenous(:, :)
-      integer, intent(in) :: max_ar_order, max_exogenous_order
+      !! Select endogenous and exogenous VARX lag orders by information criteria.
+      real(dp), intent(in) :: endogenous(:, :) !! Endogenous time-series observations.
+      real(dp), intent(in) :: exogenous(:, :) !! Exogenous predictor observations.
+      integer, intent(in) :: max_ar_order !! Maximum autoregressive order.
+      integer, intent(in) :: max_exogenous_order !! Maximum exogenous order.
       type(mts_varx_order_t) :: out
       type(mts_varx_fit_t) :: fitted
       integer :: p, m, location(2)
@@ -3421,9 +3489,9 @@ contains
    end function mts_varx_order
 
    pure function mts_varma_psi(model, max_lag) result(psi)
-      ! Compute MTS VARMA PSI weights from lag zero through max_lag.
-      type(mts_varma_model_t), intent(in) :: model
-      integer, intent(in) :: max_lag
+      !! Compute MTS VARMA PSI weights from lag zero through max_lag.
+      type(mts_varma_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: psi(:, :, :)
       integer :: dimension, p, q, lag, j, i
 
@@ -3454,9 +3522,9 @@ contains
    end function mts_varma_psi
 
    pure function mts_varma_pi(model, max_lag) result(pi_weights)
-      ! Compute MTS VARMA infinite autoregressive PI weights.
-      type(mts_varma_model_t), intent(in) :: model
-      integer, intent(in) :: max_lag
+      !! Compute MTS VARMA infinite autoregressive PI weights.
+      type(mts_varma_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: pi_weights(:, :, :)
       integer :: dimension, p, q, lag, j, i
 
@@ -3482,10 +3550,10 @@ contains
    end function mts_varma_pi
 
    pure function mts_varma_irf(model, max_lag, shock_factor) result(out)
-      ! Compute raw, orthogonalized, generalized, and cumulative VARMA responses.
-      type(mts_varma_model_t), intent(in) :: model
-      integer, intent(in) :: max_lag
-      real(dp), intent(in), optional :: shock_factor(:, :)
+      !! Compute raw, orthogonalized, generalized, and cumulative VARMA responses.
+      type(mts_varma_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      real(dp), intent(in), optional :: shock_factor(:, :) !! Shock factor.
       type(mts_var_irf_t) :: out
       real(dp), allocatable :: factor(:, :)
       integer :: dimension, lag, shock, status
@@ -3537,10 +3605,10 @@ contains
    end function mts_varma_irf
 
    pure function mts_varma_covariance(model, max_lag, truncation) result(out)
-      ! Approximate theoretical VARMA covariance and correlation by PSI truncation.
-      type(mts_varma_model_t), intent(in) :: model
-      integer, intent(in) :: max_lag
-      integer, intent(in), optional :: truncation
+      !! Approximate theoretical VARMA covariance and correlation by PSI truncation.
+      type(mts_varma_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      integer, intent(in), optional :: truncation !! Truncation.
       type(mts_varma_covariance_t) :: out
       real(dp), allocatable :: psi(:, :, :)
       real(dp) :: scale_i, scale_j
@@ -3577,10 +3645,10 @@ contains
    end function mts_varma_covariance
 
    pure function mts_varma_simulate_from_innovations(model, innovations, burnin) result(out)
-      ! Simulate VARMA observations from caller-supplied innovations.
-      type(mts_varma_model_t), intent(in) :: model
-      real(dp), intent(in) :: innovations(:, :)
-      integer, intent(in), optional :: burnin
+      !! Simulate VARMA observations from caller-supplied innovations.
+      type(mts_varma_model_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in) :: innovations(:, :) !! Model innovations.
+      integer, intent(in), optional :: burnin !! Number of initial simulation draws to discard.
       type(mts_varma_simulation_t) :: out
       real(dp), allocatable :: work(:, :)
       integer :: discard, n, dimension, p, q, t, lag
@@ -3612,10 +3680,10 @@ contains
    end function mts_varma_simulate_from_innovations
 
    function mts_varma_simulate(model, observation_count, burnin) result(out)
-      ! Simulate Gaussian VARMA observations using the shared random stream.
-      type(mts_varma_model_t), intent(in) :: model
-      integer, intent(in) :: observation_count
-      integer, intent(in), optional :: burnin
+      !! Simulate Gaussian VARMA observations using the shared random stream.
+      type(mts_varma_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: observation_count !! Observation count.
+      integer, intent(in), optional :: burnin !! Number of initial simulation draws to discard.
       type(mts_varma_simulation_t) :: out
       real(dp), allocatable :: innovations(:, :), zero(:)
       integer :: discard, total, dimension, t, status
@@ -3641,10 +3709,11 @@ contains
    end function mts_varma_simulate
 
    pure function mts_varma_forecast(model, history, residuals, horizon) result(out)
-      ! Forecast VARMA observations using historical innovations and zero future shocks.
-      type(mts_varma_model_t), intent(in) :: model
-      real(dp), intent(in) :: history(:, :), residuals(:, :)
-      integer, intent(in) :: horizon
+      !! Forecast VARMA observations using historical innovations and zero future shocks.
+      type(mts_varma_model_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in) :: history(:, :) !! History.
+      real(dp), intent(in) :: residuals(:, :) !! Model residuals.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(mts_var_forecast_t) :: out
       real(dp), allocatable :: extended(:, :), psi(:, :, :)
       integer :: n, dimension, p, q, step, lag, i
@@ -3687,11 +3756,13 @@ contains
 
    pure function mts_vecm_fit(series, level_order, rank, include_constant, &
       cointegration, estimated) result(out)
-      ! Fit a VECM with supplied or Johansen-estimated cointegration vectors.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: level_order, rank
-      logical, intent(in), optional :: include_constant, estimated(:, :)
-      real(dp), intent(in), optional :: cointegration(:, :)
+      !! Fit a VECM with supplied or Johansen-estimated cointegration vectors.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: level_order !! Level order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      logical, intent(in), optional :: include_constant !! Whether to include the constant.
+      logical, intent(in), optional :: estimated(:, :) !! Flag controlling estimated.
+      real(dp), intent(in), optional :: cointegration(:, :) !! Cointegration.
       type(mts_vecm_fit_t) :: out
       type(johansen_result_t) :: johansen
       real(dp), allocatable :: differences(:, :), design(:, :), response(:, :)
@@ -3816,8 +3887,8 @@ contains
    contains
 
       pure subroutine build_level_var(fitted)
-         ! Convert VECM coefficients to an equivalent level VAR.
-         type(mts_vecm_fit_t), intent(inout) :: fitted
+         !! Convert VECM coefficients to an equivalent level VAR.
+         type(mts_vecm_fit_t), intent(inout) :: fitted !! Fitted, updated in place.
          real(dp) :: identity(dimension, dimension), pi_matrix(dimension, dimension)
          integer :: current_lag
 
@@ -3848,10 +3919,10 @@ contains
    end function mts_vecm_fit
 
    pure function mts_vecm_forecast(fitted, history, horizon) result(out)
-      ! Forecast VECM levels and first differences through its level-VAR form.
-      type(mts_vecm_fit_t), intent(in) :: fitted
-      real(dp), intent(in) :: history(:, :)
-      integer, intent(in) :: horizon
+      !! Forecast VECM levels and first differences through its level-VAR form.
+      type(mts_vecm_fit_t), intent(in) :: fitted !! Fitted.
+      real(dp), intent(in) :: history(:, :) !! History.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(mts_vecm_forecast_t) :: out
       integer :: step
 
@@ -3872,10 +3943,11 @@ contains
    end function mts_vecm_forecast
 
    pure function mts_factor_fit(series, factors, max_factors, standardize) result(out)
-      ! Extract principal-component factors and Bai-Ng factor-count criteria.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in), optional :: factors, max_factors
-      logical, intent(in), optional :: standardize
+      !! Extract principal-component factors and Bai-Ng factor-count criteria.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in), optional :: factors !! Factors.
+      integer, intent(in), optional :: max_factors !! Maximum factors.
+      logical, intent(in), optional :: standardize !! Flag controlling standardize.
       type(mts_factor_model_t) :: out
       real(dp), allocatable :: normalized(:, :), covariance(:, :), vectors(:, :)
       real(dp), allocatable :: trial_scores(:, :), trial_common(:, :)
@@ -3964,9 +4036,10 @@ contains
    end function mts_factor_fit
 
    pure function mts_factor_forecast(model, var_order, horizon) result(out)
-      ! Fit factor dynamics by VAR and reconstruct forecasts in original units.
-      type(mts_factor_model_t), intent(in) :: model
-      integer, intent(in) :: var_order, horizon
+      !! Fit factor dynamics by VAR and reconstruct forecasts in original units.
+      type(mts_factor_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: var_order !! Var order.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(mts_factor_forecast_t) :: out
       real(dp), allocatable :: idiosyncratic_covariance(:, :), scaled_loadings(:, :)
       integer :: variables, factors, step, i
@@ -4008,9 +4081,10 @@ contains
    end function mts_factor_forecast
 
    pure function mts_constrained_factor_fit(series, constraint, factors) result(out)
-      ! Fit the MTS hfactor weighted least-squares constrained factor model.
-      real(dp), intent(in) :: series(:, :), constraint(:, :)
-      integer, intent(in) :: factors
+      !! Fit the MTS hfactor weighted least-squares constrained factor model.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: constraint(:, :) !! Constraint.
+      integer, intent(in) :: factors !! Factors.
       type(mts_constrained_factor_t) :: out
       real(dp), allocatable :: normalized(:, :), gram(:, :), eigenvalues(:), eigenvectors(:, :)
       real(dp), allocatable :: inverse_sqrt(:, :), projected(:, :), covariance(:, :)
@@ -4087,8 +4161,8 @@ contains
    contains
 
       pure function diag_values(values) result(matrix)
-         ! Form a diagonal matrix from a vector.
-         real(dp), intent(in) :: values(:)
+         !! Form a diagonal matrix from a vector.
+         real(dp), intent(in) :: values(:) !! Input values.
          real(dp) :: matrix(size(values), size(values))
          integer :: diagonal
 
@@ -4100,9 +4174,10 @@ contains
    end function mts_constrained_factor_fit
 
    pure function mts_constrained_factor_forecast(model, var_order, horizon) result(out)
-      ! Forecast a constrained factor model through its normalized factor scores.
-      type(mts_constrained_factor_t), intent(in) :: model
-      integer, intent(in) :: var_order, horizon
+      !! Forecast a constrained factor model through its normalized factor scores.
+      type(mts_constrained_factor_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: var_order !! Var order.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(mts_factor_forecast_t) :: out
 
       if (model%info /= 0) then
@@ -4113,11 +4188,11 @@ contains
    end function mts_constrained_factor_forecast
 
    pure function mts_bvar_fit(series, order, prior, include_mean) result(out)
-      ! Estimate the conjugate matrix-normal/inverse-Wishart MTS BVAR.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: order
-      type(mts_bvar_prior_t), intent(in) :: prior
-      logical, intent(in), optional :: include_mean
+      !! Estimate the conjugate matrix-normal/inverse-Wishart MTS BVAR.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
+      type(mts_bvar_prior_t), intent(in) :: prior !! Prior-distribution specification.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
       type(mts_bvar_fit_t) :: out
       real(dp), allocatable :: design(:, :), response(:, :), cross_x(:, :), cross_y(:, :)
       real(dp), allocatable :: posterior_inverse(:, :), weighted_mean(:, :), difference(:, :)
@@ -4194,8 +4269,8 @@ contains
    contains
 
       pure subroutine build_bvar_model(fitted)
-         ! Convert posterior coefficient means to the shared VAR representation.
-         type(mts_bvar_fit_t), intent(inout) :: fitted
+         !! Convert posterior coefficient means to the shared VAR representation.
+         type(mts_bvar_fit_t), intent(inout) :: fitted !! Fitted, updated in place.
          integer :: current_lag, start
 
          allocate(fitted%model%ar(variables, variables, order))
@@ -4220,12 +4295,15 @@ contains
 
    pure function mts_minnesota_prior(series, order, tightness, lag_decay, &
       intercept_variance, random_walk, degrees_of_freedom, include_mean) result(out)
-      ! Construct a common-precision Minnesota-style prior for MTS BVAR.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: order
-      real(dp), intent(in), optional :: tightness, lag_decay, intercept_variance
-      real(dp), intent(in), optional :: degrees_of_freedom
-      logical, intent(in), optional :: random_walk, include_mean
+      !! Construct a common-precision Minnesota-style prior for MTS BVAR.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
+      real(dp), intent(in), optional :: tightness !! Tightness.
+      real(dp), intent(in), optional :: lag_decay !! Lag decay.
+      real(dp), intent(in), optional :: intercept_variance !! Intercept variance.
+      real(dp), intent(in), optional :: degrees_of_freedom !! Degrees of freedom.
+      logical, intent(in), optional :: random_walk !! Flag controlling random walk.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
       type(mts_bvar_prior_t) :: out
       real(dp), allocatable :: centered(:, :)
       real(dp) :: lambda, decay, constant_variance
@@ -4279,11 +4357,12 @@ contains
 
    pure function mts_common_volatility(returns, max_lag, var_order, standardized, &
       arch_lags) result(out)
-      ! Extract MTS common-volatility directions from quadratic lag dependence.
-      real(dp), intent(in) :: returns(:, :)
-      integer, intent(in) :: max_lag
-      integer, intent(in), optional :: var_order, arch_lags(:)
-      logical, intent(in), optional :: standardized
+      !! Extract MTS common-volatility directions from quadratic lag dependence.
+      real(dp), intent(in) :: returns(:, :) !! Returns.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      integer, intent(in), optional :: var_order !! Var order.
+      integer, intent(in), optional :: arch_lags(:) !! Arch lags.
+      logical, intent(in), optional :: standardized !! Flag controlling standardized.
       type(mts_common_volatility_t) :: out
       type(mts_var_fit_t) :: prewhitened
       real(dp), allocatable :: covariance(:, :), values(:), vectors(:, :), inverse_sqrt(:, :)
@@ -4335,7 +4414,7 @@ contains
                do row = 1, variables
                   do column = row, variables
                      first_product = out%whitened(lag + 1:, row)*out%whitened(lag + 1:, column)
-                     cross_covariance(row, column) = sample_covariance(first_product, second_product)* &
+                     cross_covariance(row, column) = sample_covariance_shared(first_product, second_product)* &
                         (real(n - lag, dp)/real(n, dp))**2
                      cross_covariance(column, row) = cross_covariance(row, column)
                   end do
@@ -4406,8 +4485,8 @@ contains
    contains
 
       pure function diagonal_matrix(diagonal) result(matrix)
-         ! Form a diagonal matrix from supplied values.
-         real(dp), intent(in) :: diagonal(:)
+         !! Form a diagonal matrix from supplied values.
+         real(dp), intent(in) :: diagonal(:) !! Diagonal.
          real(dp) :: matrix(size(diagonal), size(diagonal))
          integer :: index
 
@@ -4417,23 +4496,14 @@ contains
          end do
       end function diagonal_matrix
 
-      pure real(dp) function sample_covariance(first_values, second_values) result(value)
-         ! Return the sample covariance of equal-length vectors.
-         real(dp), intent(in) :: first_values(:), second_values(:)
-         real(dp) :: first_mean, second_mean
-
-         first_mean = sum(first_values)/real(size(first_values), dp)
-         second_mean = sum(second_values)/real(size(second_values), dp)
-         value = sum((first_values - first_mean)*(second_values - second_mean))/ &
-            real(size(first_values) - 1, dp)
-      end function sample_covariance
    end function mts_common_volatility
 
    pure function mts_mch_diagnostic(residuals, covariance, max_lag, robust_probability) result(out)
-      ! Diagnose a fitted multivariate conditional covariance path as in MCHdiag.
-      real(dp), intent(in) :: residuals(:, :), covariance(:, :, :)
-      integer, intent(in) :: max_lag
-      real(dp), intent(in), optional :: robust_probability
+      !! Diagnose a fitted multivariate conditional covariance path as in MCHdiag.
+      real(dp), intent(in) :: residuals(:, :) !! Model residuals.
+      real(dp), intent(in) :: covariance(:, :, :) !! Covariance matrix.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      real(dp), intent(in), optional :: robust_probability !! Robust probability.
       type(mts_mch_diagnostic_t) :: out
       real(dp), allocatable :: values(:), vectors(:, :), inverse_sqrt(:, :)
       real(dp), allocatable :: autocorrelation(:), ranks(:), squared(:, :), robust_squared(:, :)
@@ -4508,7 +4578,7 @@ contains
       out%p_value(3) = chi_square_survival(out%multivariate_q, out%degrees_of_freedom(3))
 
       sorted = out%radial_residual
-      call sort_values(sorted)
+      call sort(sorted)
       index = max(1, min(n, ceiling(probability*real(n, dp))))
       cutoff = sorted(index)
       retained = count(out%radial_residual <= cutoff)
@@ -4537,8 +4607,8 @@ contains
    contains
 
       pure function diagonal_path(diagonal) result(matrix)
-         ! Form a diagonal matrix for covariance standardization.
-         real(dp), intent(in) :: diagonal(:)
+         !! Form a diagonal matrix for covariance standardization.
+         real(dp), intent(in) :: diagonal(:) !! Diagonal.
          real(dp) :: matrix(size(diagonal), size(diagonal))
          integer :: i
 
@@ -4549,11 +4619,11 @@ contains
       end function diagonal_path
 
       pure subroutine multivariate_portmanteau(observations, lag_count, statistic, evaluation_status)
-         ! Compute the MTS squared-standardized-residual portmanteau statistic.
-         real(dp), intent(in) :: observations(:, :)
-         integer, intent(in) :: lag_count
-         real(dp), intent(out) :: statistic
-         integer, intent(out) :: evaluation_status
+         !! Compute the MTS squared-standardized-residual portmanteau statistic.
+         real(dp), intent(in) :: observations(:, :) !! Observed time-series values.
+         integer, intent(in) :: lag_count !! Number of lag.
+         real(dp), intent(out) :: statistic !! Statistic.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          real(dp), allocatable :: covariance_zero(:, :), covariance_inverse(:, :), covariance_lag(:, :)
          real(dp), allocatable :: centered(:, :), product(:, :)
          integer :: observation_count, current_lag, diagonal
@@ -4576,36 +4646,20 @@ contains
          end do
       end subroutine multivariate_portmanteau
 
-      pure subroutine sort_values(values_to_sort)
-         ! Sort real values in ascending order by insertion sort.
-         real(dp), intent(inout) :: values_to_sort(:)
-         real(dp) :: key
-         integer :: current, previous
-
-         do current = 2, size(values_to_sort)
-            key = values_to_sort(current)
-            previous = current - 1
-            do while (previous >= 1)
-               if (values_to_sort(previous) <= key) exit
-               values_to_sort(previous + 1) = values_to_sort(previous)
-               previous = previous - 1
-            end do
-            values_to_sort(previous + 1) = key
-         end do
-      end subroutine sort_values
    end function mts_mch_diagnostic
 
    pure function mts_bekk_fit(returns, include_mean, initial, estimated, &
       max_iterations, tolerance) result(out)
-      ! Estimate the Gaussian bivariate or trivariate MTS BEKK(1,1) model.
-      real(dp), intent(in) :: returns(:, :)
-      logical, intent(in), optional :: include_mean, estimated(:)
-      real(dp), intent(in), optional :: initial(:)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate the Gaussian bivariate or trivariate MTS BEKK(1,1) model.
+      real(dp), intent(in) :: returns(:, :) !! Returns.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      logical, intent(in), optional :: estimated(:) !! Flag controlling estimated.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(mts_bekk_fit_t) :: out
       type(optimization_result_t) :: optimization
-      real(dp), allocatable :: parameters(:), free_parameters(:), sample_covariance(:, :)
+      real(dp), allocatable :: parameters(:), free_parameters(:), covariance(:, :)
       real(dp), allocatable :: lower(:, :), hessian(:, :), inverse(:, :)
       integer, allocatable :: free_index(:)
       integer :: n, dimension, triangular_count, parameter_count, free_count
@@ -4630,9 +4684,9 @@ contains
          parameters(:dimension) = sum(returns, 1)/real(n, dp)
          offset = dimension
       end if
-      sample_covariance = matmul(transpose(returns - spread(sum(returns, 1)/real(n, dp), 1, n)), &
+      covariance = matmul(transpose(returns - spread(sum(returns, 1)/real(n, dp), 1, n)), &
          returns - spread(sum(returns, 1)/real(n, dp), 1, n))/real(n - 1, dp)
-      call cholesky_lower(sample_covariance, lower, status)
+      call cholesky_lower(covariance, lower, status)
       if (status /= 0) then
          out%info = 10 + status
          return
@@ -4720,8 +4774,8 @@ contains
    contains
 
       pure function objective(free_values) result(value)
-         ! Return the BEKK Gaussian negative log likelihood.
-         real(dp), intent(in) :: free_values(:)
+         !! Return the BEKK Gaussian negative log likelihood.
+         real(dp), intent(in) :: free_values(:) !! Free values.
          real(dp) :: value, log_likelihood
          real(dp) :: full_values(parameter_count)
          real(dp), allocatable :: mean(:), constant(:, :), arch(:, :), garch(:, :)
@@ -4741,12 +4795,17 @@ contains
 
       pure subroutine evaluate(values, mean, constant, arch, garch, residuals, covariance, &
          standardized, log_likelihood, evaluation_status)
-         ! Unpack BEKK parameters and evaluate its covariance recursion.
-         real(dp), intent(in) :: values(:)
-         real(dp), allocatable, intent(out) :: mean(:), constant(:, :), arch(:, :), garch(:, :)
-         real(dp), allocatable, intent(out) :: residuals(:, :), covariance(:, :, :), standardized(:, :)
-         real(dp), intent(out) :: log_likelihood
-         integer, intent(out) :: evaluation_status
+         !! Unpack BEKK parameters and evaluate its covariance recursion.
+         real(dp), intent(in) :: values(:) !! Input values.
+         real(dp), allocatable, intent(out) :: mean(:) !! Mean value or vector.
+         real(dp), allocatable, intent(out) :: constant(:, :) !! Constant.
+         real(dp), allocatable, intent(out) :: arch(:, :) !! Arch.
+         real(dp), allocatable, intent(out) :: garch(:, :) !! Garch.
+         real(dp), allocatable, intent(out) :: residuals(:, :) !! Model residuals.
+         real(dp), allocatable, intent(out) :: covariance(:, :, :) !! Covariance matrix.
+         real(dp), allocatable, intent(out) :: standardized(:, :) !! Standardized.
+         real(dp), intent(out) :: log_likelihood !! Log-likelihood value.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          real(dp), allocatable :: covariance_inverse(:, :), cholesky(:, :), shock(:)
          real(dp) :: logdet, quadratic
          integer :: value_offset, current_row, current_column, t
@@ -4816,9 +4875,9 @@ contains
    end function mts_bekk_fit
 
    pure function mts_bekk_forecast(model, horizon) result(covariance_forecast)
-      ! Forecast BEKK conditional covariance matrices with zero future shocks.
-      type(mts_bekk_fit_t), intent(in) :: model
-      integer, intent(in) :: horizon
+      !! Forecast BEKK conditional covariance matrices with zero future shocks.
+      type(mts_bekk_fit_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       real(dp), allocatable :: covariance_forecast(:, :, :)
       real(dp) :: shock(size(model%mean))
       integer :: step, dimension
@@ -4842,8 +4901,9 @@ contains
    end function mts_bekk_forecast
 
    pure real(dp) function bekk_persistence(arch, garch) result(radius)
-      ! Approximate the dominant modulus of the BEKK second-moment operator.
-      real(dp), intent(in) :: arch(:, :), garch(:, :)
+      !! Approximate the dominant modulus of the BEKK second-moment operator.
+      real(dp), intent(in) :: arch(:, :) !! Arch.
+      real(dp), intent(in) :: garch(:, :) !! Garch.
       real(dp), allocatable :: operator(:, :), vector(:), next_vector(:)
       real(dp) :: scale
       integer :: dimension, state_size, i, j, row, column, iteration
@@ -4876,11 +4936,12 @@ contains
 
    pure function mts_dcc_fit(standardized_residuals, marginal_variance, initial, &
       max_iterations, tolerance) result(out)
-      ! Estimate Gaussian Engle DCC(1,1) correlations by stage-two likelihood.
-      real(dp), intent(in) :: standardized_residuals(:, :)
-      real(dp), intent(in), optional :: marginal_variance(:, :), initial(:)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate Gaussian Engle DCC(1,1) correlations by stage-two likelihood.
+      real(dp), intent(in) :: standardized_residuals(:, :) !! Standardized residuals.
+      real(dp), intent(in), optional :: marginal_variance(:, :) !! Marginal variance.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(mts_dcc_fit_t) :: out
       type(optimization_result_t) :: optimization
       real(dp) :: raw_initial(2), physical_initial(2), gradient_tolerance
@@ -4950,8 +5011,8 @@ contains
    contains
 
       pure function objective(raw_parameters) result(value)
-         ! Return the Gaussian DCC stage-two negative log likelihood.
-         real(dp), intent(in) :: raw_parameters(:)
+         !! Return the Gaussian DCC stage-two negative log likelihood.
+         real(dp), intent(in) :: raw_parameters(:) !! Raw parameters.
          real(dp) :: value, log_likelihood
          real(dp), allocatable :: unconditional(:, :), q(:, :, :), correlation(:, :, :)
          real(dp), allocatable :: covariance(:, :, :), residuals(:, :)
@@ -4968,13 +5029,15 @@ contains
 
       pure subroutine evaluate(raw_parameters, unconditional, q, correlation, covariance, &
          residuals, log_likelihood, evaluation_status)
-         ! Evaluate DCC Q, correlation, covariance, and likelihood paths.
-         real(dp), intent(in) :: raw_parameters(:)
-         real(dp), allocatable, intent(out) :: unconditional(:, :), q(:, :, :)
-         real(dp), allocatable, intent(out) :: correlation(:, :, :), covariance(:, :, :)
-         real(dp), allocatable, intent(out) :: residuals(:, :)
-         real(dp), intent(out) :: log_likelihood
-         integer, intent(out) :: evaluation_status
+         !! Evaluate DCC Q, correlation, covariance, and likelihood paths.
+         real(dp), intent(in) :: raw_parameters(:) !! Raw parameters.
+         real(dp), allocatable, intent(out) :: unconditional(:, :) !! Unconditional.
+         real(dp), allocatable, intent(out) :: q(:, :, :) !! Model order, dimension, or parameter.
+         real(dp), allocatable, intent(out) :: correlation(:, :, :) !! Correlation.
+         real(dp), allocatable, intent(out) :: covariance(:, :, :) !! Covariance matrix.
+         real(dp), allocatable, intent(out) :: residuals(:, :) !! Model residuals.
+         real(dp), intent(out) :: log_likelihood !! Log-likelihood value.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          real(dp), allocatable :: correlation_inverse(:, :)
          real(dp) :: arch_value, garch_value, logdet, quadratic, independent
          real(dp) :: scale(dimension), shock(dimension)
@@ -5024,9 +5087,9 @@ contains
    end function mts_dcc_fit
 
    pure function mts_dcc_forecast(model, future_variance) result(covariance_forecast)
-      ! Forecast DCC covariance matrices for supplied marginal variance forecasts.
-      type(mts_dcc_fit_t), intent(in) :: model
-      real(dp), intent(in) :: future_variance(:, :)
+      !! Forecast DCC covariance matrices for supplied marginal variance forecasts.
+      type(mts_dcc_fit_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in) :: future_variance(:, :) !! Future variance.
       real(dp), allocatable :: covariance_forecast(:, :, :)
       real(dp), allocatable :: q_forecast(:, :, :)
       real(dp) :: scale(size(future_variance, 2)), shock(size(future_variance, 2))
@@ -5063,9 +5126,10 @@ contains
    end function mts_dcc_forecast
 
    pure subroutine dcc_transform(raw_parameters, arch, garch)
-      ! Map unconstrained DCC parameters to positive coefficients summing below one.
-      real(dp), intent(in) :: raw_parameters(:)
-      real(dp), intent(out) :: arch, garch
+      !! Map unconstrained DCC parameters to positive coefficients summing below one.
+      real(dp), intent(in) :: raw_parameters(:) !! Raw parameters.
+      real(dp), intent(out) :: arch !! Arch.
+      real(dp), intent(out) :: garch !! Garch.
       real(dp) :: maximum, weights(3), denominator
 
       maximum = max(0.0_dp, maxval(raw_parameters))
@@ -5077,8 +5141,8 @@ contains
    end subroutine dcc_transform
 
    pure function dcc_inverse_transform(parameters) result(raw_parameters)
-      ! Map physical DCC coefficients to unconstrained optimizer parameters.
-      real(dp), intent(in) :: parameters(:)
+      !! Map physical DCC coefficients to unconstrained optimizer parameters.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
       real(dp) :: raw_parameters(2), remainder
 
       remainder = max(1.0_dp - sum(parameters), tiny(1.0_dp))
@@ -5087,11 +5151,12 @@ contains
 
    pure function mts_adcc_fit(standardized_residuals, marginal_variance, initial, &
       max_iterations, tolerance) result(out)
-      ! Estimate Gaussian asymmetric DCC correlations.
-      real(dp), intent(in) :: standardized_residuals(:, :)
-      real(dp), intent(in), optional :: marginal_variance(:, :), initial(:)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate Gaussian asymmetric DCC correlations.
+      real(dp), intent(in) :: standardized_residuals(:, :) !! Standardized residuals.
+      real(dp), intent(in), optional :: marginal_variance(:, :) !! Marginal variance.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(mts_adcc_fit_t) :: out
 
       out = fit_adcc_core(standardized_residuals, .false., marginal_variance, initial, &
@@ -5100,11 +5165,12 @@ contains
 
    pure function mts_adcc_t_fit(standardized_residuals, marginal_variance, initial, &
       max_iterations, tolerance) result(out)
-      ! Estimate standardized Student-t asymmetric DCC correlations.
-      real(dp), intent(in) :: standardized_residuals(:, :)
-      real(dp), intent(in), optional :: marginal_variance(:, :), initial(:)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate standardized Student-t asymmetric DCC correlations.
+      real(dp), intent(in) :: standardized_residuals(:, :) !! Standardized residuals.
+      real(dp), intent(in), optional :: marginal_variance(:, :) !! Marginal variance.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(mts_adcc_fit_t) :: out
 
       out = fit_adcc_core(standardized_residuals, .true., marginal_variance, initial, &
@@ -5113,12 +5179,13 @@ contains
 
    pure function fit_adcc_core(standardized_residuals, use_student_t, marginal_variance, &
       initial, max_iterations, tolerance) result(out)
-      ! Fit Gaussian or Student-t ADCC through a shared constrained recursion.
-      real(dp), intent(in) :: standardized_residuals(:, :)
-      logical, intent(in) :: use_student_t
-      real(dp), intent(in), optional :: marginal_variance(:, :), initial(:)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Fit Gaussian or Student-t ADCC through a shared constrained recursion.
+      real(dp), intent(in) :: standardized_residuals(:, :) !! Standardized residuals.
+      logical, intent(in) :: use_student_t !! Whether to use the student t.
+      real(dp), intent(in), optional :: marginal_variance(:, :) !! Marginal variance.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(mts_adcc_fit_t) :: out
       type(optimization_result_t) :: optimization
       real(dp), allocatable :: raw_initial(:), raw_covariance(:, :), hessian(:, :), jacobian(:, :)
@@ -5211,8 +5278,8 @@ contains
    contains
 
       pure function objective(raw_parameters) result(value)
-         ! Return the selected ADCC negative log likelihood.
-         real(dp), intent(in) :: raw_parameters(:)
+         !! Return the selected ADCC negative log likelihood.
+         real(dp), intent(in) :: raw_parameters(:) !! Raw parameters.
          real(dp) :: value, log_likelihood
          real(dp), allocatable :: unconditional(:, :), negative_unconditional(:, :)
          real(dp), allocatable :: q(:, :, :), correlation(:, :, :), covariance(:, :, :), residuals(:, :)
@@ -5229,13 +5296,16 @@ contains
 
       pure subroutine evaluate(raw_parameters, unconditional, negative_unconditional, q, &
          correlation, covariance, residuals, log_likelihood, evaluation_status)
-         ! Evaluate Gaussian or Student-t ADCC paths and likelihood.
-         real(dp), intent(in) :: raw_parameters(:)
-         real(dp), allocatable, intent(out) :: unconditional(:, :), negative_unconditional(:, :)
-         real(dp), allocatable, intent(out) :: q(:, :, :), correlation(:, :, :), covariance(:, :, :)
-         real(dp), allocatable, intent(out) :: residuals(:, :)
-         real(dp), intent(out) :: log_likelihood
-         integer, intent(out) :: evaluation_status
+         !! Evaluate Gaussian or Student-t ADCC paths and likelihood.
+         real(dp), intent(in) :: raw_parameters(:) !! Raw parameters.
+         real(dp), allocatable, intent(out) :: unconditional(:, :) !! Unconditional.
+         real(dp), allocatable, intent(out) :: negative_unconditional(:, :) !! Negative unconditional.
+         real(dp), allocatable, intent(out) :: q(:, :, :) !! Model order, dimension, or parameter.
+         real(dp), allocatable, intent(out) :: correlation(:, :, :) !! Correlation.
+         real(dp), allocatable, intent(out) :: covariance(:, :, :) !! Covariance matrix.
+         real(dp), allocatable, intent(out) :: residuals(:, :) !! Model residuals.
+         real(dp), intent(out) :: log_likelihood !! Log-likelihood value.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          real(dp), allocatable :: correlation_inverse(:, :), negative(:, :)
          real(dp) :: arch_value, garch_value, asymmetry_value, degrees, constant
          real(dp) :: logdet, quadratic, independent, scale(dimension), shock(dimension), negative_shock(dimension)
@@ -5300,9 +5370,9 @@ contains
    end function fit_adcc_core
 
    pure function mts_adcc_forecast(model, future_variance) result(covariance_forecast)
-      ! Forecast Gaussian or Student-t ADCC covariance matrices.
-      type(mts_adcc_fit_t), intent(in) :: model
-      real(dp), intent(in) :: future_variance(:, :)
+      !! Forecast Gaussian or Student-t ADCC covariance matrices.
+      type(mts_adcc_fit_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in) :: future_variance(:, :) !! Future variance.
       real(dp), allocatable :: covariance_forecast(:, :, :), q_forecast(:, :, :)
       real(dp) :: scale(size(future_variance, 2)), shock(size(future_variance, 2))
       real(dp) :: negative_shock(size(future_variance, 2))
@@ -5342,9 +5412,11 @@ contains
    end function mts_adcc_forecast
 
    pure subroutine adcc_transform(raw_parameters, arch, garch, asymmetry)
-      ! Map unconstrained ADCC parameters to positive coefficients summing below one.
-      real(dp), intent(in) :: raw_parameters(:)
-      real(dp), intent(out) :: arch, garch, asymmetry
+      !! Map unconstrained ADCC parameters to positive coefficients summing below one.
+      real(dp), intent(in) :: raw_parameters(:) !! Raw parameters.
+      real(dp), intent(out) :: arch !! Arch.
+      real(dp), intent(out) :: garch !! Garch.
+      real(dp), intent(out) :: asymmetry !! Asymmetry.
       real(dp) :: maximum, weights(4), denominator
 
       maximum = max(0.0_dp, maxval(raw_parameters(:3)))
@@ -5357,8 +5429,8 @@ contains
    end subroutine adcc_transform
 
    pure function adcc_inverse_transform(parameters) result(raw_parameters)
-      ! Map physical ADCC coefficients to unconstrained optimizer parameters.
-      real(dp), intent(in) :: parameters(:)
+      !! Map physical ADCC coefficients to unconstrained optimizer parameters.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
       real(dp) :: raw_parameters(3), remainder
 
       remainder = max(1.0_dp - sum(parameters), tiny(1.0_dp))
@@ -5367,12 +5439,13 @@ contains
 
    pure function mts_tse_tsui_fit(standardized_residuals, window, marginal_variance, &
       initial, max_iterations, tolerance) result(out)
-      ! Estimate Gaussian Tse-Tsui rolling-correlation DCC.
-      real(dp), intent(in) :: standardized_residuals(:, :)
-      integer, intent(in), optional :: window
-      real(dp), intent(in), optional :: marginal_variance(:, :), initial(:)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate Gaussian Tse-Tsui rolling-correlation DCC.
+      real(dp), intent(in) :: standardized_residuals(:, :) !! Standardized residuals.
+      integer, intent(in), optional :: window !! Window.
+      real(dp), intent(in), optional :: marginal_variance(:, :) !! Marginal variance.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(mts_tse_tsui_fit_t) :: out
 
       out = fit_tse_tsui_core(standardized_residuals, .false., window, marginal_variance, &
@@ -5381,12 +5454,13 @@ contains
 
    pure function mts_tse_tsui_t_fit(standardized_residuals, window, marginal_variance, &
       initial, max_iterations, tolerance) result(out)
-      ! Estimate standardized Student-t Tse-Tsui rolling-correlation DCC.
-      real(dp), intent(in) :: standardized_residuals(:, :)
-      integer, intent(in), optional :: window
-      real(dp), intent(in), optional :: marginal_variance(:, :), initial(:)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate standardized Student-t Tse-Tsui rolling-correlation DCC.
+      real(dp), intent(in) :: standardized_residuals(:, :) !! Standardized residuals.
+      integer, intent(in), optional :: window !! Window.
+      real(dp), intent(in), optional :: marginal_variance(:, :) !! Marginal variance.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(mts_tse_tsui_fit_t) :: out
 
       out = fit_tse_tsui_core(standardized_residuals, .true., window, marginal_variance, &
@@ -5395,13 +5469,14 @@ contains
 
    pure function fit_tse_tsui_core(standardized_residuals, use_student_t, window, &
       marginal_variance, initial, max_iterations, tolerance) result(out)
-      ! Fit Gaussian or Student-t Tse-Tsui DCC through one rolling recursion.
-      real(dp), intent(in) :: standardized_residuals(:, :)
-      logical, intent(in) :: use_student_t
-      integer, intent(in), optional :: window
-      real(dp), intent(in), optional :: marginal_variance(:, :), initial(:)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Fit Gaussian or Student-t Tse-Tsui DCC through one rolling recursion.
+      real(dp), intent(in) :: standardized_residuals(:, :) !! Standardized residuals.
+      logical, intent(in) :: use_student_t !! Whether to use the student t.
+      integer, intent(in), optional :: window !! Window.
+      real(dp), intent(in), optional :: marginal_variance(:, :) !! Marginal variance.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(mts_tse_tsui_fit_t) :: out
       type(optimization_result_t) :: optimization
       real(dp), allocatable :: physical_initial(:), raw_initial(:), hessian(:, :)
@@ -5492,8 +5567,8 @@ contains
    contains
 
       pure function objective(raw_parameters) result(value)
-         ! Return the selected Tse-Tsui negative log likelihood.
-         real(dp), intent(in) :: raw_parameters(:)
+         !! Return the selected Tse-Tsui negative log likelihood.
+         real(dp), intent(in) :: raw_parameters(:) !! Raw parameters.
          real(dp) :: value, log_likelihood
          real(dp), allocatable :: unconditional(:, :), local(:, :, :), correlation(:, :, :)
          real(dp), allocatable :: covariance(:, :, :), residuals(:, :)
@@ -5510,13 +5585,15 @@ contains
 
       pure subroutine evaluate(raw_parameters, unconditional, local, correlation, covariance, &
          residuals, log_likelihood, evaluation_status)
-         ! Evaluate rolling correlations, covariance paths, and likelihood.
-         real(dp), intent(in) :: raw_parameters(:)
-         real(dp), allocatable, intent(out) :: unconditional(:, :), local(:, :, :)
-         real(dp), allocatable, intent(out) :: correlation(:, :, :), covariance(:, :, :)
-         real(dp), allocatable, intent(out) :: residuals(:, :)
-         real(dp), intent(out) :: log_likelihood
-         integer, intent(out) :: evaluation_status
+         !! Evaluate rolling correlations, covariance paths, and likelihood.
+         real(dp), intent(in) :: raw_parameters(:) !! Raw parameters.
+         real(dp), allocatable, intent(out) :: unconditional(:, :) !! Unconditional.
+         real(dp), allocatable, intent(out) :: local(:, :, :) !! Local.
+         real(dp), allocatable, intent(out) :: correlation(:, :, :) !! Correlation.
+         real(dp), allocatable, intent(out) :: covariance(:, :, :) !! Covariance matrix.
+         real(dp), allocatable, intent(out) :: residuals(:, :) !! Model residuals.
+         real(dp), intent(out) :: log_likelihood !! Log-likelihood value.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          real(dp), allocatable :: inverse(:, :)
          real(dp) :: previous, rolling, degrees, constant, logdet, quadratic, independent
          real(dp) :: scale(dimension)
@@ -5525,13 +5602,13 @@ contains
          call dcc_transform(raw_parameters, previous, rolling)
          degrees = 0.0_dp
          if (use_student_t) degrees = 2.0_dp + exp(min(50.0_dp, raw_parameters(3)))
-         unconditional = sample_correlation(standardized_residuals)
+         unconditional = data_correlation_matrix(standardized_residuals)
          allocate(local(dimension, dimension, n), correlation(dimension, dimension, n))
          allocate(covariance(dimension, dimension, n), residuals(n, dimension))
          local = spread(unconditional, 3, n)
          correlation = spread(unconditional, 3, n)
          do t = rolling_window + 1, n
-            local(:, :, t) = sample_correlation(&
+            local(:, :, t) = data_correlation_matrix(&
                standardized_residuals(t - rolling_window:t - 1, :))
             correlation(:, :, t) = (1.0_dp - previous - rolling)*unconditional + &
                previous*correlation(:, :, t - 1) + rolling*local(:, :, t)
@@ -5566,34 +5643,12 @@ contains
          evaluation_status = 0
       end subroutine evaluate
 
-      pure function sample_correlation(values) result(correlation_matrix)
-         ! Return a sample correlation matrix for a rolling data block.
-         real(dp), intent(in) :: values(:, :)
-         real(dp) :: correlation_matrix(size(values, 2), size(values, 2))
-         real(dp) :: centered(size(values, 1), size(values, 2)), scale(size(values, 2))
-         integer :: row, column
-
-         centered = values - spread(sum(values, 1)/real(size(values, 1), dp), 1, size(values, 1))
-         correlation_matrix = matmul(transpose(centered), centered)/real(size(values, 1) - 1, dp)
-         do row = 1, size(values, 2)
-            scale(row) = sqrt(max(correlation_matrix(row, row), tiny(1.0_dp)))
-         end do
-         do column = 1, size(values, 2)
-            do row = 1, size(values, 2)
-               correlation_matrix(row, column) = correlation_matrix(row, column)/ &
-                  (scale(row)*scale(column))
-            end do
-         end do
-         do row = 1, size(values, 2)
-            correlation_matrix(row, row) = 1.0_dp
-         end do
-      end function sample_correlation
    end function fit_tse_tsui_core
 
    pure function mts_tse_tsui_forecast(model, future_variance) result(covariance_forecast)
-      ! Forecast Tse-Tsui covariance while holding the latest rolling target fixed.
-      type(mts_tse_tsui_fit_t), intent(in) :: model
-      real(dp), intent(in) :: future_variance(:, :)
+      !! Forecast Tse-Tsui covariance while holding the latest rolling target fixed.
+      type(mts_tse_tsui_fit_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in) :: future_variance(:, :) !! Future variance.
       real(dp), allocatable :: covariance_forecast(:, :, :), correlation(:, :, :)
       real(dp) :: scale(size(future_variance, 2))
       integer :: horizon, dimension, step, row, column
@@ -5623,10 +5678,11 @@ contains
    end function mts_tse_tsui_forecast
 
    pure function mts_ewma_fit(returns, decay, max_iterations, tolerance) result(out)
-      ! Compute or estimate the MTS multivariate EWMA covariance model.
-      real(dp), intent(in) :: returns(:, :)
-      real(dp), intent(in), optional :: decay, tolerance
-      integer, intent(in), optional :: max_iterations
+      !! Compute or estimate the MTS multivariate EWMA covariance model.
+      real(dp), intent(in) :: returns(:, :) !! Returns.
+      real(dp), intent(in), optional :: decay !! Decay.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(mts_ewma_fit_t) :: out
       type(optimization_result_t) :: optimization
       real(dp) :: requested_decay, raw_initial(1), hessian(1, 1), variance_raw
@@ -5671,8 +5727,8 @@ contains
    contains
 
       pure function objective(raw_parameter) result(value)
-         ! Return the EWMA Gaussian negative log likelihood.
-         real(dp), intent(in) :: raw_parameter(:)
+         !! Return the EWMA Gaussian negative log likelihood.
+         real(dp), intent(in) :: raw_parameter(:) !! Raw parameter.
          real(dp) :: value, log_likelihood
          real(dp), allocatable :: covariance(:, :, :)
          integer :: evaluation_status
@@ -5688,9 +5744,9 @@ contains
    end function mts_ewma_fit
 
    pure function mts_ewma_forecast(model, horizon) result(covariance_forecast)
-      ! Forecast EWMA covariance matrices after the final observed shock.
-      type(mts_ewma_fit_t), intent(in) :: model
-      integer, intent(in) :: horizon
+      !! Forecast EWMA covariance matrices after the final observed shock.
+      type(mts_ewma_fit_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       real(dp), allocatable :: covariance_forecast(:, :, :)
       real(dp), allocatable :: shock(:)
       integer :: variables, step
@@ -5711,11 +5767,12 @@ contains
    end function mts_ewma_forecast
 
    pure subroutine ewma_path(residuals, decay, covariance, log_likelihood, info)
-      ! Evaluate an EWMA covariance recursion and Gaussian likelihood.
-      real(dp), intent(in) :: residuals(:, :), decay
-      real(dp), allocatable, intent(out) :: covariance(:, :, :)
-      real(dp), intent(out) :: log_likelihood
-      integer, intent(out) :: info
+      !! Evaluate an EWMA covariance recursion and Gaussian likelihood.
+      real(dp), intent(in) :: residuals(:, :) !! Model residuals.
+      real(dp), intent(in) :: decay !! Decay.
+      real(dp), allocatable, intent(out) :: covariance(:, :, :) !! Covariance matrix.
+      real(dp), intent(out) :: log_likelihood !! Log-likelihood value.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: inverse(:, :)
       real(dp) :: shock(size(residuals, 2)), logdet, quadratic
       integer :: n, variables, t
@@ -5740,8 +5797,8 @@ contains
    end subroutine ewma_path
 
    pure elemental real(dp) function logistic(value) result(probability)
-      ! Return a numerically stable logistic transform.
-      real(dp), intent(in) :: value
+      !! Return a numerically stable logistic transform.
+      real(dp), intent(in) :: value !! Input value.
       if (value >= 0.0_dp) then
          probability = 1.0_dp/(1.0_dp + exp(-value))
       else
@@ -5750,10 +5807,13 @@ contains
    end function logistic
 
    pure function mts_mchol_fit(returns, window, decay, var_order, max_iterations, tolerance) result(out)
-      ! Fit the MTS moving-Cholesky model with component GARCH variances.
-      real(dp), intent(in) :: returns(:, :)
-      integer, intent(in), optional :: window, var_order, max_iterations
-      real(dp), intent(in), optional :: decay, tolerance
+      !! Fit the MTS moving-Cholesky model with component GARCH variances.
+      real(dp), intent(in) :: returns(:, :) !! Returns.
+      integer, intent(in), optional :: window !! Window.
+      integer, intent(in), optional :: var_order !! Var order.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: decay !! Decay.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(mts_mchol_fit_t) :: out
       type(mts_var_fit_t) :: prefit
       real(dp), allocatable :: raw_coefficients(:, :), smoothed(:, :), component(:), variance(:)
@@ -5870,9 +5930,9 @@ contains
    end function mts_mchol_fit
 
    pure function mts_mchol_forecast(model, horizon) result(covariance_forecast)
-      ! Forecast moving-Cholesky covariances with final smoothed coefficients.
-      type(mts_mchol_fit_t), intent(in) :: model
-      integer, intent(in) :: horizon
+      !! Forecast moving-Cholesky covariances with final smoothed coefficients.
+      type(mts_mchol_fit_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       real(dp), allocatable :: covariance_forecast(:, :, :)
       real(dp), allocatable :: triangular(:, :), inverse(:, :), diagonal(:, :), variance(:, :)
       integer :: variables, variable, start, step, status
@@ -5921,11 +5981,12 @@ contains
    end function mts_mchol_forecast
 
    pure subroutine recursive_coefficients(response, predictors, window, coefficients, info)
-      ! Compute expanding-window recursive least-squares coefficients.
-      real(dp), intent(in) :: response(:), predictors(:, :)
-      integer, intent(in) :: window
-      real(dp), allocatable, intent(out) :: coefficients(:, :)
-      integer, intent(out) :: info
+      !! Compute expanding-window recursive least-squares coefficients.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      integer, intent(in) :: window !! Window.
+      real(dp), allocatable, intent(out) :: coefficients(:, :) !! Model coefficients.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: cross(:, :), inverse(:, :), beta(:), gain(:), predictor(:)
       real(dp) :: denominator, error
       integer :: n, count_predictors, t, row, status
@@ -5956,13 +6017,13 @@ contains
    end subroutine recursive_coefficients
 
    pure subroutine fit_component_garch(series, max_iterations, tolerance, parameters, variance, info)
-      ! Fit a Gaussian GARCH(1,1) variance path for one orthogonal component.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: max_iterations
-      real(dp), intent(in) :: tolerance
-      real(dp), intent(out) :: parameters(3)
-      real(dp), allocatable, intent(out) :: variance(:)
-      integer, intent(out) :: info
+      !! Fit a Gaussian GARCH(1,1) variance path for one orthogonal component.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(out) :: parameters(3) !! Model parameter values.
+      real(dp), allocatable, intent(out) :: variance(:) !! Variance value or matrix.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       type(optimization_result_t) :: optimization
       real(dp) :: initial(3), sample_variance
 
@@ -5976,8 +6037,8 @@ contains
    contains
 
       pure function objective(raw_parameters) result(value)
-         ! Return a univariate Gaussian GARCH negative log likelihood.
-         real(dp), intent(in) :: raw_parameters(:)
+         !! Return a univariate Gaussian GARCH negative log likelihood.
+         real(dp), intent(in) :: raw_parameters(:) !! Raw parameters.
          real(dp) :: value, physical(3)
          real(dp), allocatable :: path(:)
          integer :: evaluation_status
@@ -5992,9 +6053,9 @@ contains
       end function objective
 
       pure subroutine transform_garch(raw_parameters, physical)
-         ! Map unconstrained values to positive stationary GARCH parameters.
-         real(dp), intent(in) :: raw_parameters(:)
-         real(dp), intent(out) :: physical(3)
+         !! Map unconstrained values to positive stationary GARCH parameters.
+         real(dp), intent(in) :: raw_parameters(:) !! Raw parameters.
+         real(dp), intent(out) :: physical(3) !! Physical.
          real(dp) :: arch_value, garch_value
 
          physical(1) = exp(min(50.0_dp, raw_parameters(1)))
@@ -6003,10 +6064,10 @@ contains
       end subroutine transform_garch
 
       pure subroutine variance_path(physical, path, evaluation_status)
-         ! Evaluate the GARCH variance recursion.
-         real(dp), intent(in) :: physical(3)
-         real(dp), allocatable, intent(out) :: path(:)
-         integer, intent(out) :: evaluation_status
+         !! Evaluate the GARCH variance recursion.
+         real(dp), intent(in) :: physical(3) !! Physical.
+         real(dp), allocatable, intent(out) :: path(:) !! Path.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          integer :: t
 
          allocate(path(size(series)))
@@ -6023,9 +6084,11 @@ contains
    end subroutine fit_component_garch
 
    pure function mts_sccor(series, end_index, span, groups) result(out)
-      ! Estimate MTS group-constrained correlations over a selected sample window.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: end_index, span, groups(:)
+      !! Estimate MTS group-constrained correlations over a selected sample window.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: end_index !! Index of end.
+      integer, intent(in) :: span !! Span.
+      integer, intent(in) :: groups(:) !! Groups.
       type(mts_sccor_t) :: out
       integer :: n, variables, ending, window, required, group_count
       integer :: first_group, second_group, first_start, second_start
@@ -6053,7 +6116,7 @@ contains
       out%start = ending - window + 1
       out%end = ending
       out%span = window
-      out%unconstrained = sample_correlation_matrix(series(out%start:ending, :))
+      out%unconstrained = data_correlation_matrix(series(out%start:ending, :))
       out%constrained = out%unconstrained
       first_start = 1
       do first_group = 1, group_count
@@ -6090,9 +6153,9 @@ contains
    end function mts_sccor
 
    pure function mts_arch_test(series, lag) result(out)
-      ! Perform the MTS McLeod-Li and rank-based ARCH tests.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: lag
+      !! Perform the MTS McLeod-Li and rank-based ARCH tests.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: lag !! Lag index or number of lags.
       type(mts_arch_test_t) :: out
 
       call serial_dependence_tests(series**2, lag, out%statistic, out%p_value, out%info)
@@ -6100,10 +6163,10 @@ contains
    end function mts_arch_test
 
    pure function mts_march_test(series, lag, robust_probability) result(out)
-      ! Perform the four MTS multivariate ARCH tests.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: lag
-      real(dp), intent(in), optional :: robust_probability
+      !! Perform the four MTS multivariate ARCH tests.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: lag !! Lag index or number of lags.
+      real(dp), intent(in), optional :: robust_probability !! Robust probability.
       type(mts_march_test_t) :: out
       type(mts_mch_diagnostic_t) :: diagnostic
       real(dp), allocatable :: centered(:, :), covariance(:, :), covariance_path(:, :, :)
@@ -6131,11 +6194,12 @@ contains
    end function mts_march_test
 
    pure subroutine serial_dependence_tests(values, lag, statistic, p_value, info)
-      ! Compute Ljung-Box and rank-based serial-dependence tests.
-      real(dp), intent(in) :: values(:)
-      integer, intent(in) :: lag
-      real(dp), intent(out) :: statistic(2), p_value(2)
-      integer, intent(out) :: info
+      !! Compute Ljung-Box and rank-based serial-dependence tests.
+      real(dp), intent(in) :: values(:) !! Input values.
+      integer, intent(in) :: lag !! Lag index or number of lags.
+      real(dp), intent(out) :: statistic(2) !! Statistic.
+      real(dp), intent(out) :: p_value(2) !! P value.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: autocorrelation(:), ranks(:)
       real(dp) :: mean_value, denominator, mu, rank_variance
       integer :: n, current_lag, t
@@ -6182,31 +6246,9 @@ contains
       info = 0
    end subroutine serial_dependence_tests
 
-   pure function sample_correlation_matrix(values) result(correlation)
-      ! Return the sample correlation matrix of a multivariate data block.
-      real(dp), intent(in) :: values(:, :)
-      real(dp) :: correlation(size(values, 2), size(values, 2))
-      real(dp) :: centered(size(values, 1), size(values, 2)), scale(size(values, 2))
-      integer :: row, column
-
-      centered = values - spread(sum(values, 1)/real(size(values, 1), dp), 1, size(values, 1))
-      correlation = matmul(transpose(centered), centered)/real(size(values, 1) - 1, dp)
-      do row = 1, size(values, 2)
-         scale(row) = sqrt(max(correlation(row, row), tiny(1.0_dp)))
-      end do
-      do column = 1, size(values, 2)
-         do row = 1, size(values, 2)
-            correlation(row, column) = correlation(row, column)/(scale(row)*scale(column))
-         end do
-      end do
-      do row = 1, size(values, 2)
-         correlation(row, row) = 1.0_dp
-      end do
-   end function sample_correlation_matrix
-
    pure function mts_correlation_to_angles(correlation) result(angles)
-      ! Convert a positive-definite correlation matrix to hyperspherical angles.
-      real(dp), intent(in) :: correlation(:, :)
+      !! Convert a positive-definite correlation matrix to hyperspherical angles.
+      real(dp), intent(in) :: correlation(:, :) !! Correlation.
       real(dp), allocatable :: angles(:)
       real(dp), allocatable :: lower(:, :)
       real(dp) :: product
@@ -6231,9 +6273,9 @@ contains
    end function mts_correlation_to_angles
 
    pure function mts_angles_to_correlation(angles, dimension) result(correlation)
-      ! Convert full hyperspherical angles to a correlation matrix.
-      real(dp), intent(in) :: angles(:)
-      integer, intent(in) :: dimension
+      !! Convert full hyperspherical angles to a correlation matrix.
+      real(dp), intent(in) :: angles(:) !! Angles.
+      integer, intent(in) :: dimension !! Dimension.
       real(dp), allocatable :: correlation(:, :)
       real(dp), allocatable :: lower(:, :)
       real(dp) :: product
@@ -6261,12 +6303,15 @@ contains
 
    pure function mts_copula_fit(standardized_residuals, groups, window, baseline_angles, &
       estimate_baseline, initial, max_iterations, tolerance) result(out)
-      ! Estimate the grouped dynamic Student-t copula from MTS mtCopula.
-      real(dp), intent(in) :: standardized_residuals(:, :)
-      integer, intent(in) :: groups(:)
-      integer, intent(in), optional :: window, max_iterations
-      real(dp), intent(in), optional :: baseline_angles(:), initial(:), tolerance
-      logical, intent(in), optional :: estimate_baseline
+      !! Estimate the grouped dynamic Student-t copula from MTS mtCopula.
+      real(dp), intent(in) :: standardized_residuals(:, :) !! Standardized residuals.
+      integer, intent(in) :: groups(:) !! Groups.
+      integer, intent(in), optional :: window !! Window.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: baseline_angles(:) !! Baseline angles.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      logical, intent(in), optional :: estimate_baseline !! Whether to estimate the baseline.
       type(mts_copula_fit_t) :: out
       type(optimization_result_t) :: optimization
       type(mts_sccor_t) :: grouped
@@ -6364,8 +6409,8 @@ contains
    contains
 
       pure function objective(raw_parameters) result(value)
-         ! Return the dynamic Student-t copula negative log likelihood.
-         real(dp), intent(in) :: raw_parameters(:)
+         !! Return the dynamic Student-t copula negative log likelihood.
+         real(dp), intent(in) :: raw_parameters(:) !! Raw parameters.
          real(dp) :: value, log_likelihood
          real(dp), allocatable :: angles(:, :), correlation(:, :, :)
          integer :: evaluation_status
@@ -6379,11 +6424,12 @@ contains
       end function objective
 
       pure subroutine evaluate(raw_parameters, angle_path, correlation_path, log_likelihood, evaluation_status)
-         ! Evaluate dynamic grouped angles and the standardized t-copula likelihood.
-         real(dp), intent(in) :: raw_parameters(:)
-         real(dp), allocatable, intent(out) :: angle_path(:, :), correlation_path(:, :, :)
-         real(dp), intent(out) :: log_likelihood
-         integer, intent(out) :: evaluation_status
+         !! Evaluate dynamic grouped angles and the standardized t-copula likelihood.
+         real(dp), intent(in) :: raw_parameters(:) !! Raw parameters.
+         real(dp), allocatable, intent(out) :: angle_path(:, :) !! Angle path.
+         real(dp), allocatable, intent(out) :: correlation_path(:, :, :) !! Correlation path.
+         real(dp), intent(out) :: log_likelihood !! Log-likelihood value.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          real(dp), allocatable :: baseline(:), inverse(:, :)
          real(dp) :: degrees, previous, local, logdet, quadratic, constant, marginal
          integer :: observation
@@ -6430,10 +6476,11 @@ contains
    end function mts_copula_fit
 
    pure subroutine extract_group_angles(full_angles, dimension, groups, group_angles)
-      ! Extract within- and between-group representative correlation angles.
-      real(dp), intent(in) :: full_angles(:)
-      integer, intent(in) :: dimension, groups(:)
-      real(dp), intent(out) :: group_angles(:)
+      !! Extract within- and between-group representative correlation angles.
+      real(dp), intent(in) :: full_angles(:) !! Full angles.
+      integer, intent(in) :: dimension !! Dimension.
+      integer, intent(in) :: groups(:) !! Groups.
+      real(dp), intent(out) :: group_angles(:) !! Group angles.
       real(dp), allocatable :: correlation(:, :)
       real(dp) :: average
       integer :: angle_count, first_group, second_group, first_start, second_start, index
@@ -6464,11 +6511,11 @@ contains
    end subroutine extract_group_angles
 
    pure subroutine grouped_angles_to_correlation(angles, groups, correlation, info)
-      ! Construct a positive-definite block-equicorrelation matrix from group angles.
-      real(dp), intent(in) :: angles(:)
-      integer, intent(in) :: groups(:)
-      real(dp), intent(out) :: correlation(:, :)
-      integer, intent(out) :: info
+      !! Construct a positive-definite block-equicorrelation matrix from group angles.
+      real(dp), intent(in) :: angles(:) !! Angles.
+      integer, intent(in) :: groups(:) !! Groups.
+      real(dp), intent(out) :: correlation(:, :) !! Correlation.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: lower(:, :)
       real(dp) :: value
       integer :: first_group, second_group, first_start, second_start, index, i
@@ -6505,10 +6552,12 @@ contains
    end subroutine grouped_angles_to_correlation
 
    pure function mts_var_missing(series, pi_weights, sigma, time_index, intercept) result(out)
-      ! Estimate a completely missing vector observation by conditional GLS.
-      real(dp), intent(in) :: series(:, :), pi_weights(:, :, :), sigma(:, :)
-      integer, intent(in) :: time_index
-      real(dp), intent(in), optional :: intercept(:)
+      !! Estimate a completely missing vector observation by conditional GLS.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: pi_weights(:, :, :) !! Pi weights.
+      real(dp), intent(in) :: sigma(:, :) !! Scale parameter or standard deviation.
+      integer, intent(in) :: time_index !! Index of time.
+      real(dp), intent(in), optional :: intercept(:) !! Model intercept.
       type(mts_missing_result_t) :: out
       logical :: missing(size(series, 2))
 
@@ -6518,11 +6567,13 @@ contains
 
    pure function mts_var_partial_missing(series, pi_weights, sigma, time_index, &
       missing, intercept) result(out)
-      ! Estimate selected missing components of one vector observation by GLS.
-      real(dp), intent(in) :: series(:, :), pi_weights(:, :, :), sigma(:, :)
-      integer, intent(in) :: time_index
-      logical, intent(in) :: missing(:)
-      real(dp), intent(in), optional :: intercept(:)
+      !! Estimate selected missing components of one vector observation by GLS.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      real(dp), intent(in) :: pi_weights(:, :, :) !! Pi weights.
+      real(dp), intent(in) :: sigma(:, :) !! Scale parameter or standard deviation.
+      integer, intent(in) :: time_index !! Index of time.
+      logical, intent(in) :: missing(:) !! Flag controlling missing.
+      real(dp), intent(in), optional :: intercept(:) !! Model intercept.
       type(mts_missing_result_t) :: out
       real(dp), allocatable :: sigma_inverse(:, :), normal(:, :), right_hand(:)
       real(dp), allocatable :: design(:, :), base(:), constant(:), work_series(:, :)
@@ -6596,10 +6647,11 @@ contains
    end function mts_var_partial_missing
 
    pure function mts_granger_test(series, order, targets, include_mean) result(out)
-      ! Wald-test whether complementary variables Granger-cause target equations.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: order, targets(:)
-      logical, intent(in), optional :: include_mean
+      !! Wald-test whether complementary variables Granger-cause target equations.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
+      integer, intent(in) :: targets(:) !! Targets.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
       type(mts_granger_test_t) :: out
       real(dp), allocatable :: design(:, :), cross(:, :), inverse(:, :), covariance_inverse(:, :)
       integer :: n, variables, rows, offset, lag, i, j, restriction, status
@@ -6683,8 +6735,8 @@ contains
    end function mts_granger_test
 
    pure function unique_indices(values) result(unique)
-      ! Return the first occurrence of each integer value.
-      integer, intent(in) :: values(:)
+      !! Return the first occurrence of each integer value.
+      integer, intent(in) :: values(:) !! Input values.
       integer, allocatable :: unique(:)
       integer :: work(size(values)), count_unique, i
 
@@ -6699,10 +6751,10 @@ contains
    end function unique_indices
 
    pure function mts_mq(series, max_lag, adjustment) result(out)
-      ! Compute multivariate Ljung-Box statistics for all lags through max_lag.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: max_lag
-      integer, intent(in), optional :: adjustment
+      !! Compute multivariate Ljung-Box statistics for all lags through max_lag.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      integer, intent(in), optional :: adjustment !! Adjustment.
       type(mts_mq_t) :: out
       real(dp), allocatable :: centered(:, :), covariance(:, :), inverse(:, :), lag_covariance(:, :), product(:, :)
       integer :: n, variables, lag, status, adjust, i
@@ -6740,10 +6792,10 @@ contains
    end function mts_mq
 
    pure function mts_diagnostic(residuals, max_lag, adjustment) result(out)
-      ! Compute residual cross-correlations and multivariate Ljung-Box diagnostics.
-      real(dp), intent(in) :: residuals(:, :)
-      integer, intent(in) :: max_lag
-      integer, intent(in), optional :: adjustment
+      !! Compute residual cross-correlations and multivariate Ljung-Box diagnostics.
+      real(dp), intent(in) :: residuals(:, :) !! Model residuals.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      integer, intent(in), optional :: adjustment !! Adjustment.
       type(mts_diagnostic_t) :: out
       real(dp), allocatable :: centered(:, :), covariance(:, :), inverse(:, :), standardized(:, :)
       real(dp), allocatable :: vector(:), kron_inverse(:, :)
@@ -6788,11 +6840,13 @@ contains
    end function mts_diagnostic
 
    pure function mts_var_backtest(series, order, origin, horizon, reestimate, include_mean) result(out)
-      ! Run rolling-origin VAR forecasts with periodic model re-estimation.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: order, origin, horizon
-      integer, intent(in), optional :: reestimate
-      logical, intent(in), optional :: include_mean
+      !! Run rolling-origin VAR forecasts with periodic model re-estimation.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
+      integer, intent(in) :: origin !! Origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in), optional :: reestimate !! Reestimate.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
       type(mts_var_backtest_t) :: out
       type(mts_var_fit_t) :: fitted
       type(mts_var_forecast_t) :: prediction
@@ -6849,11 +6903,12 @@ contains
    end function mts_var_backtest
 
    pure function mts_scm_identify(series, max_ar, max_ma, extra_lags, significance) result(out)
-      ! Identify first-stage scalar components using corrected canonical correlations.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: max_ar, max_ma
-      integer, intent(in), optional :: extra_lags
-      real(dp), intent(in), optional :: significance
+      !! Identify first-stage scalar components using corrected canonical correlations.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: max_ar !! Maximum autoregressive.
+      integer, intent(in) :: max_ma !! Maximum moving-average.
+      integer, intent(in), optional :: extra_lags !! Extra lags.
+      real(dp), intent(in), optional :: significance !! Significance.
       type(mts_scm_identification_t) :: out
       real(dp), allocatable :: current_block(:, :), past_block(:, :)
       real(dp), allocatable :: squared_correlation(:), x_coefficients(:, :), y_coefficients(:, :)
@@ -6947,11 +7002,12 @@ contains
 
    pure function mts_scm_identify_details(series, max_ar, max_ma, extra_lags, &
       significance) result(out)
-      ! Find independent scalar components and their individual ARMA orders.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: max_ar, max_ma
-      integer, intent(in), optional :: extra_lags
-      real(dp), intent(in), optional :: significance
+      !! Find independent scalar components and their individual ARMA orders.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: max_ar !! Maximum autoregressive.
+      integer, intent(in) :: max_ma !! Maximum moving-average.
+      integer, intent(in), optional :: extra_lags !! Extra lags.
+      real(dp), intent(in), optional :: significance !! Significance.
       type(mts_scm_structure_t) :: out
       real(dp), allocatable :: current(:, :), past(:, :), correlations(:)
       real(dp), allocatable :: x_coefficients(:, :), y_coefficients(:, :), direction(:), basis(:, :)
@@ -7021,8 +7077,9 @@ contains
    end function mts_scm_identify_details
 
    pure function mts_scm_specification(order, pivot) result(out)
-      ! Build SCM parameter indicators for supplied component orders and pivots.
-      integer, intent(in) :: order(:, :), pivot(:)
+      !! Build SCM parameter indicators for supplied component orders and pivots.
+      integer, intent(in) :: order(:, :) !! Model or polynomial order.
+      integer, intent(in) :: pivot(:) !! Pivot.
       type(mts_scm_spec_t) :: out
       integer :: dimension, row, column, lag, redundant
 
@@ -7074,12 +7131,15 @@ contains
 
    pure function mts_scm_fit(series, order, pivot, include_mean, initial, estimated, &
       max_iterations, tolerance) result(out)
-      ! Fit a scalar-component VARMA model with joint transformation estimates.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: order(:, :), pivot(:)
-      logical, intent(in), optional :: include_mean, estimated(:)
-      real(dp), intent(in), optional :: initial(:), tolerance
-      integer, intent(in), optional :: max_iterations
+      !! Fit a scalar-component VARMA model with joint transformation estimates.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: order(:, :) !! Model or polynomial order.
+      integer, intent(in) :: pivot(:) !! Pivot.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      logical, intent(in), optional :: estimated(:) !! Flag controlling estimated.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(mts_scm_fit_t) :: out
       type(mts_kronecker_spec_t) :: structural_specification
       integer :: dimension, overall_order
@@ -7111,11 +7171,13 @@ contains
 
    pure function mts_scm_refine(series, fit, threshold, max_steps, &
       max_iterations, tolerance) result(out)
-      ! Refine an SCM fit by backward elimination of insignificant parameters.
-      real(dp), intent(in) :: series(:, :)
-      type(mts_scm_fit_t), intent(in) :: fit
-      real(dp), intent(in), optional :: threshold, tolerance
-      integer, intent(in), optional :: max_steps, max_iterations
+      !! Refine an SCM fit by backward elimination of insignificant parameters.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      type(mts_scm_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in), optional :: threshold !! Decision or truncation threshold.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_steps !! Maximum steps.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(mts_scm_refinement_t) :: out
       type(mts_kronecker_refinement_t) :: refined
 
@@ -7135,10 +7197,10 @@ contains
    end function mts_scm_refine
 
    pure function mts_scm_forecast(fit, history, horizon) result(out)
-      ! Forecast an SCM fit using its shared reduced-form VARMA representation.
-      type(mts_scm_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: history(:, :)
-      integer, intent(in) :: horizon
+      !! Forecast an SCM fit using its shared reduced-form VARMA representation.
+      type(mts_scm_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: history(:, :) !! History.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(mts_var_forecast_t) :: out
 
       if (fit%info /= 0) then
@@ -7149,8 +7211,8 @@ contains
    end function mts_scm_forecast
 
    pure function mts_kronecker_specification(indices) result(out)
-      ! Construct the echelon-form restrictions implied by Kronecker indices.
-      integer, intent(in) :: indices(:)
+      !! Construct the echelon-form restrictions implied by Kronecker indices.
+      integer, intent(in) :: indices(:) !! Indices.
       type(mts_kronecker_spec_t) :: out
       integer :: dimension, order, row, column, lag
 
@@ -7191,10 +7253,10 @@ contains
    end function mts_kronecker_specification
 
    pure function mts_kronecker_identify(series, past_lag, significance) result(out)
-      ! Estimate Kronecker indices by sequential canonical-correlation tests.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in), optional :: past_lag
-      real(dp), intent(in), optional :: significance
+      !! Estimate Kronecker indices by sequential canonical-correlation tests.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in), optional :: past_lag !! Past lag.
+      real(dp), intent(in), optional :: significance !! Significance.
       type(mts_kronecker_identification_t) :: out
       real(dp), allocatable :: past(:, :), future(:, :), correlations(:)
       real(dp), allocatable :: x_coefficients(:, :), y_coefficients(:, :)
@@ -7256,14 +7318,15 @@ contains
 
    pure function mts_kronecker_fit(series, indices, include_mean, initial, estimated, &
       max_iterations, tolerance, specification) result(out)
-      ! Fit an echelon-form VARMA model by conditional Gaussian likelihood.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: indices(:)
-      logical, intent(in), optional :: include_mean, estimated(:)
-      real(dp), intent(in), optional :: initial(:)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
-      type(mts_kronecker_spec_t), intent(in), optional :: specification
+      !! Fit an echelon-form VARMA model by conditional Gaussian likelihood.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: indices(:) !! Indices.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      logical, intent(in), optional :: estimated(:) !! Flag controlling estimated.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      type(mts_kronecker_spec_t), intent(in), optional :: specification !! Specification.
       type(mts_kronecker_fit_t) :: out
       type(optimization_result_t) :: optimization
       real(dp), allocatable :: parameters(:), free_values(:), hessian(:, :), inverse(:, :)
@@ -7357,8 +7420,8 @@ contains
    contains
 
       pure function objective(free_parameters) result(value)
-         ! Evaluate the negative conditional log likelihood for free parameters.
-         real(dp), intent(in) :: free_parameters(:)
+         !! Evaluate the negative conditional log likelihood for free parameters.
+         real(dp), intent(in) :: free_parameters(:) !! Free parameters.
          real(dp) :: value, likelihood
          real(dp) :: full_parameters(parameter_count)
          real(dp), allocatable :: structural_ar(:, :, :), structural_ma(:, :, :), residual_values(:, :)
@@ -7378,13 +7441,14 @@ contains
 
       pure subroutine evaluate(values, structural_ar, structural_ma, model, residual_values, &
          likelihood, evaluation_status)
-         ! Map structural parameters to reduced form and evaluate residuals.
-         real(dp), intent(in) :: values(:)
-         real(dp), allocatable, intent(out) :: structural_ar(:, :, :), structural_ma(:, :, :)
-         type(mts_varma_model_t), intent(out) :: model
-         real(dp), allocatable, intent(out) :: residual_values(:, :)
-         real(dp), intent(out) :: likelihood
-         integer, intent(out) :: evaluation_status
+         !! Map structural parameters to reduced form and evaluate residuals.
+         real(dp), intent(in) :: values(:) !! Input values.
+         real(dp), allocatable, intent(out) :: structural_ar(:, :, :) !! Structural autoregressive.
+         real(dp), allocatable, intent(out) :: structural_ma(:, :, :) !! Structural moving-average.
+         type(mts_varma_model_t), intent(out) :: model !! Model specification.
+         real(dp), allocatable, intent(out) :: residual_values(:, :) !! Residual values.
+         real(dp), intent(out) :: likelihood !! Likelihood.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          real(dp), allocatable :: lag_zero_inverse(:, :), covariance_inverse(:, :)
          real(dp) :: logdet
          integer :: offset, row, column, lag, t, effective
@@ -7457,11 +7521,13 @@ contains
 
    pure function mts_kronecker_refine(series, fit, threshold, max_steps, &
       max_iterations, tolerance) result(out)
-      ! Remove individually insignificant Kronecker parameters and refit.
-      real(dp), intent(in) :: series(:, :)
-      type(mts_kronecker_fit_t), intent(in) :: fit
-      real(dp), intent(in), optional :: threshold, tolerance
-      integer, intent(in), optional :: max_steps, max_iterations
+      !! Remove individually insignificant Kronecker parameters and refit.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      type(mts_kronecker_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in), optional :: threshold !! Decision or truncation threshold.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: max_steps !! Maximum steps.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(mts_kronecker_refinement_t) :: out
       logical, allocatable :: mask(:)
       real(dp) :: cutoff
@@ -7501,10 +7567,10 @@ contains
    end function mts_kronecker_refine
 
    pure function mts_kronecker_forecast(fit, history, horizon) result(out)
-      ! Forecast a fitted Kronecker-index model through its reduced VARMA form.
-      type(mts_kronecker_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: history(:, :)
-      integer, intent(in) :: horizon
+      !! Forecast a fitted Kronecker-index model through its reduced VARMA form.
+      type(mts_kronecker_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: history(:, :) !! History.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(mts_var_forecast_t) :: out
 
       if (fit%info /= 0 .or. size(fit%residuals, 1) /= size(history, 1)) then
@@ -7515,9 +7581,11 @@ contains
    end function mts_kronecker_forecast
 
    pure function weakest_parameter(coefficients, standard_errors, mask, threshold) result(index)
-      ! Return the active parameter with the smallest sub-threshold t ratio.
-      real(dp), intent(in) :: coefficients(:), standard_errors(:), threshold
-      logical, intent(in) :: mask(:)
+      !! Return the active parameter with the smallest sub-threshold t ratio.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: standard_errors(:) !! Standard errors.
+      real(dp), intent(in) :: threshold !! Decision or truncation threshold.
+      logical, intent(in) :: mask(:) !! Flag controlling mask.
       integer :: index
       real(dp) :: ratio, smallest
       integer :: i
@@ -7536,11 +7604,13 @@ contains
 
    pure subroutine canonical_correlations(x, y, squared_correlation, x_coefficients, &
       y_coefficients, info)
-      ! Compute squared canonical correlations and coefficient vectors.
-      real(dp), intent(in) :: x(:, :), y(:, :)
-      real(dp), allocatable, intent(out) :: squared_correlation(:)
-      real(dp), allocatable, intent(out) :: x_coefficients(:, :), y_coefficients(:, :)
-      integer, intent(out) :: info
+      !! Compute squared canonical correlations and coefficient vectors.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), allocatable, intent(out) :: squared_correlation(:) !! Squared correlation.
+      real(dp), allocatable, intent(out) :: x_coefficients(:, :) !! X coefficients.
+      real(dp), allocatable, intent(out) :: y_coefficients(:, :) !! Y coefficients.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: centered_x(:, :), centered_y(:, :)
       real(dp), allocatable :: sxx(:, :), syy(:, :), sxy(:, :), wx(:, :), wy(:, :)
       real(dp), allocatable :: kernel(:, :), eigenvalues(:), eigenvectors(:, :), syy_inverse(:, :)
@@ -7586,10 +7656,10 @@ contains
    end subroutine canonical_correlations
 
    pure subroutine symmetric_inverse_sqrt(matrix, inverse_sqrt, info)
-      ! Compute a symmetric positive-definite inverse square root.
-      real(dp), intent(in) :: matrix(:, :)
-      real(dp), allocatable, intent(out) :: inverse_sqrt(:, :)
-      integer, intent(out) :: info
+      !! Compute a symmetric positive-definite inverse square root.
+      real(dp), intent(in) :: matrix(:, :) !! Input matrix.
+      real(dp), allocatable, intent(out) :: inverse_sqrt(:, :) !! Inverse sqrt.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: values(:), vectors(:, :), diagonal(:, :)
       real(dp) :: tolerance
       integer :: dimension, index
@@ -7611,9 +7681,9 @@ contains
    end subroutine symmetric_inverse_sqrt
 
    pure real(dp) function sample_autocorrelation(values, lag) result(correlation)
-      ! Return the conventional sample autocorrelation at one lag.
-      real(dp), intent(in) :: values(:)
-      integer, intent(in) :: lag
+      !! Return the conventional sample autocorrelation at one lag.
+      real(dp), intent(in) :: values(:) !! Input values.
+      integer, intent(in) :: lag !! Lag index or number of lags.
       real(dp) :: mean_value, denominator
 
       mean_value = sum(values)/real(size(values), dp)
@@ -7627,11 +7697,12 @@ contains
    end function sample_autocorrelation
 
    pure subroutine arch_f_test(series, lag_count, statistic, p_value, info)
-      ! Test squared observations on an intercept and their own lags.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: lag_count
-      real(dp), intent(out) :: statistic, p_value
-      integer, intent(out) :: info
+      !! Test squared observations on an intercept and their own lags.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: lag_count !! Number of lag.
+      real(dp), intent(out) :: statistic !! Statistic.
+      real(dp), intent(out) :: p_value !! P value.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: design(:, :), response(:), xtx(:, :), inverse(:, :), beta(:), residual(:)
       real(dp) :: centered_sum, residual_sum, numerator_df, denominator_df, beta_argument
       integer :: n, rows, lag, status
@@ -7674,8 +7745,10 @@ contains
    end subroutine arch_f_test
 
    pure real(dp) function regularized_beta_mts(value, first_shape, second_shape) result(probability)
-      ! Return the regularized incomplete beta function.
-      real(dp), intent(in) :: value, first_shape, second_shape
+      !! Return the regularized incomplete beta function.
+      real(dp), intent(in) :: value !! Input value.
+      real(dp), intent(in) :: first_shape !! First shape.
+      real(dp), intent(in) :: second_shape !! Second shape.
       real(dp) :: factor
 
       if (value <= 0.0_dp) then
@@ -7697,8 +7770,10 @@ contains
    end function regularized_beta_mts
 
    pure real(dp) function beta_fraction_mts(value, first_shape, second_shape) result(fraction)
-      ! Evaluate the incomplete-beta continued fraction.
-      real(dp), intent(in) :: value, first_shape, second_shape
+      !! Evaluate the incomplete-beta continued fraction.
+      real(dp), intent(in) :: value !! Input value.
+      real(dp), intent(in) :: first_shape !! First shape.
+      real(dp), intent(in) :: second_shape !! Second shape.
       real(dp) :: qab, qap, qam, c, d, h, aa, delta
       integer :: iteration, twice
 
@@ -7736,12 +7811,15 @@ contains
 
    pure function mts_svarma_expand(regular_ar, seasonal_ar, regular_ma, seasonal_ma, &
       intercept, sigma, period, switched) result(out)
-      ! Expand multiplicative seasonal matrix polynomials into ordinary VARMA lags.
-      real(dp), intent(in) :: regular_ar(:, :, :), seasonal_ar(:, :, :)
-      real(dp), intent(in) :: regular_ma(:, :, :), seasonal_ma(:, :, :)
-      real(dp), intent(in) :: intercept(:), sigma(:, :)
-      integer, intent(in) :: period
-      logical, intent(in), optional :: switched
+      !! Expand multiplicative seasonal matrix polynomials into ordinary VARMA lags.
+      real(dp), intent(in) :: regular_ar(:, :, :) !! Regular autoregressive.
+      real(dp), intent(in) :: seasonal_ar(:, :, :) !! Seasonal autoregressive.
+      real(dp), intent(in) :: regular_ma(:, :, :) !! Regular moving-average.
+      real(dp), intent(in) :: seasonal_ma(:, :, :) !! Seasonal moving-average.
+      real(dp), intent(in) :: intercept(:) !! Model intercept.
+      real(dp), intent(in) :: sigma(:, :) !! Scale parameter or standard deviation.
+      integer, intent(in) :: period !! Seasonal period.
+      logical, intent(in), optional :: switched !! Flag controlling switched.
       type(mts_svarma_model_t) :: out
       integer :: dimension, p, q, seasonal_p, seasonal_q, ar_order, ma_order, i, j, lag
       logical :: reverse_products
@@ -7817,14 +7895,19 @@ contains
    pure function mts_svarma_fit(series, regular_ar_order, regular_ma_order, &
       seasonal_ar_order, seasonal_ma_order, period, include_mean, switched, &
       initial, estimated, max_iterations, tolerance) result(out)
-      ! Estimate a multiplicative seasonal VARMA model by conditional likelihood.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: regular_ar_order, regular_ma_order
-      integer, intent(in) :: seasonal_ar_order, seasonal_ma_order, period
-      logical, intent(in), optional :: include_mean, switched, estimated(:)
-      real(dp), intent(in), optional :: initial(:)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate a multiplicative seasonal VARMA model by conditional likelihood.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: regular_ar_order !! Regular autoregressive order.
+      integer, intent(in) :: regular_ma_order !! Regular moving-average order.
+      integer, intent(in) :: seasonal_ar_order !! Seasonal autoregressive order.
+      integer, intent(in) :: seasonal_ma_order !! Seasonal moving-average order.
+      integer, intent(in) :: period !! Seasonal period.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      logical, intent(in), optional :: switched !! Flag controlling switched.
+      logical, intent(in), optional :: estimated(:) !! Flag controlling estimated.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(mts_svarma_fit_t) :: out
       type(optimization_result_t) :: optimization
       type(mts_var_fit_t) :: var_start
@@ -7932,8 +8015,8 @@ contains
    contains
 
       pure function objective(free_values) result(value)
-         ! Return the seasonal VARMA negative log likelihood.
-         real(dp), intent(in) :: free_values(:)
+         !! Return the seasonal VARMA negative log likelihood.
+         real(dp), intent(in) :: free_values(:) !! Free values.
          real(dp) :: value, log_likelihood
          real(dp) :: full_values(parameter_count)
          real(dp), allocatable :: residual_values(:, :)
@@ -7951,12 +8034,12 @@ contains
       end function objective
 
       pure subroutine evaluate(values, model, residual_values, log_likelihood, evaluation_status)
-         ! Expand component parameters and evaluate conditional residuals.
-         real(dp), intent(in) :: values(:)
-         type(mts_svarma_model_t), intent(out) :: model
-         real(dp), allocatable, intent(out) :: residual_values(:, :)
-         real(dp), intent(out) :: log_likelihood
-         integer, intent(out) :: evaluation_status
+         !! Expand component parameters and evaluate conditional residuals.
+         real(dp), intent(in) :: values(:) !! Input values.
+         type(mts_svarma_model_t), intent(out) :: model !! Model specification.
+         real(dp), allocatable, intent(out) :: residual_values(:, :) !! Residual values.
+         real(dp), intent(out) :: log_likelihood !! Log-likelihood value.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          real(dp), allocatable :: regular_ar(:, :, :), seasonal_ar(:, :, :)
          real(dp), allocatable :: regular_ma(:, :, :), seasonal_ma(:, :, :)
          real(dp), allocatable :: intercept(:), sigma(:, :), covariance_inverse(:, :)
@@ -8009,10 +8092,10 @@ contains
       end subroutine evaluate
 
       pure subroutine unpack_component(values, value_offset, component)
-         ! Read one lag-major component block from the parameter vector.
-         real(dp), intent(in) :: values(:)
-         integer, intent(inout) :: value_offset
-         real(dp), intent(out) :: component(:, :, :)
+         !! Read one lag-major component block from the parameter vector.
+         real(dp), intent(in) :: values(:) !! Input values.
+         integer, intent(inout) :: value_offset !! Value offset, updated in place.
+         real(dp), intent(out) :: component(:, :, :) !! Component.
          integer :: current_lag
 
          do current_lag = 1, size(component, 3)
@@ -8025,13 +8108,15 @@ contains
 
    pure function mts_varma_fit(series, ar_order, ma_order, include_mean, initial, estimated, &
       max_iterations, tolerance) result(out)
-      ! Estimate a VARMA model by conditional Gaussian likelihood.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: ar_order, ma_order
-      logical, intent(in), optional :: include_mean, estimated(:)
-      real(dp), intent(in), optional :: initial(:)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate a VARMA model by conditional Gaussian likelihood.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      logical, intent(in), optional :: estimated(:) !! Flag controlling estimated.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(mts_varma_fit_t) :: out
       type(optimization_result_t) :: optimization
       type(mts_var_fit_t) :: var_start
@@ -8139,8 +8224,8 @@ contains
    contains
 
       pure function objective(free_parameters) result(value)
-         ! Return the conditional VARMA negative log likelihood.
-         real(dp), intent(in) :: free_parameters(:)
+         !! Return the conditional VARMA negative log likelihood.
+         real(dp), intent(in) :: free_parameters(:) !! Free parameters.
          real(dp) :: value, log_likelihood
          real(dp) :: full_parameters(count)
          real(dp), allocatable :: residual_values(:, :)
@@ -8158,12 +8243,12 @@ contains
       end function objective
 
       pure subroutine evaluate(values, model, residual_values, log_likelihood, evaluation_status)
-         ! Unpack parameters and evaluate conditional VARMA residual likelihood.
-         real(dp), intent(in) :: values(:)
-         type(mts_varma_model_t), intent(out) :: model
-         real(dp), allocatable, intent(out) :: residual_values(:, :)
-         real(dp), intent(out) :: log_likelihood
-         integer, intent(out) :: evaluation_status
+         !! Unpack parameters and evaluate conditional VARMA residual likelihood.
+         real(dp), intent(in) :: values(:) !! Input values.
+         type(mts_varma_model_t), intent(out) :: model !! Model specification.
+         real(dp), allocatable, intent(out) :: residual_values(:, :) !! Residual values.
+         real(dp), intent(out) :: log_likelihood !! Log-likelihood value.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          real(dp), allocatable :: covariance_inverse(:, :)
          real(dp) :: logdet
          integer :: parameter_offset, current_lag, t
@@ -8213,12 +8298,13 @@ contains
 
    pure function mts_varmas_fit(series, ar_lags, ma_lags, include_mean, &
       max_iterations, tolerance) result(out)
-      ! Estimate a VARMA model with selected nonzero AR and MA lags.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: ar_lags(:), ma_lags(:)
-      logical, intent(in), optional :: include_mean
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate a VARMA model with selected nonzero AR and MA lags.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: ar_lags(:) !! Autoregressive lags.
+      integer, intent(in) :: ma_lags(:) !! Moving-average lags.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(mts_varma_fit_t) :: out
       logical, allocatable :: mask(:)
       integer :: dimension, ar_order, ma_order, block_size, offset, i
@@ -8262,12 +8348,16 @@ contains
 
    pure function mts_refine_varma(series, ar_order, ma_order, threshold, include_mean, &
       protected, max_steps, max_iterations, tolerance) result(out)
-      ! Refine a VARMA model by iterative t-ratio backward elimination.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: ar_order, ma_order
-      real(dp), intent(in), optional :: threshold, tolerance
-      logical, intent(in), optional :: include_mean, protected(:)
-      integer, intent(in), optional :: max_steps, max_iterations
+      !! Refine a VARMA model by iterative t-ratio backward elimination.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      real(dp), intent(in), optional :: threshold !! Decision or truncation threshold.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      logical, intent(in), optional :: protected(:) !! Flag controlling protected.
+      integer, intent(in), optional :: max_steps !! Maximum steps.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(mts_varma_refinement_t) :: out
       logical, allocatable :: active(:), keep(:)
       real(dp), allocatable :: starts(:)
@@ -8340,13 +8430,20 @@ contains
    pure function mts_refine_svarma(series, regular_ar_order, regular_ma_order, &
       seasonal_ar_order, seasonal_ma_order, period, threshold, include_mean, &
       switched, protected, max_steps, max_iterations, tolerance) result(out)
-      ! Refine a seasonal VARMA model by iterative t-ratio elimination.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: regular_ar_order, regular_ma_order
-      integer, intent(in) :: seasonal_ar_order, seasonal_ma_order, period
-      real(dp), intent(in), optional :: threshold, tolerance
-      logical, intent(in), optional :: include_mean, switched, protected(:)
-      integer, intent(in), optional :: max_steps, max_iterations
+      !! Refine a seasonal VARMA model by iterative t-ratio elimination.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: regular_ar_order !! Regular autoregressive order.
+      integer, intent(in) :: regular_ma_order !! Regular moving-average order.
+      integer, intent(in) :: seasonal_ar_order !! Seasonal autoregressive order.
+      integer, intent(in) :: seasonal_ma_order !! Seasonal moving-average order.
+      integer, intent(in) :: period !! Seasonal period.
+      real(dp), intent(in), optional :: threshold !! Decision or truncation threshold.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      logical, intent(in), optional :: switched !! Flag controlling switched.
+      logical, intent(in), optional :: protected(:) !! Flag controlling protected.
+      integer, intent(in), optional :: max_steps !! Maximum steps.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(mts_svarma_refinement_t) :: out
       logical, allocatable :: active(:), keep(:)
       real(dp), allocatable :: starts(:)
@@ -8424,13 +8521,14 @@ contains
 
    pure function mts_vma_fit(series, order, include_mean, initial, estimated, &
       max_iterations, tolerance) result(out)
-      ! Estimate a consecutive-lag VMA model by conditional Gaussian likelihood.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: order
-      logical, intent(in), optional :: include_mean, estimated(:)
-      real(dp), intent(in), optional :: initial(:)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate a consecutive-lag VMA model by conditional Gaussian likelihood.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      logical, intent(in), optional :: estimated(:) !! Flag controlling estimated.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(mts_vma_fit_t) :: out
       type(optimization_result_t) :: optimization
       real(dp), allocatable :: parameters(:), free_initial(:), hessian(:, :), inverse(:, :)
@@ -8513,8 +8611,8 @@ contains
    contains
 
       pure function objective(free_parameters) result(value)
-         ! Return the conditional VMA negative log likelihood.
-         real(dp), intent(in) :: free_parameters(:)
+         !! Return the conditional VMA negative log likelihood.
+         real(dp), intent(in) :: free_parameters(:) !! Free parameters.
          real(dp) :: value, log_likelihood
          real(dp) :: full_parameters(count)
          real(dp), allocatable :: residual_values(:, :)
@@ -8532,12 +8630,12 @@ contains
       end function objective
 
       pure subroutine evaluate(values, model, residual_values, log_likelihood, evaluation_status)
-         ! Unpack parameters and evaluate conditional VMA residual likelihood.
-         real(dp), intent(in) :: values(:)
-         type(mts_varma_model_t), intent(out) :: model
-         real(dp), allocatable, intent(out) :: residual_values(:, :)
-         real(dp), intent(out) :: log_likelihood
-         integer, intent(out) :: evaluation_status
+         !! Unpack parameters and evaluate conditional VMA residual likelihood.
+         real(dp), intent(in) :: values(:) !! Input values.
+         type(mts_varma_model_t), intent(out) :: model !! Model specification.
+         real(dp), allocatable, intent(out) :: residual_values(:, :) !! Residual values.
+         real(dp), intent(out) :: log_likelihood !! Log-likelihood value.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          real(dp), allocatable :: centered(:, :), covariance_inverse(:, :)
          real(dp) :: logdet
          integer :: offset, lag, t
@@ -8578,12 +8676,12 @@ contains
    end function mts_vma_fit
 
    pure function mts_vmas_fit(series, lags, include_mean, max_iterations, tolerance) result(out)
-      ! Estimate a VMA model with selected nonzero MA lags.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: lags(:)
-      logical, intent(in), optional :: include_mean
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate a VMA model with selected nonzero MA lags.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: lags(:) !! Lags.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(mts_vma_fit_t) :: out
       logical, allocatable :: mask(:)
       integer :: dimension, maximum_lag, offset, lag, i
@@ -8615,12 +8713,12 @@ contains
    end function mts_vmas_fit
 
    pure function mts_vma_order(series, max_order, include_mean, max_iterations, tolerance) result(out)
-      ! Select consecutive VMA order by conditional-likelihood AIC and BIC.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: max_order
-      logical, intent(in), optional :: include_mean
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Select consecutive VMA order by conditional-likelihood AIC and BIC.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: max_order !! Maximum order.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(mts_vma_order_t) :: out
       type(mts_vma_fit_t) :: fitted
       integer :: order
@@ -8644,8 +8742,8 @@ contains
    end function mts_vma_order
 
    pure real(dp) function companion_radius(ma) result(radius)
-      ! Estimate the dominant modulus of the VMA inverse-recursion companion.
-      real(dp), intent(in) :: ma(:, :, :)
+      !! Estimate the dominant modulus of the VMA inverse-recursion companion.
+      real(dp), intent(in) :: ma(:, :, :) !! Moving-average coefficients.
       real(dp), allocatable :: companion(:, :), vector(:), next_vector(:)
       real(dp) :: scale
       integer :: dimension, order, state_size, lag, i, iteration
@@ -8680,10 +8778,10 @@ contains
    end function companion_radius
 
    pure function mts_var_order(series, max_order, common_sample) result(out)
-      ! Select VAR order using MTS AIC, BIC, and Hannan-Quinn criteria.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: max_order
-      logical, intent(in), optional :: common_sample
+      !! Select VAR order using MTS AIC, BIC, and Hannan-Quinn criteria.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: max_order !! Maximum order.
+      logical, intent(in), optional :: common_sample !! Flag controlling common sample.
       type(mts_var_order_t) :: out
       real(dp), allocatable :: comparison(:, :), covariance(:, :), inverse(:, :), log_determinant(:)
       type(mts_var_fit_t) :: fitted
@@ -8746,9 +8844,10 @@ contains
    end function mts_var_order
 
    pure function fit_var_common_sample(series, order, maximum_order) result(out)
-      ! Fit a VAR order using the response sample aligned to maximum_order.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: order, maximum_order
+      !! Fit a VAR order using the response sample aligned to maximum_order.
+      real(dp), intent(in) :: series(:, :) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
+      integer, intent(in) :: maximum_order !! Maximum order.
       type(mts_var_fit_t) :: out
       real(dp), allocatable :: truncated(:, :)
       truncated = series(maximum_order - order + 1:, :)
@@ -8756,9 +8855,9 @@ contains
    end function fit_var_common_sample
 
    pure real(dp) function chi_square_survival(value, degrees) result(probability)
-      ! Approximate a chi-square upper tail by Wilson-Hilferty transformation.
-      real(dp), intent(in) :: value
-      integer, intent(in) :: degrees
+      !! Approximate a chi-square upper tail by Wilson-Hilferty transformation.
+      real(dp), intent(in) :: value !! Input value.
+      integer, intent(in) :: degrees !! Degrees.
       real(dp) :: z, d
       d = real(degrees, dp)
       z = ((max(value, 0.0_dp)/d)**(1.0_dp/3.0_dp) - (1.0_dp - 2.0_dp/(9.0_dp*d)))/ &

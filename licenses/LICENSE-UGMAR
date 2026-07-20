@@ -1,0 +1,6 @@
+The algorithms in ugmar.f90 are translated from version 3.6.1 of the R
+package uGMAR, authored by Savi Virolainen.
+
+The upstream package declares its license as GPL-3. The translation is
+therefore distributed under GPL-3.0-only. The GNU General Public License
+version 3 text is available at https://www.gnu.org/licenses/gpl-3.0.txt.

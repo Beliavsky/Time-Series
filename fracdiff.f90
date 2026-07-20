@@ -7,11 +7,11 @@ module fracdiff_mod
       arfima_simulation_t, arfima_fdwn_acvf, arfima_durbin_levinson_simulate
    use arima2_mod, only: arima2_roots_t, arma_polynomial_roots, &
       durbin_levinson_coefficients
-   use time_series_fourier_mod, only: fft_transform
-   use time_series_linalg_mod, only: invert_matrix
-   use time_series_optimization_mod, only: optimization_result_t, &
+   use fourier_mod, only: fft_transform
+   use linalg_mod, only: invert_matrix
+   use optimization_mod, only: optimization_result_t, &
       bfgs_minimize_fd, finite_difference_hessian
-   use time_series_random_mod, only: set_random_seed, random_standard_normal
+   use random_mod, only: set_random_seed, random_standard_normal
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
    implicit none
    private
@@ -66,8 +66,9 @@ module fracdiff_mod
 contains
 
    pure function fracdiff_difference(series, d) result(differenced)
-      ! Fractionally difference a demeaned series by FFT convolution.
-      real(dp), intent(in) :: series(:), d
+      !! Fractionally difference a demeaned series by FFT convolution.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
       real(dp), allocatable :: differenced(:)
       complex(dp), allocatable :: series_transform(:), weight_transform(:)
       complex(dp), allocatable :: padded_series(:), weights(:), product(:)
@@ -101,9 +102,9 @@ contains
    end function fracdiff_difference
 
    pure function fracdiff_gph(series, bandwidth_exponent) result(out)
-      ! Estimate fractional memory by Geweke-Porter-Hudak regression.
-      real(dp), intent(in) :: series(:)
-      real(dp), intent(in), optional :: bandwidth_exponent
+      !! Estimate fractional memory by Geweke-Porter-Hudak regression.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in), optional :: bandwidth_exponent !! Bandwidth exponent.
       type(fracdiff_semiparametric_t) :: out
       real(dp) :: exponent
 
@@ -113,9 +114,10 @@ contains
    end function fracdiff_gph
 
    pure function fracdiff_sperio(series, bandwidth_exponent, taper_exponent) result(out)
-      ! Estimate fractional memory from the tapered Sperio periodogram.
-      real(dp), intent(in) :: series(:)
-      real(dp), intent(in), optional :: bandwidth_exponent, taper_exponent
+      !! Estimate fractional memory from the tapered Sperio periodogram.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in), optional :: bandwidth_exponent !! Bandwidth exponent.
+      real(dp), intent(in), optional :: taper_exponent !! Taper exponent.
       type(fracdiff_semiparametric_t) :: out
       real(dp) :: exponent, beta
 
@@ -127,9 +129,10 @@ contains
    end function fracdiff_sperio
 
    pure function fracdiff_hr_filter(series, d, truncation) result(out)
-      ! Apply the Haslett-Raftery truncated fractional likelihood filter.
-      real(dp), intent(in) :: series(:), d
-      integer, intent(in), optional :: truncation
+      !! Apply the Haslett-Raftery truncated fractional likelihood filter.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      integer, intent(in), optional :: truncation !! Truncation.
       type(fracdiff_filter_t) :: out
       real(dp), allocatable :: prediction(:), mean_loading(:), reflection(:)
       real(dp), allocatable :: pi_weight(:)
@@ -235,10 +238,15 @@ contains
 
    pure function fracdiff_fit(series, initial_ar, initial_ma, initial_d, d_range, &
       truncation, max_iterations, tolerance) result(out)
-      ! Fit Haslett-Raftery ARFIMA parameters by stable-coordinate BFGS.
-      real(dp), intent(in) :: series(:), initial_ar(:), initial_ma(:), initial_d
-      real(dp), intent(in), optional :: d_range(2), tolerance
-      integer, intent(in), optional :: truncation, max_iterations
+      !! Fit Haslett-Raftery ARFIMA parameters by stable-coordinate BFGS.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: initial_ar(:) !! Initial autoregressive.
+      real(dp), intent(in) :: initial_ma(:) !! Initial moving-average.
+      real(dp), intent(in) :: initial_d !! Initial d.
+      real(dp), intent(in), optional :: d_range(2) !! D range.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: truncation !! Truncation.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(fracdiff_fit_t) :: out
       type(optimization_result_t) :: optimization
       type(arfima_model_t) :: initial_model
@@ -321,8 +329,8 @@ contains
    contains
 
       pure function objective(parameters) result(value)
-         ! Return the profiled Haslett-Raftery negative log likelihood.
-         real(dp), intent(in) :: parameters(:)
+         !! Return the profiled Haslett-Raftery negative log likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: value, candidate_d, candidate_variance, candidate_likelihood
          real(dp), allocatable :: candidate_ar(:), candidate_ma(:)
          real(dp), allocatable :: candidate_residuals(:)
@@ -344,11 +352,14 @@ contains
 
    pure function fracdiff_simulate_from_innovations(observations, ar, ma, d, &
       innovations, mean, burn_in) result(out)
-      ! Simulate fracdiff's FDWN process and opposite-sign MA recursion.
-      integer, intent(in) :: observations
-      real(dp), intent(in) :: ar(:), ma(:), d, innovations(:)
-      real(dp), intent(in), optional :: mean
-      integer, intent(in), optional :: burn_in
+      !! Simulate fracdiff's FDWN process and opposite-sign MA recursion.
+      integer, intent(in) :: observations !! Observed time-series values.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: innovations(:) !! Model innovations.
+      real(dp), intent(in), optional :: mean !! Mean value or vector.
+      integer, intent(in), optional :: burn_in !! Burn in.
       type(fracdiff_simulation_t) :: out
       type(arfima_acvf_t) :: covariance
       type(arfima_simulation_t) :: fractional
@@ -396,11 +407,14 @@ contains
    end function fracdiff_simulate_from_innovations
 
    function fracdiff_simulate(observations, ar, ma, d, mean, burn_in, seed) result(out)
-      ! Simulate a Gaussian fracdiff process using the shared random stream.
-      integer, intent(in) :: observations
-      real(dp), intent(in) :: ar(:), ma(:), d
-      real(dp), intent(in), optional :: mean
-      integer, intent(in), optional :: burn_in, seed
+      !! Simulate a Gaussian fracdiff process using the shared random stream.
+      integer, intent(in) :: observations !! Observed time-series values.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in), optional :: mean !! Mean value or vector.
+      integer, intent(in), optional :: burn_in !! Burn in.
+      integer, intent(in), optional :: seed !! Random-number seed.
       type(fracdiff_simulation_t) :: out
       real(dp), allocatable :: innovations(:)
       real(dp) :: selected_mean
@@ -425,9 +439,11 @@ contains
    end function fracdiff_simulate
 
    pure function semiparametric_fit(series, exponent, tapered, beta) result(out)
-      ! Fit the common log-periodogram regression used by GPH and Sperio.
-      real(dp), intent(in) :: series(:), exponent, beta
-      logical, intent(in) :: tapered
+      !! Fit the common log-periodogram regression used by GPH and Sperio.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: exponent !! Exponent.
+      real(dp), intent(in) :: beta !! Regression or model coefficients.
+      logical, intent(in) :: tapered !! Flag controlling tapered.
       type(fracdiff_semiparametric_t) :: out
       real(dp), allocatable :: centered(:), covariance(:), periodogram(:)
       real(dp), allocatable :: predictor(:), response(:), taper(:), residual(:)
@@ -515,12 +531,16 @@ contains
 
    pure subroutine hr_likelihood(series, ar, ma, d, truncation, likelihood, &
       variance, residuals, info)
-      ! Evaluate the profiled Haslett-Raftery likelihood for one parameter set.
-      real(dp), intent(in) :: series(:), ar(:), ma(:), d
-      integer, intent(in) :: truncation
-      real(dp), intent(out) :: likelihood, variance
-      real(dp), allocatable, intent(out) :: residuals(:)
-      integer, intent(out) :: info
+      !! Evaluate the profiled Haslett-Raftery likelihood for one parameter set.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      integer, intent(in) :: truncation !! Truncation.
+      real(dp), intent(out) :: likelihood !! Likelihood.
+      real(dp), intent(out) :: variance !! Variance value or matrix.
+      real(dp), allocatable, intent(out) :: residuals(:) !! Model residuals.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       type(fracdiff_filter_t) :: filtered
       integer :: n, start, t, lag
 
@@ -574,8 +594,10 @@ contains
    end subroutine hr_likelihood
 
    pure function arma_residuals(series, ar, ma) result(residuals)
-      ! Apply fracdiff's AR and opposite-sign MA recursion.
-      real(dp), intent(in) :: series(:), ar(:), ma(:)
+      !! Apply fracdiff's AR and opposite-sign MA recursion.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
       real(dp), allocatable :: residuals(:)
       integer :: t, lag
 
@@ -593,8 +615,11 @@ contains
    end function arma_residuals
 
    pure function encode_parameters(ar, ma, d, d_range) result(parameters)
-      ! Map initial operating parameters into stable optimizer coordinates.
-      real(dp), intent(in) :: ar(:), ma(:), d, d_range(2)
+      !! Map initial operating parameters into stable optimizer coordinates.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: d_range(2) !! D range.
       real(dp), allocatable :: parameters(:), partial(:)
       real(dp) :: midpoint, half_width, scaled
       integer :: offset
@@ -619,11 +644,14 @@ contains
 
    pure subroutine decode_parameters(parameters, ar_order, ma_order, d_range, &
       ar, ma, d)
-      ! Decode stable optimizer coordinates into fracdiff operating parameters.
-      real(dp), intent(in) :: parameters(:), d_range(2)
-      integer, intent(in) :: ar_order, ma_order
-      real(dp), allocatable, intent(out) :: ar(:), ma(:)
-      real(dp), intent(out) :: d
+      !! Decode stable optimizer coordinates into fracdiff operating parameters.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(in) :: d_range(2) !! D range.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      real(dp), allocatable, intent(out) :: ar(:) !! Autoregressive coefficients.
+      real(dp), allocatable, intent(out) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(out) :: d !! Fractional-differencing parameter or differencing order.
       real(dp) :: midpoint, half_width
       integer :: offset
 
@@ -645,9 +673,11 @@ contains
 
    pure function operating_parameters(parameters, ar_order, ma_order, d_range) &
       result(operating)
-      ! Return flattened d, AR, and MA operating parameters.
-      real(dp), intent(in) :: parameters(:), d_range(2)
-      integer, intent(in) :: ar_order, ma_order
+      !! Return flattened d, AR, and MA operating parameters.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(in) :: d_range(2) !! D range.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
       real(dp), allocatable :: operating(:), ar(:), ma(:)
       real(dp) :: d
 
@@ -656,9 +686,10 @@ contains
    end function operating_parameters
 
    pure function unit_step(n, index, step) result(vector)
-      ! Return a coordinate finite-difference step vector.
-      integer, intent(in) :: n, index
-      real(dp), intent(in) :: step
+      !! Return a coordinate finite-difference step vector.
+      integer, intent(in) :: n !! Number of observations or elements.
+      integer, intent(in) :: index !! Element or observation index.
+      real(dp), intent(in) :: step !! Step.
       real(dp) :: vector(n)
 
       vector = 0.0_dp
@@ -666,8 +697,8 @@ contains
    end function unit_step
 
    pure function guarded_atanh(values) result(transformed)
-      ! Apply inverse hyperbolic tangent inside the open unit interval.
-      real(dp), intent(in) :: values(:)
+      !! Apply inverse hyperbolic tangent inside the open unit interval.
+      real(dp), intent(in) :: values(:) !! Input values.
       real(dp) :: transformed(size(values))
 
       transformed = atanh(max(-1.0_dp + 1.0e-10_dp, &
@@ -675,8 +706,8 @@ contains
    end function guarded_atanh
 
    pure function ar_to_partial(coefficients) result(partial)
-      ! Convert stable AR coefficients to Durbin-Levinson partial coefficients.
-      real(dp), intent(in) :: coefficients(:)
+      !! Convert stable AR coefficients to Durbin-Levinson partial coefficients.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
       real(dp), allocatable :: partial(:)
       real(dp), allocatable :: current(:), previous(:)
       real(dp) :: denominator
@@ -702,8 +733,9 @@ contains
    end function ar_to_partial
 
    pure integer function default_burn_in(ar, ma) result(burn_in)
-      ! Reproduce fracdiff.sim's AR-root burn-in rule.
-      real(dp), intent(in) :: ar(:), ma(:)
+      !! Reproduce fracdiff.sim's AR-root burn-in rule.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
       type(arima2_roots_t) :: roots
       real(dp) :: minimum_root
 

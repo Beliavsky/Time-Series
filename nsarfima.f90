@@ -5,11 +5,12 @@ module nsarfima_mod
    use kind_mod, only: dp
    use arfima_mod, only: arfima_model_t, arfima_model, arfima_information_t, &
       arfima_long_memory_none, arfima_fractional_weights, arfima_fisher_information
-   use time_series_fourier_mod, only: fft_transform
-   use time_series_linalg_mod, only: invert_matrix
-   use time_series_optimization_mod, only: optimization_result_t, bfgs_minimize_fd
-   use time_series_random_mod, only: set_random_seed, random_standard_normal
-   use itsmr_mod, only: regularized_gamma_q
+   use fourier_mod, only: fft_transform
+   use linalg_mod, only: invert_matrix
+   use optimization_mod, only: optimization_result_t, bfgs_minimize_fd
+   use random_mod, only: set_random_seed, random_standard_normal
+   use special_functions_mod, only: regularized_gamma_q
+   use stats_mod, only: standard_deviation
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
    implicit none
    private
@@ -50,8 +51,9 @@ module nsarfima_mod
 contains
 
    pure function nsarfima_convolve(first, second) result(convolution)
-      ! Return the leading causal convolution using zero-padded FFTs.
-      real(dp), intent(in) :: first(:), second(:)
+      !! Return the leading causal convolution using zero-padded FFTs.
+      real(dp), intent(in) :: first(:) !! First operand.
+      real(dp), intent(in) :: second(:) !! Second operand.
       real(dp), allocatable :: convolution(:)
       complex(dp), allocatable :: a(:), b(:), transformed(:)
       integer :: n, nfft
@@ -78,9 +80,12 @@ contains
    end function nsarfima_convolve
 
    pure function nsarfima_residuals(series, d, ar, ma, subtract_mean) result(residuals)
-      ! Filter a possibly nonstationary ARFIMA series into innovations.
-      real(dp), intent(in) :: series(:), d, ar(:), ma(:)
-      logical, intent(in), optional :: subtract_mean
+      !! Filter a possibly nonstationary ARFIMA series into innovations.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      logical, intent(in), optional :: subtract_mean !! Flag controlling subtract mean.
       real(dp), allocatable :: residuals(:)
       real(dp), allocatable :: work(:), weights(:)
       logical :: centered
@@ -117,10 +122,13 @@ contains
 
    pure function nsarfima_residual_acf(series, d, ar, ma, lag_max, &
       subtract_mean) result(out)
-      ! Compute Mayoral residual autocorrelations through the selected lag.
-      real(dp), intent(in) :: series(:), d, ar(:), ma(:)
-      integer, intent(in), optional :: lag_max
-      logical, intent(in), optional :: subtract_mean
+      !! Compute Mayoral residual autocorrelations through the selected lag.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      integer, intent(in), optional :: lag_max !! Lag max.
+      logical, intent(in), optional :: subtract_mean !! Flag controlling subtract mean.
       type(nsarfima_filter_t) :: out
       real(dp) :: denominator
       integer :: selected_lag, n, lag
@@ -156,12 +164,16 @@ contains
 
    pure function nsarfima_mde(series, initial_ar, initial_ma, initial_d, d_range, &
       lag_max, estimate_mean, max_iterations, tolerance) result(out)
-      ! Fit Mayoral's minimum-distance estimator to an ARFIMA model.
-      real(dp), intent(in) :: series(:), initial_ar(:), initial_ma(:), initial_d
-      real(dp), intent(in) :: d_range(:)
-      integer, intent(in), optional :: lag_max, max_iterations
-      logical, intent(in), optional :: estimate_mean
-      real(dp), intent(in), optional :: tolerance
+      !! Fit Mayoral's minimum-distance estimator to an ARFIMA model.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: initial_ar(:) !! Initial autoregressive.
+      real(dp), intent(in) :: initial_ma(:) !! Initial moving-average.
+      real(dp), intent(in) :: initial_d !! Initial d.
+      real(dp), intent(in) :: d_range(:) !! D range.
+      integer, intent(in), optional :: lag_max !! Lag max.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: estimate_mean !! Whether to estimate the mean.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(nsarfima_fit_t) :: out
       type(optimization_result_t) :: optimized
       type(nsarfima_filter_t) :: diagnostic
@@ -247,7 +259,7 @@ contains
       end do
       if (include_mean) then
          allocate(out%standard_error(count + 1))
-         out%standard_error(1) = sample_standard_deviation(series)/sqrt(real(size(series), dp))
+         out%standard_error(1) = standard_deviation(series)/sqrt(real(size(series), dp))
          out%standard_error(2:) = dynamic_error
       else
          out%standard_error = dynamic_error
@@ -256,8 +268,8 @@ contains
    contains
 
       pure function objective(parameters) result(value)
-         ! Return the sum of squared residual autocorrelations.
-         real(dp), intent(in) :: parameters(:)
+         !! Return the sum of squared residual autocorrelations.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: value, candidate_d
          real(dp), allocatable :: candidate_ar(:), candidate_ma(:)
          type(nsarfima_filter_t) :: filtered
@@ -277,12 +289,16 @@ contains
 
    pure function nsarfima_pml(series, initial_ar, initial_ma, initial_d, d_range, &
       estimate_mean, max_iterations, tolerance, information_resolution) result(out)
-      ! Fit Beran's residual pseudo-likelihood ARFIMA estimator.
-      real(dp), intent(in) :: series(:), initial_ar(:), initial_ma(:), initial_d
-      real(dp), intent(in) :: d_range(:)
-      logical, intent(in), optional :: estimate_mean
-      integer, intent(in), optional :: max_iterations, information_resolution
-      real(dp), intent(in), optional :: tolerance
+      !! Fit Beran's residual pseudo-likelihood ARFIMA estimator.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: initial_ar(:) !! Initial autoregressive.
+      real(dp), intent(in) :: initial_ma(:) !! Initial moving-average.
+      real(dp), intent(in) :: initial_d !! Initial d.
+      real(dp), intent(in) :: d_range(:) !! D range.
+      logical, intent(in), optional :: estimate_mean !! Whether to estimate the mean.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      integer, intent(in), optional :: information_resolution !! Information resolution.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(nsarfima_fit_t) :: out
       type(optimization_result_t) :: optimized
       type(nsarfima_filter_t) :: diagnostic
@@ -337,13 +353,13 @@ contains
          call set_portmanteau(out, size(series), p, q)
       end if
       call set_pml_covariance(out, include_d, include_mean, resolution, size(series), &
-         sample_standard_deviation(series)/sqrt(real(size(series), dp)))
+         standard_deviation(series)/sqrt(real(size(series), dp)))
 
    contains
 
       pure function objective(parameters) result(value)
-         ! Return the pseudo-likelihood residual sum of squares.
-         real(dp), intent(in) :: parameters(:)
+         !! Return the pseudo-likelihood residual sum of squares.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: value, candidate_d
          real(dp), allocatable :: candidate_ar(:), candidate_ma(:), residual(:)
 
@@ -362,12 +378,15 @@ contains
 
    pure function nsarfima_simulate_from_innovations(observations, d, ar, ma, &
       innovations, mean, burn_in, stationary_integration) result(out)
-      ! Simulate nsarfima's truncated causal filter from supplied innovations.
-      integer, intent(in) :: observations
-      real(dp), intent(in) :: d, ar(:), ma(:), innovations(:)
-      real(dp), intent(in), optional :: mean
-      integer, intent(in), optional :: burn_in
-      logical, intent(in), optional :: stationary_integration
+      !! Simulate nsarfima's truncated causal filter from supplied innovations.
+      integer, intent(in) :: observations !! Observed time-series values.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: innovations(:) !! Model innovations.
+      real(dp), intent(in), optional :: mean !! Mean value or vector.
+      integer, intent(in), optional :: burn_in !! Burn in.
+      logical, intent(in), optional :: stationary_integration !! Flag controlling stationary integration.
       type(nsarfima_simulation_t) :: out
       real(dp), allocatable :: work(:), weights(:)
       real(dp) :: location, fractional_d
@@ -424,12 +443,16 @@ contains
 
    function nsarfima_simulate(observations, d, ar, ma, mean, innovation_variance, &
       burn_in, stationary_integration, seed) result(out)
-      ! Simulate an nsarfima model with Gaussian innovations.
-      integer, intent(in) :: observations
-      real(dp), intent(in) :: d, ar(:), ma(:)
-      real(dp), intent(in), optional :: mean, innovation_variance
-      integer, intent(in), optional :: burn_in, seed
-      logical, intent(in), optional :: stationary_integration
+      !! Simulate an nsarfima model with Gaussian innovations.
+      integer, intent(in) :: observations !! Observed time-series values.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in), optional :: mean !! Mean value or vector.
+      real(dp), intent(in), optional :: innovation_variance !! Innovation variance.
+      integer, intent(in), optional :: burn_in !! Burn in.
+      integer, intent(in), optional :: seed !! Random-number seed.
+      logical, intent(in), optional :: stationary_integration !! Flag controlling stationary integration.
       type(nsarfima_simulation_t) :: out
       real(dp), allocatable :: innovations(:)
       real(dp) :: location, variance
@@ -458,9 +481,9 @@ contains
    end function nsarfima_simulate
 
    pure function leading_integer_difference(series, order) result(differenced)
-      ! Difference a zero-prefixed series without shortening the result.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: order
+      !! Difference a zero-prefixed series without shortening the result.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
       real(dp), allocatable :: differenced(:), work(:), next(:)
       integer :: iteration, n
 
@@ -477,9 +500,10 @@ contains
    end function leading_integer_difference
 
    pure function inverse_arma_weights(ar, ma, max_lag) result(weights)
-      ! Expand the inverse ARFIMA short-memory filter.
-      real(dp), intent(in) :: ar(:), ma(:)
-      integer, intent(in) :: max_lag
+      !! Expand the inverse ARFIMA short-memory filter.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: weights(:)
       integer :: lag, j
 
@@ -499,9 +523,10 @@ contains
    end function inverse_arma_weights
 
    pure function arma_impulse_weights(ar, ma, max_lag) result(weights)
-      ! Expand the R-sign ARMA impulse-response filter.
-      real(dp), intent(in) :: ar(:), ma(:)
-      integer, intent(in) :: max_lag
+      !! Expand the R-sign ARMA impulse-response filter.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: weights(:)
       integer :: lag, j
 
@@ -521,9 +546,13 @@ contains
    end function arma_impulse_weights
 
    pure function encode_parameters(d, ar, ma, include_d, lower, upper) result(parameters)
-      ! Map bounded package parameters to unconstrained optimizer coordinates.
-      real(dp), intent(in) :: d, ar(:), ma(:), lower, upper
-      logical, intent(in) :: include_d
+      !! Map bounded package parameters to unconstrained optimizer coordinates.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: lower !! Lower.
+      real(dp), intent(in) :: upper !! Upper.
+      logical, intent(in) :: include_d !! Whether to include the d.
       real(dp), allocatable :: parameters(:)
       real(dp) :: scaled
       integer :: offset
@@ -543,12 +572,17 @@ contains
 
    pure subroutine decode_parameters(parameters, include_d, fixed_d, lower, upper, &
       p, q, d, ar, ma)
-      ! Recover bounded package parameters from optimizer coordinates.
-      real(dp), intent(in) :: parameters(:), fixed_d, lower, upper
-      logical, intent(in) :: include_d
-      integer, intent(in) :: p, q
-      real(dp), intent(out) :: d
-      real(dp), allocatable, intent(out) :: ar(:), ma(:)
+      !! Recover bounded package parameters from optimizer coordinates.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(in) :: fixed_d !! Fixed d.
+      real(dp), intent(in) :: lower !! Lower.
+      real(dp), intent(in) :: upper !! Upper.
+      logical, intent(in) :: include_d !! Whether to include the d.
+      integer, intent(in) :: p !! Autoregressive order or model dimension.
+      integer, intent(in) :: q !! Model order, dimension, or parameter.
+      real(dp), intent(out) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), allocatable, intent(out) :: ar(:) !! Autoregressive coefficients.
+      real(dp), allocatable, intent(out) :: ma(:) !! Moving-average coefficients.
       real(dp) :: logistic
       integer :: offset
 
@@ -565,9 +599,13 @@ contains
    end subroutine decode_parameters
 
    pure logical function valid_fit_input(series, ar, ma, d, d_range, lag_max) result(valid)
-      ! Check common MDE and pseudo-likelihood fit arguments.
-      real(dp), intent(in) :: series(:), ar(:), ma(:), d, d_range(:)
-      integer, intent(in) :: lag_max
+      !! Check common MDE and pseudo-likelihood fit arguments.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: d_range(:) !! D range.
+      integer, intent(in) :: lag_max !! Lag max.
 
       valid = size(series) >= 3 .and. lag_max >= 1 .and. lag_max < size(series) .and. &
          (size(d_range) == 1 .or. size(d_range) == 2) .and. &
@@ -580,9 +618,11 @@ contains
    end function valid_fit_input
 
    pure subroutine set_portmanteau(out, observations, p, q)
-      ! Compute the package's residual portmanteau statistic and probability.
-      type(nsarfima_fit_t), intent(inout) :: out
-      integer, intent(in) :: observations, p, q
+      !! Compute the package's residual portmanteau statistic and probability.
+      type(nsarfima_fit_t), intent(inout) :: out !! Procedure result, updated in place.
+      integer, intent(in) :: observations !! Observed time-series values.
+      integer, intent(in) :: p !! Autoregressive order or model dimension.
+      integer, intent(in) :: q !! Model order, dimension, or parameter.
       integer :: lag, degrees
 
       out%lag_max = ubound(out%residual_autocorrelation, 1)
@@ -600,11 +640,13 @@ contains
 
    pure subroutine set_pml_covariance(out, include_d, include_mean, resolution, &
       observations, mean_standard_error)
-      ! Reorder shared spectral information into nsarfima's parameter convention.
-      type(nsarfima_fit_t), intent(inout) :: out
-      logical, intent(in) :: include_d, include_mean
-      integer, intent(in) :: resolution, observations
-      real(dp), intent(in) :: mean_standard_error
+      !! Reorder shared spectral information into nsarfima's parameter convention.
+      type(nsarfima_fit_t), intent(inout) :: out !! Procedure result, updated in place.
+      logical, intent(in) :: include_d !! Whether to include the d.
+      logical, intent(in) :: include_mean !! Whether to include a mean term.
+      integer, intent(in) :: resolution !! Resolution.
+      integer, intent(in) :: observations !! Observed time-series values.
+      real(dp), intent(in) :: mean_standard_error !! Mean standard error.
       type(arfima_model_t) :: model
       type(arfima_information_t) :: information
       real(dp), allocatable :: transform(:, :), dynamic_covariance(:, :), errors(:)
@@ -656,22 +698,9 @@ contains
       end if
    end subroutine set_pml_covariance
 
-   pure real(dp) function sample_standard_deviation(values) result(value)
-      ! Return the ordinary sample standard deviation.
-      real(dp), intent(in) :: values(:)
-      real(dp) :: center
-
-      if (size(values) < 2) then
-         value = 0.0_dp
-         return
-      end if
-      center = sum(values)/real(size(values), dp)
-      value = sqrt(sum((values - center)**2)/real(size(values) - 1, dp))
-   end function sample_standard_deviation
-
    pure function cumulative_sum(values) result(sums)
-      ! Return cumulative sums without modifying the input.
-      real(dp), intent(in) :: values(:)
+      !! Return cumulative sums without modifying the input.
+      real(dp), intent(in) :: values(:) !! Input values.
       real(dp) :: sums(size(values))
       integer :: i
 
@@ -683,8 +712,8 @@ contains
    end function cumulative_sum
 
    pure function ordinary_difference(values) result(difference)
-      ! Return one ordinary first difference.
-      real(dp), intent(in) :: values(:)
+      !! Return one ordinary first difference.
+      real(dp), intent(in) :: values(:) !! Input values.
       real(dp), allocatable :: difference(:)
 
       if (size(values) < 2) then

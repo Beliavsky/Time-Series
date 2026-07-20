@@ -1,0 +1,10 @@
+BAYSTAR Fortran translation license notice
+
+The algorithms in baystar.f90 are translated from the BAYSTAR R package,
+version 0.2-10, by Cathy W. S. Chen, Edward M.H. Lin, F.C. Liu, and Richard
+Gerlach.
+
+The upstream DESCRIPTION licenses BAYSTAR under the GNU General Public
+License, version 2 or later. The translated source is distributed under the
+same terms using SPDX identifier GPL-2.0-or-later. The complete GNU GPL
+version 2 text is included in licenses/LICENSE-TSDYN.

@@ -1,0 +1,11 @@
+VAR.etp Fortran translation license notice
+
+The algorithms in var_etp.f90 are translated from the VAR.etp R package,
+version 1.1, by Jae H. Kim.
+
+The upstream DESCRIPTION licenses VAR.etp under the GNU General Public License,
+version 2. The translated source is distributed under the same terms using
+SPDX identifier GPL-2.0-only.
+
+GNU GPL 2.0:
+https://www.gnu.org/licenses/old-licenses/gpl-2.0.html

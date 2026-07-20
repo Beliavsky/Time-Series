@@ -2,8 +2,9 @@
 ! SPDX-FileComment: Distinct algorithms translated from the R VARshrink package.
 module varshrink_mod
    use kind_mod, only: dp
-   use time_series_linalg_mod, only: symmetric_eigen, symmetric_pseudoinverse
-   use time_series_linalg_mod, only: inverse_logdet
+   use linalg_mod, only: symmetric_eigen, symmetric_pseudoinverse, identity_matrix
+   use linalg_mod, only: inverse_logdet
+   use stats_mod, only: median
    implicit none
    private
 
@@ -87,11 +88,11 @@ module varshrink_mod
 contains
 
    pure function varshrink_multivariate_ridge(response, predictors, lambda, do_scale) result(out)
-      ! Fit multivariate ridge regressions and select the minimum-GCV estimate.
-      real(dp), intent(in) :: response(:, :)
-      real(dp), intent(in) :: predictors(:, :)
-      real(dp), intent(in) :: lambda(:)
-      logical, intent(in), optional :: do_scale
+      !! Fit multivariate ridge regressions and select the minimum-GCV estimate.
+      real(dp), intent(in) :: response(:, :) !! N-by-K matrix of dependent variables.
+      real(dp), intent(in) :: predictors(:, :) !! N-by-M matrix of regressors.
+      real(dp), intent(in) :: lambda(:) !! Candidate nonnegative ridge parameters.
+      logical, intent(in), optional :: do_scale !! Center and scale predictors when true.
       type(varshrink_ridge_path_t) :: out
       real(dp), allocatable :: x(:, :), y(:, :), cross(:, :), inverse(:, :)
       real(dp), allocatable :: values(:), vectors(:, :), residuals(:, :)
@@ -158,7 +159,7 @@ contains
 
       allocate(inverse(m, m), residuals(n, d))
       do candidate = 1, size(lambda)
-         call symmetric_pseudoinverse(cross + real(n, dp)*lambda(candidate)*identity(m), &
+         call symmetric_pseudoinverse(cross + real(n, dp)*lambda(candidate)*identity_matrix(m), &
             inverse, info)
          if (info /= 0) then
             out%info = 3
@@ -179,15 +180,15 @@ contains
 
    pure function varshrink_semibayes(response, predictors, lambda, degrees_of_freedom, &
       conjugate, tolerance, m0, max_iterations) result(out)
-      ! Fit VARshrink's fixed-lambda semiparametric Bayesian regression.
-      real(dp), intent(in) :: response(:, :)
-      real(dp), intent(in) :: predictors(:, :)
-      real(dp), intent(in) :: lambda
-      real(dp), intent(in), optional :: degrees_of_freedom
-      logical, intent(in), optional :: conjugate
-      real(dp), intent(in), optional :: tolerance
-      real(dp), intent(in), optional :: m0
-      integer, intent(in), optional :: max_iterations
+      !! Fit VARshrink's fixed-lambda semiparametric Bayesian regression.
+      real(dp), intent(in) :: response(:, :) !! N-by-K matrix of dependent variables.
+      real(dp), intent(in) :: predictors(:, :) !! N-by-M matrix of regressors.
+      real(dp), intent(in) :: lambda !! Shrinkage intensity in the interval [0, 1].
+      real(dp), intent(in), optional :: degrees_of_freedom !! Student-t degrees of freedom.
+      logical, intent(in), optional :: conjugate !! Use the conjugate covariance prior.
+      real(dp), intent(in), optional :: tolerance !! Relative convergence tolerance.
+      real(dp), intent(in), optional :: m0 !! Inverse-Wishart prior degrees of freedom.
+      integer, intent(in), optional :: max_iterations !! Maximum update iterations.
       type(varshrink_semibayes_fit_t) :: out
       real(dp), allocatable :: coefficient(:, :), covariance(:, :), previous_covariance(:, :)
       real(dp), allocatable :: weights(:), previous_weights(:), inverse_covariance(:, :)
@@ -318,11 +319,11 @@ contains
    end function varshrink_semibayes
 
    pure function varshrink_var_ridge(series, order, lambda, include_intercept) result(out)
-      ! Fit a VAR with VARshrink's multivariate ridge and GCV selection.
-      real(dp), intent(in) :: series(:, :)
-      integer, intent(in) :: order
-      real(dp), intent(in) :: lambda(:)
-      logical, intent(in), optional :: include_intercept
+      !! Fit a VAR with VARshrink's multivariate ridge and GCV selection.
+      real(dp), intent(in) :: series(:, :) !! T-by-K matrix of endogenous variables.
+      integer, intent(in) :: order !! VAR lag order.
+      real(dp), intent(in) :: lambda(:) !! Candidate nonnegative ridge parameters.
+      logical, intent(in), optional :: include_intercept !! Include a constant when true.
       type(varshrink_var_fit_t) :: out
       type(varshrink_ridge_path_t) :: path
       real(dp), allocatable :: x(:, :), y(:, :), coefficient(:, :), residuals(:, :)
@@ -376,11 +377,11 @@ contains
    end function varshrink_var_ridge
 
    pure function varshrink_effective_df(predictors, lambda0, noise_variance, weights) result(value)
-      ! Compute the shrinkage-adjusted regression degrees of freedom.
-      real(dp), intent(in) :: predictors(:, :)
-      real(dp), intent(in) :: lambda0
-      real(dp), intent(in), optional :: noise_variance
-      real(dp), intent(in), optional :: weights(:)
+      !! Compute the shrinkage-adjusted regression degrees of freedom.
+      real(dp), intent(in) :: predictors(:, :) !! N-by-M matrix of regressors.
+      real(dp), intent(in) :: lambda0 !! Rescaled nonnegative shrinkage parameter.
+      real(dp), intent(in), optional :: noise_variance !! Equation innovation variance.
+      real(dp), intent(in), optional :: weights(:) !! Nonnegative observation weights.
       real(dp) :: value
       real(dp), allocatable :: cross(:, :), values(:), vectors(:, :)
       real(dp) :: variance
@@ -406,10 +407,10 @@ contains
    end function varshrink_effective_df
 
    pure function varshrink_log_likelihood(residuals, covariance, degrees_of_freedom) result(value)
-      ! Evaluate the multivariate Gaussian or Student-t residual log likelihood.
-      real(dp), intent(in) :: residuals(:, :)
-      real(dp), intent(in) :: covariance(:, :)
-      real(dp), intent(in), optional :: degrees_of_freedom
+      !! Evaluate the multivariate Gaussian or Student-t residual log likelihood.
+      real(dp), intent(in) :: residuals(:, :) !! N-by-K matrix of model residuals.
+      real(dp), intent(in) :: covariance(:, :) !! K-by-K innovation scale matrix.
+      real(dp), intent(in), optional :: degrees_of_freedom !! Student-t degrees of freedom.
       real(dp) :: value
       real(dp), allocatable :: inverse(:, :), quadratic(:)
       real(dp) :: logdet, nu, pi
@@ -440,8 +441,8 @@ contains
    end function varshrink_log_likelihood
 
    pure function varshrink_variance_intensity(series) result(lambda)
-      ! Estimate VARshrink's Stein-type intensity for marginal variances.
-      real(dp), intent(in) :: series(:, :)
+      !! Estimate VARshrink's Stein-type intensity for marginal variances.
+      real(dp), intent(in) :: series(:, :) !! T-by-K matrix of time-series observations.
       real(dp) :: lambda
       real(dp), allocatable :: centered(:, :), squares(:, :), variances(:)
       real(dp) :: var_r, cov_r, denominator
@@ -466,16 +467,16 @@ contains
             sum(squares(1:n - lag, :)*squares(lag + 1:n, :))/ &
             real((n - 1)**2*n, dp)
       end do
-      denominator = sum((variances - median_value(variances))**2)
+      denominator = sum((variances - median(variances))**2)
       if (denominator > tiny(1.0_dp)) lambda = min(1.0_dp, max(0.0_dp, &
          (var_r + cov_r)/denominator))
    end function varshrink_variance_intensity
 
    pure function varshrink_covariance_shrink(data, lambda, lambda_variance) result(out)
-      ! Estimate covariance by separate correlation and variance shrinkage.
-      real(dp), intent(in) :: data(:, :)
-      real(dp), intent(in), optional :: lambda
-      real(dp), intent(in), optional :: lambda_variance
+      !! Estimate covariance by separate correlation and variance shrinkage.
+      real(dp), intent(in) :: data(:, :) !! N-by-P matrix of observations.
+      real(dp), intent(in), optional :: lambda !! Correlation shrinkage intensity.
+      real(dp), intent(in), optional :: lambda_variance !! Variance shrinkage intensity.
       type(varshrink_covariance_t) :: out
       real(dp), allocatable :: centered(:, :), standardized(:, :)
       real(dp), allocatable :: empirical_variance(:), correlation(:, :)
@@ -501,7 +502,7 @@ contains
          out%info = 2
          return
       end if
-      target = median_value(empirical_variance)
+      target = median(empirical_variance)
 
       if (present(lambda_variance)) then
          out%lambda_variance = min(1.0_dp, max(0.0_dp, lambda_variance))
@@ -571,11 +572,11 @@ contains
 
    pure function varshrink_nonparametric(response, predictors, lambda, &
       lambda_variance) result(out)
-      ! Fit VARshrink's covariance-based nonparametric shrinkage regression.
-      real(dp), intent(in) :: response(:, :)
-      real(dp), intent(in) :: predictors(:, :)
-      real(dp), intent(in), optional :: lambda
-      real(dp), intent(in), optional :: lambda_variance
+      !! Fit VARshrink's covariance-based nonparametric shrinkage regression.
+      real(dp), intent(in) :: response(:, :) !! N-by-K matrix of dependent variables.
+      real(dp), intent(in) :: predictors(:, :) !! N-by-M matrix of regressors.
+      real(dp), intent(in), optional :: lambda !! Correlation shrinkage intensity.
+      real(dp), intent(in), optional :: lambda_variance !! Variance shrinkage intensity.
       type(varshrink_nonparametric_fit_t) :: out
       type(varshrink_covariance_t) :: shrinkage
       real(dp), allocatable :: centered_x(:, :), centered_y(:, :), joined(:, :)
@@ -639,15 +640,15 @@ contains
 
    pure subroutine conjugate_update(response, predictors, weights, lambda, prior_df, &
       coefficient, covariance, info)
-      ! Update coefficients and covariance under the conjugate shrinkage form.
-      real(dp), intent(in) :: response(:, :)
-      real(dp), intent(in) :: predictors(:, :)
-      real(dp), intent(in) :: weights(:)
-      real(dp), intent(in) :: lambda
-      real(dp), intent(in) :: prior_df
-      real(dp), intent(out) :: coefficient(:, :)
-      real(dp), intent(out) :: covariance(:, :)
-      integer, intent(out) :: info
+      !! Update coefficients and covariance under the conjugate shrinkage form.
+      real(dp), intent(in) :: response(:, :) !! N-by-K matrix of dependent variables.
+      real(dp), intent(in) :: predictors(:, :) !! N-by-M matrix of regressors.
+      real(dp), intent(in) :: weights(:) !! Nonnegative observation weights.
+      real(dp), intent(in) :: lambda !! Shrinkage intensity in the interval [0, 1].
+      real(dp), intent(in) :: prior_df !! Inverse-Wishart prior degrees of freedom.
+      real(dp), intent(out) :: coefficient(:, :) !! Updated M-by-K coefficient matrix.
+      real(dp), intent(out) :: covariance(:, :) !! Updated K-by-K noise covariance.
+      integer, intent(out) :: info !! Zero on success; nonzero on numerical failure.
       real(dp), allocatable :: weighted_x(:, :), weighted_y(:, :)
       real(dp), allocatable :: system(:, :), inverse(:, :), residuals(:, :)
       integer :: n, m, d, diagonal
@@ -658,7 +659,7 @@ contains
       weighted_x = predictors*spread(weights, 2, m)
       weighted_y = response*spread(weights, 2, d)
       system = (1.0_dp - lambda)*matmul(transpose(predictors), weighted_x)/ &
-         real(n - 1, dp) + lambda*identity(m)
+         real(n - 1, dp) + lambda*identity_matrix(m)
       allocate(inverse(m, m))
       call symmetric_pseudoinverse(system, inverse, info)
       if (info /= 0) return
@@ -676,16 +677,16 @@ contains
 
    pure subroutine nonconjugate_update(response, predictors, weights, lambda, &
       previous_covariance, coefficient, covariance, prior_df, info)
-      ! Update coefficients using VARshrink's non-conjugate eigenvalue formula.
-      real(dp), intent(in) :: response(:, :)
-      real(dp), intent(in) :: predictors(:, :)
-      real(dp), intent(in) :: weights(:)
-      real(dp), intent(in) :: lambda
-      real(dp), intent(in) :: previous_covariance(:, :)
-      real(dp), intent(out) :: coefficient(:, :)
-      real(dp), intent(out) :: covariance(:, :)
-      real(dp), intent(in) :: prior_df
-      integer, intent(out) :: info
+      !! Update coefficients using VARshrink's non-conjugate eigenvalue formula.
+      real(dp), intent(in) :: response(:, :) !! N-by-K matrix of dependent variables.
+      real(dp), intent(in) :: predictors(:, :) !! N-by-M matrix of regressors.
+      real(dp), intent(in) :: weights(:) !! Nonnegative observation weights.
+      real(dp), intent(in) :: lambda !! Shrinkage intensity in the interval [0, 1].
+      real(dp), intent(in) :: previous_covariance(:, :) !! Previous K-by-K covariance.
+      real(dp), intent(out) :: coefficient(:, :) !! Updated M-by-K coefficient matrix.
+      real(dp), intent(out) :: covariance(:, :) !! Updated K-by-K noise covariance.
+      real(dp), intent(in) :: prior_df !! Inverse-Wishart prior degrees of freedom.
+      integer, intent(out) :: info !! Zero on success; nonzero on numerical failure.
       real(dp), allocatable :: x_values(:), x_vectors(:, :)
       real(dp), allocatable :: v_values(:), v_vectors(:, :), inverse_covariance(:, :)
       real(dp), allocatable :: cross(:, :), transformed(:, :), residuals(:, :)
@@ -726,55 +727,12 @@ contains
    end subroutine nonconjugate_update
 
    pure function row_quadratic(matrix, metric) result(values)
-      ! Return row-wise quadratic forms against a symmetric metric.
-      real(dp), intent(in) :: matrix(:, :)
-      real(dp), intent(in) :: metric(:, :)
+      !! Return row-wise quadratic forms against a symmetric metric.
+      real(dp), intent(in) :: matrix(:, :) !! Matrix whose rows define the vectors.
+      real(dp), intent(in) :: metric(:, :) !! Symmetric quadratic-form matrix.
       real(dp), allocatable :: values(:)
 
       values = sum(matrix*matmul(matrix, metric), dim=2)
    end function row_quadratic
-
-   pure function identity(order) result(matrix)
-      ! Return an identity matrix of the requested order.
-      integer, intent(in) :: order
-      real(dp) :: matrix(order, order)
-      integer :: diagonal
-
-      matrix = 0.0_dp
-      do diagonal = 1, order
-         matrix(diagonal, diagonal) = 1.0_dp
-      end do
-   end function identity
-
-   pure function median_value(values) result(median)
-      ! Return the median of a nonempty real vector.
-      real(dp), intent(in) :: values(:)
-      real(dp) :: median
-      real(dp), allocatable :: work(:)
-      real(dp) :: current
-      integer :: i, j, n
-
-      n = size(values)
-      if (n <= 0) then
-         median = 0.0_dp
-         return
-      end if
-      work = values
-      do i = 2, n
-         current = work(i)
-         j = i - 1
-         do while (j >= 1)
-            if (work(j) <= current) exit
-            work(j + 1) = work(j)
-            j = j - 1
-         end do
-         work(j + 1) = current
-      end do
-      if (mod(n, 2) == 0) then
-         median = 0.5_dp*(work(n/2) + work(n/2 + 1))
-      else
-         median = work((n + 1)/2)
-      end if
-   end function median_value
 
 end module varshrink_mod

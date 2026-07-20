@@ -3,6 +3,8 @@
 ! Numerical time-series algorithms modelled after the R forecast package.
 module forecast_mod
    use kind_mod, only: dp
+   use rolling_forecast_mod, only: rolling_forecast_result_t
+   use time_series_stats_mod, only: acf_values, pacf_values, ccf_values
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite, ieee_value, ieee_quiet_nan
    implicit none
    private
@@ -25,13 +27,14 @@ module forecast_mod
    public :: meanf, naive, rwf, snaive, ses, holt, holt_winters, croston, thetaf
    public :: box_cox, inv_box_cox, fourier, moving_average
    public :: acf_values, pacf_values, ccf_values, forecast_accuracy, dm_test
+   public :: rolling_forecast_accuracy
 
 contains
 
    pure function meanf(y, h) result(out)
-      ! Forecast every horizon from the sample mean.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: h
+      !! Forecast every horizon from the sample mean.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: h !! H.
       type(forecast_result_t) :: out
       real(dp) :: mu
       integer :: n
@@ -45,9 +48,9 @@ contains
    end function meanf
 
    pure function naive(y, h) result(out)
-      ! Forecast every horizon from the final observation.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: h
+      !! Forecast every horizon from the final observation.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: h !! H.
       type(forecast_result_t) :: out
       integer :: n
       n = size(y)
@@ -60,10 +63,10 @@ contains
    end function naive
 
    pure function rwf(y, h, drift) result(out)
-      ! Fit a random-walk forecast with optional linear drift.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: h
-      logical, intent(in), optional :: drift
+      !! Fit a random-walk forecast with optional linear drift.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: h !! H.
+      logical, intent(in), optional :: drift !! Flag controlling drift.
       type(forecast_result_t) :: out
       real(dp) :: slope
       integer :: i, n
@@ -86,9 +89,10 @@ contains
    end function rwf
 
    pure function snaive(y, period, h) result(out)
-      ! Repeat the most recent seasonal cycle over the forecast horizon.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: period, h
+      !! Repeat the most recent seasonal cycle over the forecast horizon.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: period !! Seasonal period.
+      integer, intent(in) :: h !! H.
       type(forecast_result_t) :: out
       integer :: i, n
       n = size(y)
@@ -106,11 +110,11 @@ contains
    end function snaive
 
    pure function ses(y, h, alpha, initial) result(out)
-      ! Apply simple exponential smoothing with a fixed smoothing weight.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: h
-      real(dp), intent(in) :: alpha
-      real(dp), intent(in), optional :: initial
+      !! Apply simple exponential smoothing with a fixed smoothing weight.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: h !! H.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in), optional :: initial !! Initial value.
       type(forecast_result_t) :: out
       real(dp) :: level
       integer :: i, n
@@ -133,11 +137,12 @@ contains
    end function ses
 
    pure function holt(y, h, alpha, beta, phi) result(out)
-      ! Apply Holt's level-trend method with optional trend damping.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: h
-      real(dp), intent(in) :: alpha, beta
-      real(dp), intent(in), optional :: phi
+      !! Apply Holt's level-trend method with optional trend damping.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: h !! H.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in) :: beta !! Regression or model coefficients.
+      real(dp), intent(in), optional :: phi !! Autoregressive or model coefficient.
       type(forecast_result_t) :: out
       real(dp) :: level, trend, old_level, damp, phisum
       integer :: i, n
@@ -169,12 +174,15 @@ contains
    end function holt
 
    pure function holt_winters(y, period, h, alpha, beta, gamma, multiplicative, phi) result(out)
-      ! Apply seasonal Holt-Winters smoothing with additive or multiplicative seasonality.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: period, h
-      real(dp), intent(in) :: alpha, beta, gamma
-      logical, intent(in), optional :: multiplicative
-      real(dp), intent(in), optional :: phi
+      !! Apply seasonal Holt-Winters smoothing with additive or multiplicative seasonality.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: period !! Seasonal period.
+      integer, intent(in) :: h !! H.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in) :: beta !! Regression or model coefficients.
+      real(dp), intent(in) :: gamma !! Model coefficient or scale parameter.
+      logical, intent(in), optional :: multiplicative !! Flag controlling multiplicative.
+      real(dp), intent(in), optional :: phi !! Autoregressive or model coefficient.
       type(forecast_result_t) :: out
       real(dp) :: level, trend, old_level, damp, phisum, season
       real(dp), allocatable :: s(:)
@@ -234,11 +242,11 @@ contains
    end function holt_winters
 
    pure function croston(y, h, alpha, method) result(out)
-      ! Forecast intermittent demand using Croston, SBA, or SBJ updates.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: h
-      real(dp), intent(in), optional :: alpha
-      character(len=*), intent(in), optional :: method
+      !! Forecast intermittent demand using Croston, SBA, or SBJ updates.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: h !! H.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
+      character(len=*), intent(in), optional :: method !! Algorithm or estimation method.
       type(forecast_result_t) :: out
       real(dp) :: a, demand, interval, ratio, coeff
       integer :: i, n, last, gap
@@ -278,10 +286,10 @@ contains
    end function croston
 
    pure function thetaf(y, h, alpha) result(out)
-      ! Forecast with the classical two-line Theta method.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: h
-      real(dp), intent(in), optional :: alpha
+      !! Forecast with the classical two-line Theta method.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: h !! H.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
       type(forecast_result_t) :: out
       type(forecast_result_t) :: smooth
       real(dp) :: a, slope, intercept
@@ -304,8 +312,9 @@ contains
    end function thetaf
 
    pure elemental function box_cox(x, lambda) result(y)
-      ! Apply the Box-Cox power transform to one value.
-      real(dp), intent(in) :: x, lambda
+      !! Apply the Box-Cox power transform to one value.
+      real(dp), intent(in) :: x !! Input data or predictor values.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
       real(dp) :: y
       if (abs(lambda) < epsilon(1.0_dp)) then
          y = log(x)
@@ -315,8 +324,9 @@ contains
    end function box_cox
 
    pure elemental function inv_box_cox(x, lambda) result(y)
-      ! Invert the Box-Cox power transform for one value.
-      real(dp), intent(in) :: x, lambda
+      !! Invert the Box-Cox power transform for one value.
+      real(dp), intent(in) :: x !! Input data or predictor values.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
       real(dp) :: y
       if (abs(lambda) < epsilon(1.0_dp)) then
          y = exp(x)
@@ -326,9 +336,11 @@ contains
    end function inv_box_cox
 
    pure function fourier(n, period, order, start) result(x)
-      ! Generate sine and cosine regressors for a seasonal period.
-      integer, intent(in)::n, period, order
-      integer, intent(in), optional::start
+      !! Generate sine and cosine regressors for a seasonal period.
+      integer, intent(in) :: n !! Number of observations or elements.
+      integer, intent(in) :: period !! Seasonal period.
+      integer, intent(in) :: order !! Model or polynomial order.
+      integer, intent(in), optional :: start !! Start.
       real(dp), allocatable::x(:, :)
       integer::i, k, s
       s = 1
@@ -343,10 +355,10 @@ contains
    end function fourier
 
    pure function moving_average(y, order, centre) result(x)
-      ! Compute an odd or centered-even simple moving average.
-      real(dp), intent(in)::y(:)
-      integer, intent(in)::order
-      logical, intent(in), optional::centre
+      !! Compute an odd or centered-even simple moving average.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
+      logical, intent(in), optional :: centre !! Flag controlling centre.
       real(dp), allocatable::x(:)
       real(dp), allocatable::w(:)
       integer::i, j, m, left
@@ -371,77 +383,12 @@ contains
       end do
    end function moving_average
 
-   pure function acf_values(y, lag_max, covariance) result(a)
-      ! Compute biased autocorrelations or autocovariances through lag_max.
-      real(dp), intent(in)::y(:)
-      integer, intent(in)::lag_max
-      logical, intent(in), optional::covariance
-      real(dp), allocatable::a(:)
-      real(dp)::mu, c0
-      integer::k, n
-      logical::covar
-      n = size(y)
-      mu = sum(y)/n
-      allocate (a(lag_max + 1))
-      covar = .false.
-      if (present(covariance)) covar = covariance
-      do k = 0, lag_max
-         a(k + 1) = sum((y(1:n - k) - mu)*(y(1 + k:n) - mu))/n
-      end do
-      if (.not. covar) then
-         c0 = a(1)
-         a = a/c0
-      end if
-   end function acf_values
-
-   pure function pacf_values(y, lag_max) result(pacf)
-      ! Compute partial autocorrelations using Durbin-Levinson recursion.
-      real(dp), intent(in)::y(:)
-      integer, intent(in)::lag_max
-      real(dp), allocatable::pacf(:), rho(:), prev(:), curr(:)
-      real(dp)::v
-      integer::k, j
-      rho = acf_values(y, lag_max)
-      allocate (pacf(lag_max), prev(lag_max), curr(lag_max))
-      prev = 0
-      if (lag_max == 0) return
-      prev(1) = rho(2)
-      pacf(1) = prev(1)
-      do k = 2, lag_max
-         v = (rho(k + 1) - sum([(prev(j)*rho(k - j + 1), j=1, k - 1)]))/(1 - sum([(prev(j)*rho(j + 1), j=1, k - 1)]))
-         curr = 0
-         do j = 1, k - 1
-            curr(j) = prev(j) - v*prev(k - j)
-         end do
-         curr(k) = v
-         pacf(k) = v
-         prev = curr
-      end do
-   end function pacf_values
-
-   pure function ccf_values(x, y, lag_max) result(c)
-      ! Compute normalized cross-correlations at positive and negative lags.
-      real(dp), intent(in)::x(:), y(:)
-      integer, intent(in)::lag_max
-      real(dp), allocatable::c(:)
-      real(dp)::mx, my, den
-      integer::k, n
-      n = min(size(x), size(y))
-      mx = sum(x(:n))/n
-      my = sum(y(:n))/n
-      den = sqrt(sum((x(:n) - mx)**2)*sum((y(:n) - my)**2))
-      allocate (c(-lag_max:lag_max))
-      do k = 0, lag_max
-         c(k) = sum((x(1:n - k) - mx)*(y(1 + k:n) - my))/den
-         c(-k) = sum((x(1 + k:n) - mx)*(y(1:n - k) - my))/den
-      end do
-   end function ccf_values
-
    pure function forecast_accuracy(actual, predicted, training, period) result(a)
-      ! Calculate common point-forecast error and scale-free accuracy measures.
-      real(dp), intent(in)::actual(:), predicted(:)
-      real(dp), intent(in), optional::training(:)
-      integer, intent(in), optional::period
+      !! Calculate common point-forecast error and scale-free accuracy measures.
+      real(dp), intent(in) :: actual(:) !! Observed values used for evaluation.
+      real(dp), intent(in) :: predicted(:) !! Predicted values.
+      real(dp), intent(in), optional :: training(:) !! Training observations.
+      integer, intent(in), optional :: period !! Seasonal period.
       type(accuracy_result_t)::a
       real(dp), allocatable::e(:), pe(:)
       real(dp)::scale
@@ -468,11 +415,48 @@ contains
       end if
    end function forecast_accuracy
 
+   pure function rolling_forecast_accuracy(rolling, training, period) &
+      result(accuracy)
+      !! Summarize every valid rolling-forecast horizon with common accuracy measures.
+      type(rolling_forecast_result_t), intent(in) :: rolling !! Rolling forecast table.
+      real(dp), intent(in), optional :: training(:) !! Training observations for MASE scaling.
+      integer, intent(in), optional :: period !! Seasonal period for MASE scaling.
+      type(accuracy_result_t), allocatable :: accuracy(:)
+      real(dp), allocatable :: actual(:), predicted(:)
+      integer :: horizon_index
+
+      if (rolling%info /= 0 .or. .not. allocated(rolling%horizon)) then
+         allocate(accuracy(0))
+         return
+      end if
+      allocate(accuracy(size(rolling%horizon)))
+      do horizon_index = 1, size(rolling%horizon)
+         actual = pack(rolling%actual(:, horizon_index), &
+            rolling%valid(:, horizon_index))
+         predicted = pack(rolling%forecast(:, horizon_index), &
+            rolling%valid(:, horizon_index))
+         if (size(actual) == 0) cycle
+         if (present(training)) then
+            if (present(period)) then
+               accuracy(horizon_index) = forecast_accuracy(actual, predicted, &
+                  training, period)
+            else
+               accuracy(horizon_index) = forecast_accuracy(actual, predicted, &
+                  training)
+            end if
+         else
+            accuracy(horizon_index) = forecast_accuracy(actual, predicted)
+         end if
+      end do
+   end function rolling_forecast_accuracy
+
    pure function dm_test(e1, e2, h, power, bartlett) result(out)
-      ! Calculate the horizon-corrected Diebold-Mariano test statistic.
-      real(dp), intent(in)::e1(:), e2(:)
-      integer, intent(in), optional::h, power
-      logical, intent(in), optional::bartlett
+      !! Calculate the horizon-corrected Diebold-Mariano test statistic.
+      real(dp), intent(in) :: e1(:) !! E1.
+      real(dp), intent(in) :: e2(:) !! E2.
+      integer, intent(in), optional :: h !! H.
+      integer, intent(in), optional :: power !! Power.
+      logical, intent(in), optional :: bartlett !! Flag controlling bartlett.
       type(dm_result_t)::out
       real(dp), allocatable::d(:), cv(:)
       real(dp)::dv, kfac, w
@@ -501,9 +485,10 @@ contains
    end function dm_test
 
    pure subroutine allocate_result(out, n, h)
-      ! Allocate and initialize the common forecast result arrays.
-      type(forecast_result_t), intent(out)::out
-      integer, intent(in)::n, h
+      !! Allocate and initialize the common forecast result arrays.
+      type(forecast_result_t), intent(out) :: out !! Procedure result.
+      integer, intent(in) :: n !! Number of observations or elements.
+      integer, intent(in) :: h !! H.
       allocate (out%mean(h), out%fitted(n), out%residuals(n))
       out%mean = ieee_value(0.0_dp, ieee_quiet_nan)
       out%fitted = ieee_value(0.0_dp, ieee_quiet_nan)
@@ -511,9 +496,9 @@ contains
    end subroutine allocate_result
 
    pure function residual_sd(e, df_used) result(s)
-      ! Estimate residual standard deviation while ignoring non-finite values.
-      real(dp), intent(in)::e(:)
-      integer, intent(in)::df_used
+      !! Estimate residual standard deviation while ignoring non-finite values.
+      real(dp), intent(in) :: e(:) !! E.
+      integer, intent(in) :: df_used !! Degrees of freedom used.
       real(dp)::s, mu
       integer::i, n
       n = 0

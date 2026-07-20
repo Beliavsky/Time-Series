@@ -4,7 +4,7 @@ program test_bssm
    use kind_mod, only: dp
    use bssm_mod
    use kfas_mod, only: ssm_model_t
-   use time_series_random_mod, only: set_random_seed
+   use random_mod, only: set_random_seed
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite, ieee_value
    use, intrinsic :: ieee_arithmetic, only: ieee_quiet_nan
    implicit none
@@ -1838,38 +1838,42 @@ program test_bssm
 contains
 
    pure real(dp) function pmmh_drift(state, parameters) result(value)
-      ! Evaluate the PMMH test model's constant drift.
-      real(dp), intent(in) :: state, parameters(:)
+      !! Evaluate the PMMH test model's constant drift.
+      real(dp), intent(in) :: state !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
 
       value = parameters(1) + 0.0_dp*state
    end function pmmh_drift
 
    pure real(dp) function pmmh_diffusion(state, parameters) result(value)
-      ! Evaluate the PMMH test model's zero diffusion.
-      real(dp), intent(in) :: state, parameters(:)
+      !! Evaluate the PMMH test model's zero diffusion.
+      real(dp), intent(in) :: state !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
 
       value = 0.0_dp*state + 0.0_dp*sum(parameters)
    end function pmmh_diffusion
 
    pure real(dp) function pmmh_prior(parameters) result(value)
-      ! Evaluate a standard-normal log prior up to its constant.
-      real(dp), intent(in) :: parameters(:)
+      !! Evaluate a standard-normal log prior up to its constant.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
 
       value = -0.5_dp*sum(parameters**2)
    end function pmmh_prior
 
    pure real(dp) function pmmh_approximate_likelihood(parameters) result(value)
-      ! Evaluate the deterministic approximate likelihood used by MCMC tests.
-      real(dp), intent(in) :: parameters(:)
+      !! Evaluate the deterministic approximate likelihood used by MCMC tests.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
 
       value = -0.5_dp*sum(parameters**2)
    end function pmmh_approximate_likelihood
 
    pure function pmmh_observation_log_density(time, observation, state, &
       parameters) result(log_density)
-      ! Evaluate the PMMH test model's Gaussian observation density.
-      integer, intent(in) :: time
-      real(dp), intent(in) :: observation, state(:), parameters(:)
+      !! Evaluate the PMMH test model's Gaussian observation density.
+      integer, intent(in) :: time !! Observation times.
+      real(dp), intent(in) :: observation !! Observed value or vector.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
       real(dp) :: log_density
 
       log_density = bssm_observation_log_density(observation, state(1), &
@@ -1878,18 +1882,21 @@ contains
    end function pmmh_observation_log_density
 
    pure real(dp) function da_pmmh_drift(state, parameters) result(value)
-      ! Evaluate multiplicative drift for delayed-acceptance tests.
-      real(dp), intent(in) :: state, parameters(:)
+      !! Evaluate multiplicative drift for delayed-acceptance tests.
+      real(dp), intent(in) :: state !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
 
       value = parameters(1)*state
    end function da_pmmh_drift
 
    pure subroutine pmmh_nonlinear_transition(time, state, parameters, mean, &
       noise_loading)
-      ! Define deterministic parameter-dependent nonlinear PMMH dynamics.
-      integer, intent(in) :: time
-      real(dp), intent(in) :: state(:), parameters(:)
-      real(dp), intent(out) :: mean(:), noise_loading(:, :)
+      !! Define deterministic parameter-dependent nonlinear PMMH dynamics.
+      integer, intent(in) :: time !! Observation times.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(out) :: mean(:) !! Mean value or vector.
+      real(dp), intent(out) :: noise_loading(:, :) !! Noise loading.
 
       mean = parameters(1) + 0.0_dp*state + 0.0_dp*real(time, dp)
       noise_loading = 0.0_dp
@@ -1897,11 +1904,13 @@ contains
 
    pure subroutine pmmh_deterministic_transition_jacobian(time, state, &
       parameters, mean, jacobian, noise_loading)
-      ! Define deterministic dynamics and their Jacobian for DA-PMMH tests.
-      integer, intent(in) :: time
-      real(dp), intent(in) :: state(:), parameters(:)
-      real(dp), intent(out) :: mean(:), jacobian(:, :)
-      real(dp), intent(out) :: noise_loading(:, :)
+      !! Define deterministic dynamics and their Jacobian for DA-PMMH tests.
+      integer, intent(in) :: time !! Observation times.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(out) :: mean(:) !! Mean value or vector.
+      real(dp), intent(out) :: jacobian(:, :) !! Jacobian.
+      real(dp), intent(out) :: noise_loading(:, :) !! Noise loading.
 
       mean = parameters(1) + 0.0_dp*state + 0.0_dp*real(time, dp)
       jacobian = 0.0_dp
@@ -1910,10 +1919,13 @@ contains
 
    pure subroutine pmmh_psi_observation(time, state, parameters, mean, &
       jacobian, standard_deviation)
-      ! Define the Gaussian observation used by psi-filter PMMH tests.
-      integer, intent(in) :: time
-      real(dp), intent(in) :: state(:), parameters(:)
-      real(dp), intent(out) :: mean, jacobian(:), standard_deviation
+      !! Define the Gaussian observation used by psi-filter PMMH tests.
+      integer, intent(in) :: time !! Observation times.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(out) :: mean !! Mean value or vector.
+      real(dp), intent(out) :: jacobian(:) !! Jacobian.
+      real(dp), intent(out) :: standard_deviation !! Standard deviation.
 
       mean = state(1) + 0.0_dp*real(time, dp) + 0.0_dp*sum(parameters)
       jacobian = 1.0_dp
@@ -1922,11 +1934,13 @@ contains
 
    pure subroutine pmmh_psi_transition(time, state, parameters, mean, &
       jacobian, noise_loading)
-      ! Define parameter-dependent dynamics for psi-filter PMMH tests.
-      integer, intent(in) :: time
-      real(dp), intent(in) :: state(:), parameters(:)
-      real(dp), intent(out) :: mean(:), jacobian(:, :)
-      real(dp), intent(out) :: noise_loading(:, :)
+      !! Define parameter-dependent dynamics for psi-filter PMMH tests.
+      integer, intent(in) :: time !! Observation times.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(out) :: mean(:) !! Mean value or vector.
+      real(dp), intent(out) :: jacobian(:, :) !! Jacobian.
+      real(dp), intent(out) :: noise_loading(:, :) !! Noise loading.
 
       mean = parameters(1) + 0.0_dp*state + 0.0_dp*real(time, dp)
       jacobian = 0.0_dp
@@ -1935,58 +1949,67 @@ contains
 
    pure subroutine pmmh_ekpf_transition(time, state, parameters, mean, &
       noise_loading)
-      ! Define parameter-dependent dynamics for EKF-proposal PMMH tests.
-      integer, intent(in) :: time
-      real(dp), intent(in) :: state(:), parameters(:)
-      real(dp), intent(out) :: mean(:), noise_loading(:, :)
+      !! Define parameter-dependent dynamics for EKF-proposal PMMH tests.
+      integer, intent(in) :: time !! Observation times.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(out) :: mean(:) !! Mean value or vector.
+      real(dp), intent(out) :: noise_loading(:, :) !! Noise loading.
 
       mean = parameters(1) + 0.0_dp*state + 0.0_dp*real(time, dp)
       noise_loading = 0.1_dp
    end subroutine pmmh_ekpf_transition
 
    pure real(dp) function sde_drift(state, parameters) result(value)
-      ! Evaluate the test Ornstein-Uhlenbeck drift.
-      real(dp), intent(in) :: state, parameters(:)
+      !! Evaluate the test Ornstein-Uhlenbeck drift.
+      real(dp), intent(in) :: state !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
 
       value = parameters(1)*(parameters(2) - state)
    end function sde_drift
 
    pure real(dp) function sde_diffusion(state, parameters) result(value)
-      ! Evaluate the test constant diffusion coefficient.
-      real(dp), intent(in) :: state, parameters(:)
+      !! Evaluate the test constant diffusion coefficient.
+      real(dp), intent(in) :: state !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
 
       value = parameters(3) + 0.0_dp*state
    end function sde_diffusion
 
    pure real(dp) function sde_multiplicative_diffusion(state, parameters) &
       result(value)
-      ! Evaluate a multiplicative diffusion coefficient.
-      real(dp), intent(in) :: state, parameters(:)
+      !! Evaluate a multiplicative diffusion coefficient.
+      real(dp), intent(in) :: state !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
 
       value = parameters(3)*state
    end function sde_multiplicative_diffusion
 
    pure real(dp) function sde_diffusion_derivative(state, parameters) &
       result(value)
-      ! Evaluate the multiplicative diffusion derivative.
-      real(dp), intent(in) :: state, parameters(:)
+      !! Evaluate the multiplicative diffusion derivative.
+      real(dp), intent(in) :: state !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
 
       value = parameters(3) + 0.0_dp*state
    end function sde_diffusion_derivative
 
    pure real(dp) function sde_zero_diffusion_derivative(state, parameters) &
       result(value)
-      ! Evaluate the constant diffusion derivative.
-      real(dp), intent(in) :: state, parameters(:)
+      !! Evaluate the constant diffusion derivative.
+      real(dp), intent(in) :: state !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
 
       value = 0.0_dp*state + 0.0_dp*sum(parameters)
    end function sde_zero_diffusion_derivative
 
    pure function sde_observation_log_density(time, observation, state, &
       parameters) result(log_density)
-      ! Evaluate the test SDE Gaussian observation density.
-      integer, intent(in) :: time
-      real(dp), intent(in) :: observation, state(:), parameters(:)
+      !! Evaluate the test SDE Gaussian observation density.
+      integer, intent(in) :: time !! Observation times.
+      real(dp), intent(in) :: observation !! Observed value or vector.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
       real(dp) :: log_density
 
       log_density = bssm_observation_log_density(observation, state(1), &
@@ -1995,9 +2018,11 @@ contains
 
    pure function nonlinear_log_density(time, observation, state, parameters) &
       result(log_density)
-      ! Evaluate the test model's nonlinear Gaussian observation density.
-      integer, intent(in) :: time
-      real(dp), intent(in) :: observation, state(:), parameters(:)
+      !! Evaluate the test model's nonlinear Gaussian observation density.
+      integer, intent(in) :: time !! Observation times.
+      real(dp), intent(in) :: observation !! Observed value or vector.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
       real(dp) :: log_density
 
       log_density = bssm_observation_log_density(observation, state(1)**2, &
@@ -2007,10 +2032,12 @@ contains
 
    pure subroutine nonlinear_transition(time, state, parameters, mean, &
       noise_loading)
-      ! Advance the test model through a nonlinear callback interface.
-      integer, intent(in) :: time
-      real(dp), intent(in) :: state(:), parameters(:)
-      real(dp), intent(out) :: mean(:), noise_loading(:, :)
+      !! Advance the test model through a nonlinear callback interface.
+      integer, intent(in) :: time !! Observation times.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(out) :: mean(:) !! Mean value or vector.
+      real(dp), intent(out) :: noise_loading(:, :) !! Noise loading.
 
       mean(1) = parameters(1)*state(1) + parameters(2)
       noise_loading = parameters(3) + 0.0_dp*real(time, dp)
@@ -2018,11 +2045,13 @@ contains
 
    pure subroutine nonlinear_transition_jacobian(time, state, parameters, &
       mean, jacobian, noise_loading)
-      ! Advance the test model and return its transition Jacobian.
-      integer, intent(in) :: time
-      real(dp), intent(in) :: state(:), parameters(:)
-      real(dp), intent(out) :: mean(:), jacobian(:, :)
-      real(dp), intent(out) :: noise_loading(:, :)
+      !! Advance the test model and return its transition Jacobian.
+      integer, intent(in) :: time !! Observation times.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(out) :: mean(:) !! Mean value or vector.
+      real(dp), intent(out) :: jacobian(:, :) !! Jacobian.
+      real(dp), intent(out) :: noise_loading(:, :) !! Noise loading.
 
       mean(1) = parameters(1)*state(1) + parameters(2)
       jacobian = parameters(1)
@@ -2031,11 +2060,13 @@ contains
 
    pure subroutine curved_transition_jacobian(time, state, parameters, mean, &
       jacobian, noise_loading)
-      ! Advance the test model through a quadratic transition.
-      integer, intent(in) :: time
-      real(dp), intent(in) :: state(:), parameters(:)
-      real(dp), intent(out) :: mean(:), jacobian(:, :)
-      real(dp), intent(out) :: noise_loading(:, :)
+      !! Advance the test model through a quadratic transition.
+      integer, intent(in) :: time !! Observation times.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(out) :: mean(:) !! Mean value or vector.
+      real(dp), intent(out) :: jacobian(:, :) !! Jacobian.
+      real(dp), intent(out) :: noise_loading(:, :) !! Noise loading.
 
       mean(1) = parameters(1)*state(1) + parameters(2)*state(1)**2
       jacobian(1, 1) = parameters(1) + 2.0_dp*parameters(2)*state(1)
@@ -2044,10 +2075,12 @@ contains
 
    pure subroutine nonlinear_prediction_transition(time, state, parameters, &
       mean, noise_loading)
-      ! Advance the nonlinear prediction fixture for one forecast time.
-      integer, intent(in) :: time
-      real(dp), intent(in) :: state(:), parameters(:)
-      real(dp), intent(out) :: mean(:), noise_loading(:, :)
+      !! Advance the nonlinear prediction fixture for one forecast time.
+      integer, intent(in) :: time !! Observation times.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(out) :: mean(:) !! Mean value or vector.
+      real(dp), intent(out) :: noise_loading(:, :) !! Noise loading.
 
       mean(1) = parameters(1)*state(1) + parameters(2) + &
          0.0_dp*real(time, dp)
@@ -2056,10 +2089,12 @@ contains
 
    pure subroutine nonlinear_prediction_observation(time, state, parameters, &
       mean, noise_loading)
-      ! Evaluate a bivariate nonlinear Gaussian prediction fixture.
-      integer, intent(in) :: time
-      real(dp), intent(in) :: state(:), parameters(:)
-      real(dp), intent(out) :: mean(:), noise_loading(:, :)
+      !! Evaluate a bivariate nonlinear Gaussian prediction fixture.
+      integer, intent(in) :: time !! Observation times.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(out) :: mean(:) !! Mean value or vector.
+      real(dp), intent(out) :: noise_loading(:, :) !! Noise loading.
 
       mean(1) = state(1)**2 + parameters(1) + 0.0_dp*real(time, dp)
       mean(2) = 2.0_dp*state(1) + parameters(2)
@@ -2071,10 +2106,13 @@ contains
 
    pure subroutine linear_gaussian_observation(time, state, parameters, mean, &
       jacobian, standard_deviation)
-      ! Define the test model's linear Gaussian observation equation.
-      integer, intent(in) :: time
-      real(dp), intent(in) :: state(:), parameters(:)
-      real(dp), intent(out) :: mean, jacobian(:), standard_deviation
+      !! Define the test model's linear Gaussian observation equation.
+      integer, intent(in) :: time !! Observation times.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(out) :: mean !! Mean value or vector.
+      real(dp), intent(out) :: jacobian(:) !! Jacobian.
+      real(dp), intent(out) :: standard_deviation !! Standard deviation.
 
       mean = state(1) + 0.0_dp*real(time, dp)
       jacobian = 1.0_dp
@@ -2083,11 +2121,13 @@ contains
 
    pure subroutine multivariate_linear_gaussian_observation(time, state, &
       parameters, mean, jacobian, noise_loading)
-      ! Define a bivariate linear Gaussian observation equation.
-      integer, intent(in) :: time
-      real(dp), intent(in) :: state(:), parameters(:)
-      real(dp), intent(out) :: mean(:), jacobian(:, :)
-      real(dp), intent(out) :: noise_loading(:, :)
+      !! Define a bivariate linear Gaussian observation equation.
+      integer, intent(in) :: time !! Observation times.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(out) :: mean(:) !! Mean value or vector.
+      real(dp), intent(out) :: jacobian(:, :) !! Jacobian.
+      real(dp), intent(out) :: noise_loading(:, :) !! Noise loading.
       integer :: component
 
       mean = state(1) + 0.0_dp*real(time, dp) + 0.0_dp*parameters(1)
@@ -2101,11 +2141,13 @@ contains
 
    pure subroutine multivariate_nonlinear_gaussian_observation(time, state, &
       parameters, mean, jacobian, noise_loading)
-      ! Define a nonlinear bivariate Gaussian observation equation.
-      integer, intent(in) :: time
-      real(dp), intent(in) :: state(:), parameters(:)
-      real(dp), intent(out) :: mean(:), jacobian(:, :)
-      real(dp), intent(out) :: noise_loading(:, :)
+      !! Define a nonlinear bivariate Gaussian observation equation.
+      integer, intent(in) :: time !! Observation times.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(out) :: mean(:) !! Mean value or vector.
+      real(dp), intent(out) :: jacobian(:, :) !! Jacobian.
+      real(dp), intent(out) :: noise_loading(:, :) !! Noise loading.
 
       mean = [exp(state(1)), 2.0_dp*state(1)] + &
          0.0_dp*real(time, dp)
@@ -2117,10 +2159,13 @@ contains
 
    pure subroutine exponential_gaussian_observation(time, state, parameters, &
       mean, jacobian, standard_deviation)
-      ! Define an exponential-mean Gaussian observation equation.
-      integer, intent(in) :: time
-      real(dp), intent(in) :: state(:), parameters(:)
-      real(dp), intent(out) :: mean, jacobian(:), standard_deviation
+      !! Define an exponential-mean Gaussian observation equation.
+      integer, intent(in) :: time !! Observation times.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(out) :: mean !! Mean value or vector.
+      real(dp), intent(out) :: jacobian(:) !! Jacobian.
+      real(dp), intent(out) :: standard_deviation !! Standard deviation.
 
       mean = exp(state(1)) + 0.0_dp*real(time, dp)
       jacobian = exp(state(1))
@@ -2130,13 +2175,15 @@ contains
    pure subroutine posterior_observation_model(parameters, &
       observation_loading, phi, offset, auxiliary, noise_loading, &
       correlated_gaussian, info)
-      ! Expand one posterior draw into a mixed observation model.
-      real(dp), intent(in) :: parameters(:)
-      real(dp), intent(out) :: observation_loading(:, :, :)
-      real(dp), intent(out) :: phi(:), offset(:, :), auxiliary(:, :)
-      real(dp), intent(out) :: noise_loading(:, :, :)
-      logical, intent(out) :: correlated_gaussian
-      integer, intent(out) :: info
+      !! Expand one posterior draw into a mixed observation model.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(out) :: observation_loading(:, :, :) !! Observation loading matrix.
+      real(dp), intent(out) :: phi(:) !! Autoregressive or model coefficient.
+      real(dp), intent(out) :: offset(:, :) !! Known additive offset.
+      real(dp), intent(out) :: auxiliary(:, :) !! Auxiliary.
+      real(dp), intent(out) :: noise_loading(:, :, :) !! Noise loading.
+      logical, intent(out) :: correlated_gaussian !! Flag controlling correlated gaussian.
+      integer, intent(out) :: info !! Status code; zero indicates success.
 
       observation_loading = parameters(1)
       phi = [1.0_dp, abs(parameters(2))]
@@ -2150,9 +2197,9 @@ contains
    end subroutine posterior_observation_model
 
    subroutine check(condition, label)
-      ! Stop at the first failed BSSM assertion.
-      logical, intent(in) :: condition
-      character(*), intent(in) :: label
+      !! Stop at the first failed BSSM assertion.
+      logical, intent(in) :: condition !! Flag controlling condition.
+      character(*), intent(in) :: label !! Label.
 
       if (.not. condition) then
          print '(a,1x,a)', 'FAILED:', label

@@ -3,7 +3,10 @@
 ! Distinct numerical algorithms translated from the GPL-2 TSSS package.
 module tsss_mod
    use kind_mod, only: dp
-   use time_series_random_mod, only: random_uniform, random_standard_normal, random_gamma
+   use stats_mod, only: sort
+   use linalg_mod, only: outer_product, solve_matrix, &
+      cholesky_lower_semidefinite
+   use random_mod, only: random_uniform, random_standard_normal, random_gamma
    use kfas_mod, only: ssm_model_t, kfs_filter_t, kfs_smoother_t, kfs_filter, kfs_smooth
    use forecast_mod, only: box_cox
    implicit none
@@ -140,11 +143,19 @@ contains
    function tsss_particle_filter(observations, particle_count, system_model, smoothing_lag, &
       initial_distribution, observation_variance, system_variance, mixture_weight, &
       large_system_variance, initial_variance, lower_bound, upper_bound) result(out)
-      ! Run the TSSS random-walk particle filter and fixed-lag smoother.
-      real(dp), intent(in) :: observations(:)
-      integer, intent(in) :: particle_count, system_model, smoothing_lag, initial_distribution
-      real(dp), intent(in) :: observation_variance, system_variance, mixture_weight
-      real(dp), intent(in) :: large_system_variance, initial_variance, lower_bound, upper_bound
+      !! Run the TSSS random-walk particle filter and fixed-lag smoother.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      integer, intent(in) :: particle_count !! Number of particle.
+      integer, intent(in) :: system_model !! System model.
+      integer, intent(in) :: smoothing_lag !! Smoothing lag.
+      integer, intent(in) :: initial_distribution !! Initial distribution.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: system_variance !! System variance.
+      real(dp), intent(in) :: mixture_weight !! Mixture weight.
+      real(dp), intent(in) :: large_system_variance !! Large system variance.
+      real(dp), intent(in) :: initial_variance !! Initial variance.
+      real(dp), intent(in) :: lower_bound !! Lower bound for bound.
+      real(dp), intent(in) :: upper_bound !! Upper bound for bound.
       type(tsss_particle_filter_t) :: out
       real(dp), allocatable :: particles(:), predicted(:), weights(:), history(:, :), next_history(:, :)
       real(dp) :: innovation
@@ -182,9 +193,9 @@ contains
    contains
 
       function transition(previous, time_index) result(value)
-         ! Draw one random-walk system transition.
-         real(dp), intent(in) :: previous
-         integer, intent(in) :: time_index
+         !! Draw one random-walk system transition.
+         real(dp), intent(in) :: previous !! Previous.
+         integer, intent(in) :: time_index !! Index of time.
          real(dp) :: value
 
          select case (system_model)
@@ -205,10 +216,14 @@ contains
 
    function tsss_nonlinear_particle_filter(observations, particle_count, smoothing_lag, &
       observation_variance, system_variance, lower_bound, upper_bound) result(out)
-      ! Run the nonlinear TSSS benchmark particle filter and smoother.
-      real(dp), intent(in) :: observations(:)
-      integer, intent(in) :: particle_count, smoothing_lag
-      real(dp), intent(in) :: observation_variance, system_variance, lower_bound, upper_bound
+      !! Run the nonlinear TSSS benchmark particle filter and smoother.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      integer, intent(in) :: particle_count !! Number of particle.
+      integer, intent(in) :: smoothing_lag !! Smoothing lag.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: system_variance !! System variance.
+      real(dp), intent(in) :: lower_bound !! Lower bound for bound.
+      real(dp), intent(in) :: upper_bound !! Upper bound for bound.
       type(tsss_particle_filter_t) :: out
       real(dp), allocatable :: particles(:), predicted(:), weights(:), history(:, :), next_history(:, :)
       integer :: i
@@ -233,9 +248,9 @@ contains
    contains
 
       function transition(previous, time_index) result(value)
-         ! Draw the nonlinear benchmark system transition.
-         real(dp), intent(in) :: previous
-         integer, intent(in) :: time_index
+         !! Draw the nonlinear benchmark system transition.
+         real(dp), intent(in) :: previous !! Previous.
+         integer, intent(in) :: time_index !! Index of time.
          real(dp) :: value
 
          value = 0.5_dp*previous + 25.0_dp*previous/(1.0_dp + previous**2) + &
@@ -247,21 +262,27 @@ contains
    subroutine run_particle_filter(observations, particles, predicted, weights, history, &
       next_history, observation_variance, lower_bound, upper_bound, out, transition, &
       nonlinear_observation)
-      ! Apply weighting, systematic resampling, and fixed-lag summaries.
-      real(dp), intent(in) :: observations(:), observation_variance, lower_bound, upper_bound
-      real(dp), intent(inout) :: particles(:), predicted(:), weights(:)
-      real(dp), intent(inout) :: history(:, 0:), next_history(:, 0:)
-      type(tsss_particle_filter_t), intent(out) :: out
+      !! Apply weighting, systematic resampling, and fixed-lag summaries.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: lower_bound !! Lower bound for bound.
+      real(dp), intent(in) :: upper_bound !! Upper bound for bound.
+      real(dp), intent(inout) :: particles(:) !! Number of particles, updated in place.
+      real(dp), intent(inout) :: predicted(:) !! Predicted values, updated in place.
+      real(dp), intent(inout) :: weights(:) !! Observation or objective weights, updated in place.
+      real(dp), intent(inout) :: history(:, 0:) !! History, updated in place.
+      real(dp), intent(inout) :: next_history(:, 0:) !! Next history, updated in place.
+      type(tsss_particle_filter_t), intent(out) :: out !! Procedure result.
       interface
-         function transition(previous, time_index) result(value)
-            ! Propagate one particle to the next time index.
+         function transition(previous, time_index) result(value) !! State-transition callback procedure.
+            !! Propagate one particle to the next time index.
             import dp
-            real(dp), intent(in) :: previous
-            integer, intent(in) :: time_index
+            real(dp), intent(in) :: previous !! Previous.
+            integer, intent(in) :: time_index !! Index of time.
             real(dp) :: value
          end function transition
       end interface
-      logical, intent(in), optional :: nonlinear_observation
+      logical, intent(in), optional :: nonlinear_observation !! Flag controlling nonlinear observation.
       real(dp), allocatable :: log_weight(:), cumulative(:), summary_values(:)
       real(dp) :: maximum, total, target, observed_mean
       logical :: nonlinear
@@ -327,9 +348,12 @@ contains
    end subroutine run_particle_filter
 
    subroutine summarize_particles(values, lower_bound, upper_bound, quantiles, mean_value)
-      ! Return the seven TSSS smoothing quantiles and the particle mean.
-      real(dp), intent(in) :: values(:), lower_bound, upper_bound
-      real(dp), intent(out) :: quantiles(7), mean_value
+      !! Return the seven TSSS smoothing quantiles and the particle mean.
+      real(dp), intent(in) :: values(:) !! Input values.
+      real(dp), intent(in) :: lower_bound !! Lower bound for bound.
+      real(dp), intent(in) :: upper_bound !! Upper bound for bound.
+      real(dp), intent(out) :: quantiles(7) !! Quantiles.
+      real(dp), intent(out) :: mean_value !! Mean value.
       real(dp), allocatable :: ordered(:)
       real(dp), parameter :: probability(7) = [0.0013_dp, 0.0227_dp, 0.1587_dp, &
          0.5_dp, 0.8413_dp, 0.9773_dp, 0.9987_dp]
@@ -337,7 +361,7 @@ contains
       integer :: i, lower
 
       ordered = min(upper_bound, max(lower_bound, values))
-      call sort_values(ordered)
+      call sort(ordered)
       mean_value = sum(values)/real(size(values), dp)
       do i = 1, 7
          position = 1.0_dp + probability(i)*real(size(values) - 1, dp)
@@ -351,29 +375,12 @@ contains
       end do
    end subroutine summarize_particles
 
-   subroutine sort_values(values)
-      ! Sort particle values into ascending order.
-      real(dp), intent(inout) :: values(:)
-      real(dp) :: held
-      integer :: i, j
-
-      do i = 2, size(values)
-         held = values(i)
-         j = i - 1
-         do while (j >= 1)
-            if (values(j) <= held) exit
-            values(j + 1) = values(j)
-            j = j - 1
-         end do
-         values(j + 1) = held
-      end do
-   end subroutine sort_values
-
    function tsss_tvvar(observations, trend_order, initial_system_variance, delta) result(out)
-      ! Estimate a smoothly changing variance from paired squared observations.
-      real(dp), intent(in) :: observations(:)
-      integer, intent(in) :: trend_order
-      real(dp), intent(in), optional :: initial_system_variance, delta
+      !! Estimate a smoothly changing variance from paired squared observations.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      integer, intent(in) :: trend_order !! Trend order.
+      real(dp), intent(in), optional :: initial_system_variance !! Initial system variance.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
       type(tsss_tvvar_t) :: out
       real(dp), allocatable :: transformed(:), state(:, :)
       real(dp) :: candidate, step, best, likelihood, obs_variance
@@ -420,10 +427,13 @@ contains
 
    function tsss_tvar(observations, ar_order, trend_order, span, &
       initial_system_variance, delta) result(out)
-      ! Fit the TSSS locally observed, smoothly time-varying AR model.
-      real(dp), intent(in) :: observations(:)
-      integer, intent(in) :: ar_order, trend_order, span
-      real(dp), intent(in), optional :: initial_system_variance, delta
+      !! Fit the TSSS locally observed, smoothly time-varying AR model.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: trend_order !! Trend order.
+      integer, intent(in) :: span !! Span.
+      real(dp), intent(in), optional :: initial_system_variance !! Initial system variance.
+      real(dp), intent(in), optional :: delta !! Model increment or differencing parameter.
       type(tsss_tvar_t) :: out
       real(dp), allocatable :: response(:), regressors(:, :), state(:, :)
       real(dp) :: candidate, best, likelihood, obs_variance
@@ -475,10 +485,12 @@ contains
    end function tsss_tvar
 
    pure function tsss_tvspc(ar, observation_variance, span, frequency_count, variance) result(out)
-      ! Compute the evolutionary AR spectrum, with optional variance correction.
-      real(dp), intent(in) :: ar(:, :), observation_variance
-      integer, intent(in) :: span, frequency_count
-      real(dp), intent(in), optional :: variance(:)
+      !! Compute the evolutionary AR spectrum, with optional variance correction.
+      real(dp), intent(in) :: ar(:, :) !! Autoregressive coefficients.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      integer, intent(in) :: span !! Span.
+      integer, intent(in) :: frequency_count !! Number of frequency.
+      real(dp), intent(in), optional :: variance(:) !! Variance value or matrix.
       type(tsss_tvspc_t) :: out
       real(dp) :: angle, denominator, scale
       complex(dp) :: polynomial
@@ -517,9 +529,12 @@ contains
    end function tsss_tvspc
 
    pure function tsss_pdfunc(model, parameters, lower, upper, count) result(out)
-      ! Evaluate one of the TSSS probability densities on a regular grid.
-      integer, intent(in) :: model, count
-      real(dp), intent(in) :: parameters(3), lower, upper
+      !! Evaluate one of the TSSS probability densities on a regular grid.
+      integer, intent(in) :: model !! Model specification.
+      integer, intent(in) :: count !! Count.
+      real(dp), intent(in) :: parameters(3) !! Model parameter values.
+      real(dp), intent(in) :: lower !! Lower.
+      real(dp), intent(in) :: upper !! Upper.
       type(tsss_density_t) :: out
       integer :: i
 
@@ -536,9 +551,10 @@ contains
    end function tsss_pdfunc
 
    pure real(dp) function tsss_density_value(value, model, parameters) result(density)
-      ! Return a scalar TSSS density value for the supplied model code.
-      real(dp), intent(in) :: value, parameters(3)
-      integer, intent(in) :: model
+      !! Return a scalar TSSS density value for the supplied model code.
+      real(dp), intent(in) :: value !! Input value.
+      real(dp), intent(in) :: parameters(3) !! Model parameter values.
+      integer, intent(in) :: model !! Model specification.
       real(dp) :: centered, dispersion, shape
 
       density = 0.0_dp
@@ -579,9 +595,13 @@ contains
 
    pure function tsss_klinfo(reference_model, reference_parameters, model, parameters, &
       lower, upper) result(out)
-      ! Integrate truncated KL information using the four TSSS grid refinements.
-      integer, intent(in) :: reference_model, model
-      real(dp), intent(in) :: reference_parameters(3), parameters(3), lower, upper
+      !! Integrate truncated KL information using the four TSSS grid refinements.
+      integer, intent(in) :: reference_model !! Reference model.
+      integer, intent(in) :: model !! Model specification.
+      real(dp), intent(in) :: reference_parameters(3) !! Reference parameters.
+      real(dp), intent(in) :: parameters(3) !! Model parameter values.
+      real(dp), intent(in) :: lower !! Lower.
+      real(dp), intent(in) :: upper !! Upper.
       type(tsss_kl_t) :: out
       real(dp) :: reference_density, model_density, weight, value
       integer :: level, i
@@ -617,8 +637,8 @@ contains
    end function tsss_klinfo
 
    pure function tsss_boxcox(observations) result(out)
-      ! Select the TSSS Box-Cox transform on the fixed lambda grid from one to minus one.
-      real(dp), intent(in) :: observations(:)
+      !! Select the TSSS Box-Cox transform on the fixed lambda grid from one to minus one.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
       type(tsss_boxcox_t) :: out
       real(dp), allocatable :: transformed(:)
       real(dp) :: jacobian, best_aic
@@ -657,10 +677,15 @@ contains
 
    function tsss_ngsmth(observations, system_noise, system_dispersion, system_shape, &
       observation_noise, observation_dispersion, observation_shape, intervals) result(out)
-      ! Smooth a non-Gaussian random walk by TSSS grid-density recursions.
-      real(dp), intent(in) :: observations(:), system_dispersion, system_shape
-      real(dp), intent(in) :: observation_dispersion, observation_shape
-      integer, intent(in) :: system_noise, observation_noise, intervals
+      !! Smooth a non-Gaussian random walk by TSSS grid-density recursions.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: system_dispersion !! System dispersion.
+      real(dp), intent(in) :: system_shape !! System shape.
+      real(dp), intent(in) :: observation_dispersion !! Observation dispersion.
+      real(dp), intent(in) :: observation_shape !! Observation shape.
+      integer, intent(in) :: system_noise !! System noise.
+      integer, intent(in) :: observation_noise !! Observation noise.
+      integer, intent(in) :: intervals !! Intervals.
       type(tsss_ngsmooth_t) :: out
       real(dp), allocatable :: filtered(:, :), predicted(:, :), kernel(:), work(:), ratio(:)
       real(dp) :: dx, center, spread, total
@@ -727,11 +752,16 @@ contains
    pure function tsss_structural_model(trend, seasonal_order, seasonal, ar_coefficients, &
       ar_initial, trend_variance, seasonal_variance, ar_variance, &
       observation_variance) result(out)
-      ! Build TSSS trend, zero-sum seasonal, and AR component matrices.
-      real(dp), intent(in), optional :: trend(:), seasonal(:), ar_coefficients(:), ar_initial(:)
-      integer, intent(in) :: seasonal_order
-      real(dp), intent(in) :: trend_variance, seasonal_variance, ar_variance
-      real(dp), intent(in) :: observation_variance
+      !! Build TSSS trend, zero-sum seasonal, and AR component matrices.
+      real(dp), intent(in), optional :: trend(:) !! Trend.
+      real(dp), intent(in), optional :: seasonal(:) !! Seasonal.
+      real(dp), intent(in), optional :: ar_coefficients(:) !! Autoregressive coefficients.
+      real(dp), intent(in), optional :: ar_initial(:) !! Autoregressive initial.
+      integer, intent(in) :: seasonal_order !! Seasonal order.
+      real(dp), intent(in) :: trend_variance !! Trend variance.
+      real(dp), intent(in) :: seasonal_variance !! Seasonal variance.
+      real(dp), intent(in) :: ar_variance !! Autoregressive variance.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
       type(tsss_structural_model_t) :: out
       integer :: ar_order, channel, dimension, i, offset, period, trend_order
 
@@ -833,12 +863,21 @@ contains
    pure function tsss_tsmooth(observations, transition, system_loading, observation_loading, &
       system_covariance, observation_variance, initial_state, initial_covariance, filter_end, &
       predict_end, observation_min, observation_max, missing_start, missing_count) result(out)
-      ! Run the TSSS general Gaussian filter, smoother, interpolation, and prediction interface.
-      real(dp), intent(in) :: observations(:), transition(:, :), system_loading(:, :)
-      real(dp), intent(in) :: observation_loading(:), system_covariance(:, :)
-      real(dp), intent(in) :: observation_variance, initial_state(:), initial_covariance(:, :)
-      integer, intent(in), optional :: filter_end, predict_end, missing_start(:), missing_count(:)
-      real(dp), intent(in), optional :: observation_min, observation_max
+      !! Run the TSSS general Gaussian filter, smoother, interpolation, and prediction interface.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: system_loading(:, :) !! System loading.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: system_covariance(:, :) !! System covariance matrix.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in), optional :: filter_end !! Filter end.
+      integer, intent(in), optional :: predict_end !! Predict end.
+      integer, intent(in), optional :: missing_start(:) !! Missing start.
+      integer, intent(in), optional :: missing_count(:) !! Number of missing.
+      real(dp), intent(in), optional :: observation_min !! Observation min.
+      real(dp), intent(in), optional :: observation_max !! Observation max.
       type(tsss_tsmooth_t) :: out
       type(ssm_model_t) :: model
       type(kfs_filter_t) :: filtered
@@ -949,10 +988,14 @@ contains
 
    function tsss_simssm(transition, system_loading, observation_loading, system_covariance, &
       observation_variance, initial_state, count) result(out)
-      ! Simulate a Gaussian linear state-space model.
-      real(dp), intent(in) :: transition(:, :), system_loading(:, :), observation_loading(:)
-      real(dp), intent(in) :: system_covariance(:, :), observation_variance, initial_state(:)
-      integer, intent(in) :: count
+      !! Simulate a Gaussian linear state-space model.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: system_loading(:, :) !! System loading.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: system_covariance(:, :) !! System covariance matrix.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      integer, intent(in) :: count !! Count.
       type(tsss_simulation_t) :: out
 
       out = simulate_state_space(transition, system_loading, observation_loading, &
@@ -963,11 +1006,18 @@ contains
    function tsss_ngsim(transition, system_loading, observation_loading, system_covariance, &
       observation_variance, initial_state, count, system_noise, system_shape, &
       observation_noise, observation_shape) result(out)
-      ! Simulate a linear state-space model with non-Gaussian innovations.
-      real(dp), intent(in) :: transition(:, :), system_loading(:, :), observation_loading(:)
-      real(dp), intent(in) :: system_covariance(:, :), observation_variance, initial_state(:)
-      integer, intent(in) :: count, system_noise, observation_noise
-      real(dp), intent(in) :: system_shape, observation_shape
+      !! Simulate a linear state-space model with non-Gaussian innovations.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: system_loading(:, :) !! System loading.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: system_covariance(:, :) !! System covariance matrix.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      integer, intent(in) :: count !! Count.
+      integer, intent(in) :: system_noise !! System noise.
+      integer, intent(in) :: observation_noise !! Observation noise.
+      real(dp), intent(in) :: system_shape !! System shape.
+      real(dp), intent(in) :: observation_shape !! Observation shape.
       type(tsss_simulation_t) :: out
 
       out = simulate_state_space(transition, system_loading, observation_loading, &
@@ -978,11 +1028,18 @@ contains
    function simulate_state_space(transition, system_loading, observation_loading, &
       system_covariance, observation_variance, initial_state, count, system_noise, &
       system_shape, observation_noise, observation_shape) result(out)
-      ! Implement shared Gaussian and non-Gaussian state simulation.
-      real(dp), intent(in) :: transition(:, :), system_loading(:, :), observation_loading(:)
-      real(dp), intent(in) :: system_covariance(:, :), observation_variance, initial_state(:)
-      integer, intent(in) :: count, system_noise, observation_noise
-      real(dp), intent(in) :: system_shape, observation_shape
+      !! Implement shared Gaussian and non-Gaussian state simulation.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: system_loading(:, :) !! System loading.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: system_covariance(:, :) !! System covariance matrix.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      integer, intent(in) :: count !! Count.
+      integer, intent(in) :: system_noise !! System noise.
+      integer, intent(in) :: observation_noise !! Observation noise.
+      real(dp), intent(in) :: system_shape !! System shape.
+      real(dp), intent(in) :: observation_shape !! Observation shape.
       type(tsss_simulation_t) :: out
       real(dp), allocatable :: root(:, :), innovation(:), state(:)
       integer :: i, info, j
@@ -998,7 +1055,7 @@ contains
          out%info = 1
          return
       end if
-      call cholesky_lower(system_covariance, root, info)
+      call cholesky_lower_semidefinite(system_covariance, root, info)
       if (info /= 0) then
          out%info = 2
          return
@@ -1019,11 +1076,14 @@ contains
 
    subroutine smooth_local_level(values, order, system_variance, fixed_variance, &
       state, log_likelihood, observation_variance)
-      ! Smooth an integrated trend model with a scalar observation.
-      real(dp), intent(in) :: values(:), system_variance, fixed_variance
-      integer, intent(in) :: order
-      real(dp), allocatable, intent(out) :: state(:, :)
-      real(dp), intent(out) :: log_likelihood, observation_variance
+      !! Smooth an integrated trend model with a scalar observation.
+      real(dp), intent(in) :: values(:) !! Input values.
+      real(dp), intent(in) :: system_variance !! System variance.
+      real(dp), intent(in) :: fixed_variance !! Fixed variance.
+      integer, intent(in) :: order !! Model or polynomial order.
+      real(dp), allocatable, intent(out) :: state(:, :) !! State vector or state sequence.
+      real(dp), intent(out) :: log_likelihood !! Log-likelihood value.
+      real(dp), intent(out) :: observation_variance !! Observation-error variance.
       real(dp), allocatable :: design(:, :)
 
       allocate(design(order, size(values)))
@@ -1035,11 +1095,15 @@ contains
 
    subroutine smooth_dynamic_ar(values, regressors, trend_order, span, system_variance, &
       state, log_likelihood, observation_variance)
-      ! Smooth independent integrated trends for dynamic AR coefficients.
-      real(dp), intent(in) :: values(:), regressors(:, :), system_variance
-      integer, intent(in) :: trend_order, span
-      real(dp), allocatable, intent(out) :: state(:, :)
-      real(dp), intent(out) :: log_likelihood, observation_variance
+      !! Smooth independent integrated trends for dynamic AR coefficients.
+      real(dp), intent(in) :: values(:) !! Input values.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: system_variance !! System variance.
+      integer, intent(in) :: trend_order !! Trend order.
+      integer, intent(in) :: span !! Span.
+      real(dp), allocatable, intent(out) :: state(:, :) !! State vector or state sequence.
+      real(dp), intent(out) :: log_likelihood !! Log-likelihood value.
+      real(dp), intent(out) :: observation_variance !! Observation-error variance.
       real(dp), allocatable :: design(:, :)
       integer :: i, j
 
@@ -1056,13 +1120,17 @@ contains
 
    subroutine smooth_dynamic_regression(values, design, component_order, system_variance, &
       fixed_variance, estimate_variance, state, log_likelihood, observation_variance, transition_span)
-      ! Apply a scalar-observation Kalman filter and fixed-interval smoother.
-      real(dp), intent(in) :: values(:), design(:, :), system_variance, fixed_variance
-      integer, intent(in) :: component_order
-      logical, intent(in) :: estimate_variance
-      integer, intent(in), optional :: transition_span
-      real(dp), allocatable, intent(out) :: state(:, :)
-      real(dp), intent(out) :: log_likelihood, observation_variance
+      !! Apply a scalar-observation Kalman filter and fixed-interval smoother.
+      real(dp), intent(in) :: values(:) !! Input values.
+      real(dp), intent(in) :: design(:, :) !! Design.
+      real(dp), intent(in) :: system_variance !! System variance.
+      real(dp), intent(in) :: fixed_variance !! Fixed variance.
+      integer, intent(in) :: component_order !! Component order.
+      logical, intent(in) :: estimate_variance !! Whether to estimate the variance.
+      integer, intent(in), optional :: transition_span !! Transition span.
+      real(dp), allocatable, intent(out) :: state(:, :) !! State vector or state sequence.
+      real(dp), intent(out) :: log_likelihood !! Log-likelihood value.
+      real(dp), intent(out) :: observation_variance !! Observation-error variance.
       real(dp), allocatable :: transition(:, :), filtered(:, :), predicted(:, :)
       real(dp), allocatable :: vf(:, :, :), vp(:, :, :), covariance(:, :), prediction_cov(:, :)
       real(dp), allocatable :: gain(:), projected(:), rhs(:, :), smoother_gain(:, :)
@@ -1154,8 +1222,8 @@ contains
    end subroutine smooth_dynamic_regression
 
    pure function ar_to_parcor(ar) result(parcor)
-      ! Convert AR coefficients to partial autocorrelations by step-down recursion.
-      real(dp), intent(in) :: ar(:)
+      !! Convert AR coefficients to partial autocorrelations by step-down recursion.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
       real(dp) :: parcor(size(ar)), current(size(ar)), previous(size(ar)), denominator
       integer :: i, j
 
@@ -1173,20 +1241,10 @@ contains
       end do
    end function ar_to_parcor
 
-   pure function outer_product(left, right) result(matrix)
-      ! Form the outer product of two vectors.
-      real(dp), intent(in) :: left(:), right(:)
-      real(dp) :: matrix(size(left), size(right))
-      integer :: i
-
-      do i = 1, size(left)
-         matrix(i, :) = left(i)*right
-      end do
-   end function outer_product
-
    pure integer function binomial(n, k) result(value)
-      ! Return a small integer binomial coefficient.
-      integer, intent(in) :: n, k
+      !! Return a small integer binomial coefficient.
+      integer, intent(in) :: n !! Number of observations or elements.
+      integer, intent(in) :: k !! K.
       integer :: i
 
       value = 1
@@ -1195,43 +1253,10 @@ contains
       end do
    end function binomial
 
-   pure subroutine solve_matrix(matrix, right, solution, info)
-      ! Solve a small dense system by pivoted Gauss-Jordan elimination.
-      real(dp), intent(in) :: matrix(:, :), right(:, :)
-      real(dp), intent(out) :: solution(:, :)
-      integer, intent(out) :: info
-      real(dp) :: augmented(size(matrix, 1), size(matrix, 2) + size(right, 2))
-      real(dp) :: held(size(augmented, 2)), pivot_value
-      integer :: i, j, pivot
-
-      augmented(:, 1:size(matrix, 2)) = matrix
-      augmented(:, size(matrix, 2) + 1:) = right
-      info = 0
-      do i = 1, size(matrix, 1)
-         pivot = i - 1 + maxloc(abs(augmented(i:, i)), dim=1)
-         if (abs(augmented(pivot, i)) <= tiny(1.0_dp)) then
-            info = i
-            solution = 0.0_dp
-            return
-         end if
-         if (pivot /= i) then
-            held = augmented(i, :)
-            augmented(i, :) = augmented(pivot, :)
-            augmented(pivot, :) = held
-         end if
-         pivot_value = augmented(i, i)
-         augmented(i, :) = augmented(i, :)/pivot_value
-         do j = 1, size(matrix, 1)
-            if (j /= i) augmented(j, :) = augmented(j, :) - augmented(j, i)*augmented(i, :)
-         end do
-      end do
-      solution = augmented(:, size(matrix, 2) + 1:)
-   end subroutine solve_matrix
-
    pure logical function valid_density_parameters(model, parameters) result(valid)
-      ! Check the parameter domain for a supported TSSS density.
-      integer, intent(in) :: model
-      real(dp), intent(in) :: parameters(3)
+      !! Check the parameter domain for a supported TSSS density.
+      integer, intent(in) :: model !! Model specification.
+      real(dp), intent(in) :: parameters(3) !! Model parameter values.
 
       valid = model >= tsss_density_two_sided_exponential .and. &
          model <= tsss_density_uniform
@@ -1251,9 +1276,11 @@ contains
    end function valid_density_parameters
 
    pure real(dp) function noise_density(value, noise, dispersion, shape) result(density)
-      ! Evaluate a centered Gaussian, Pearson, or Laplace density.
-      real(dp), intent(in) :: value, dispersion, shape
-      integer, intent(in) :: noise
+      !! Evaluate a centered Gaussian, Pearson, or Laplace density.
+      real(dp), intent(in) :: value !! Input value.
+      real(dp), intent(in) :: dispersion !! Dispersion.
+      real(dp), intent(in) :: shape !! Shape.
+      integer, intent(in) :: noise !! Noise.
       real(dp) :: scale
 
       select case (noise)
@@ -1270,19 +1297,21 @@ contains
    end function noise_density
 
    pure subroutine normalize_density(density, spacing, integral)
-      ! Normalize a grid density by the trapezoidal integral.
-      real(dp), intent(inout) :: density(0:)
-      real(dp), intent(in) :: spacing
-      real(dp), intent(out) :: integral
+      !! Normalize a grid density by the trapezoidal integral.
+      real(dp), intent(inout) :: density(0:) !! Density, updated in place.
+      real(dp), intent(in) :: spacing !! Spacing.
+      real(dp), intent(out) :: integral !! Integral.
 
       integral = spacing*(sum(density) - 0.5_dp*(density(0) + density(ubound(density, 1))))
       if (integral > tiny(1.0_dp)) density = density/integral
    end subroutine normalize_density
 
    pure subroutine density_quantiles(grid, density, spacing, quantiles)
-      ! Interpolate the seven TSSS posterior probability points.
-      real(dp), intent(in) :: grid(0:), density(0:), spacing
-      real(dp), intent(out) :: quantiles(7)
+      !! Interpolate the seven TSSS posterior probability points.
+      real(dp), intent(in) :: grid(0:) !! Grid.
+      real(dp), intent(in) :: density(0:) !! Density.
+      real(dp), intent(in) :: spacing !! Spacing.
+      real(dp), intent(out) :: quantiles(7) !! Quantiles.
       real(dp), parameter :: probability(7) = [0.0013_dp, 0.0227_dp, 0.1587_dp, &
          0.5_dp, 0.8413_dp, 0.9773_dp, 0.9987_dp]
       real(dp) :: cumulative, previous
@@ -1304,9 +1333,9 @@ contains
    end subroutine density_quantiles
 
    real(dp) function noise_draw(noise, shape) result(value)
-      ! Draw a standardized Gaussian, Pearson, or Laplace innovation.
-      integer, intent(in) :: noise
-      real(dp), intent(in) :: shape
+      !! Draw a standardized Gaussian, Pearson, or Laplace innovation.
+      integer, intent(in) :: noise !! Noise.
+      real(dp), intent(in) :: shape !! Shape.
       real(dp) :: uniform, gamma_draw
 
       select case (noise)
@@ -1325,30 +1354,4 @@ contains
       end select
    end function noise_draw
 
-   pure subroutine cholesky_lower(matrix, root, info)
-      ! Compute the lower Cholesky factor of a positive semidefinite matrix.
-      real(dp), intent(in) :: matrix(:, :)
-      real(dp), allocatable, intent(out) :: root(:, :)
-      integer, intent(out) :: info
-      real(dp) :: value
-      integer :: i, j
-
-      allocate(root(size(matrix, 1), size(matrix, 2)))
-      root = 0.0_dp
-      info = 0
-      do i = 1, size(matrix, 1)
-         do j = 1, i
-            value = matrix(i, j) - dot_product(root(i, 1:j - 1), root(j, 1:j - 1))
-            if (i == j) then
-               if (value < -sqrt(epsilon(1.0_dp))) then
-                  info = i
-                  return
-               end if
-               root(i, j) = sqrt(max(value, 0.0_dp))
-            else if (root(j, j) > tiny(1.0_dp)) then
-               root(i, j) = value/root(j, j)
-            end if
-         end do
-      end do
-   end subroutine cholesky_lower
 end module tsss_mod

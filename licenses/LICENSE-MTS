@@ -1,0 +1,8 @@
+MTS Fortran translation license notice
+
+The algorithms in mts.f90 are translated from the MTS R package, version
+1.2.1, by Ruey S. Tsay, David Wood, and Jon Lachmann. The upstream DESCRIPTION
+declares the package under the Artistic License 2.0.
+
+Artistic License 2.0:
+https://opensource.org/license/artistic-2-0

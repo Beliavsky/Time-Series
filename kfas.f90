@@ -3,9 +3,9 @@
 ! Modern Fortran interface for Gaussian state-space algorithms from KFAS.
 module kfas_mod
    use kind_mod, only: dp
-   use time_series_linalg_mod, only: symmetrize, outer_product, diagonal_part, identity_matrix, matrix_rank, &
+   use linalg_mod, only: symmetrize, outer_product, diagonal_part, identity_matrix, matrix_rank, &
       inverse_logdet
-   use time_series_linalg_mod, only: symmetric_pseudoinverse
+   use linalg_mod, only: symmetric_pseudoinverse
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite, ieee_value, ieee_quiet_nan
    implicit none
    private
@@ -73,10 +73,12 @@ module kfas_mod
 contains
 
    pure function make_local_level(y, observation_variance, level_variance, a1, p1) result(model)
-      ! Construct a univariate local-level state-space model.
-      real(dp), intent(in) :: y(:)
-      real(dp), intent(in) :: observation_variance, level_variance
-      real(dp), intent(in), optional :: a1, p1
+      !! Construct a univariate local-level state-space model.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: level_variance !! Level variance.
+      real(dp), intent(in), optional :: a1 !! A1.
+      real(dp), intent(in), optional :: p1 !! P1.
       type(ssm_model_t) :: model
 
       allocate(model%y(size(y), 1), model%z(1, 1, 1), model%h(1, 1, 1))
@@ -98,10 +100,13 @@ contains
    end function make_local_level
 
    pure function make_local_linear_trend(y, observation_variance, level_variance, slope_variance, a1, p1) result(model)
-      ! Construct a univariate local linear-trend state-space model.
-      real(dp), intent(in) :: y(:)
-      real(dp), intent(in) :: observation_variance, level_variance, slope_variance
-      real(dp), intent(in), optional :: a1(2), p1(2, 2)
+      !! Construct a univariate local linear-trend state-space model.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: level_variance !! Level variance.
+      real(dp), intent(in) :: slope_variance !! Slope variance.
+      real(dp), intent(in), optional :: a1(2) !! A1.
+      real(dp), intent(in), optional :: p1(2, 2) !! P1.
       type(ssm_model_t) :: model
 
       allocate(model%y(size(y), 1), model%z(1, 2, 1), model%h(1, 1, 1))
@@ -131,9 +136,9 @@ contains
    end function make_local_linear_trend
 
    pure function kfs_filter_diffuse(model, tolerance) result(out)
-      ! Run KFAS exact diffuse filtering for diagonal observation covariance.
-      type(ssm_model_t), intent(in) :: model
-      real(dp), intent(in), optional :: tolerance
+      !! Run KFAS exact diffuse filtering for diagonal observation covariance.
+      type(ssm_model_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(kfs_filter_t) :: out
       real(dp), allocatable :: pinf(:, :), k0(:), kinf(:), z(:), noise(:, :)
       real(dp) :: f0, finf, v, tol
@@ -211,9 +216,9 @@ contains
    end function kfs_filter_diffuse
 
    pure subroutine validate_ssm(model, info)
-      ! Check state-space dimensions and supported time variation.
-      type(ssm_model_t), intent(in) :: model
-      integer, intent(out) :: info
+      !! Check state-space dimensions and supported time variation.
+      type(ssm_model_t), intent(in) :: model !! Model specification.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       integer :: n, p, m, rr
 
       info = 1
@@ -248,9 +253,9 @@ contains
    end subroutine validate_ssm
 
    pure function kfs_filter(model, tolerance) result(out)
-      ! Run the multivariate Gaussian Kalman filter and evaluate its likelihood.
-      type(ssm_model_t), intent(in) :: model
-      real(dp), intent(in), optional :: tolerance
+      !! Run the multivariate Gaussian Kalman filter and evaluate its likelihood.
+      type(ssm_model_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(kfs_filter_t) :: out
       real(dp), allocatable :: zobs(:, :), hobs(:, :), f(:, :), finv(:, :), gain(:, :)
       real(dp), allocatable :: v(:), yobs(:), pwork(:, :), noise(:, :)
@@ -325,10 +330,10 @@ contains
    end function kfs_filter
 
    pure function kfs_smooth(model, filtered, tolerance) result(out)
-      ! Smooth states, lag-one covariances, and forward conditionals.
-      type(ssm_model_t), intent(in) :: model
-      type(kfs_filter_t), intent(in) :: filtered
-      real(dp), intent(in), optional :: tolerance
+      !! Smooth states, lag-one covariances, and forward conditionals.
+      type(ssm_model_t), intent(in) :: model !! Model specification.
+      type(kfs_filter_t), intent(in) :: filtered !! Filtered.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(kfs_smoother_t) :: out
       real(dp), allocatable :: pinv(:, :), gain(:, :)
       type(kfs_conditional_t) :: conditional
@@ -371,10 +376,10 @@ contains
    end function kfs_smooth
 
    pure function kfs_fast_smooth(model, filtered, tolerance) result(out)
-      ! Smooth state means without storing smoothed covariance arrays.
-      type(ssm_model_t), intent(in) :: model
-      type(kfs_filter_t), intent(in) :: filtered
-      real(dp), intent(in), optional :: tolerance
+      !! Smooth state means without storing smoothed covariance arrays.
+      type(ssm_model_t), intent(in) :: model !! Model specification.
+      type(kfs_filter_t), intent(in) :: filtered !! Filtered.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(kfs_smoother_t) :: out
       real(dp), allocatable :: inverse(:, :), gain(:, :)
       integer :: state, times, time, info
@@ -406,10 +411,10 @@ contains
 
    pure function kfs_conditional_covariance(covariance, lag_one_covariance, &
       tolerance) result(out)
-      ! Convert smoothed joint covariances to forward conditionals.
-      real(dp), intent(in) :: covariance(:, :, :)
-      real(dp), intent(in) :: lag_one_covariance(:, :, :)
-      real(dp), intent(in), optional :: tolerance
+      !! Convert smoothed joint covariances to forward conditionals.
+      real(dp), intent(in) :: covariance(:, :, :) !! Covariance matrix.
+      real(dp), intent(in) :: lag_one_covariance(:, :, :) !! Lag one covariance matrix.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(kfs_conditional_t) :: out
       real(dp), allocatable :: inverse(:, :)
       integer :: state, times, time, info
@@ -446,9 +451,9 @@ contains
    end function kfs_conditional_covariance
 
    pure function kfs_loglik(model, tolerance) result(out)
-      ! Return the Gaussian log likelihood and filter status.
-      type(ssm_model_t), intent(in) :: model
-      real(dp), intent(in), optional :: tolerance
+      !! Return the Gaussian log likelihood and filter status.
+      type(ssm_model_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(kfs_loglik_result_t) :: out
       type(kfs_filter_t) :: filtered
 
@@ -458,10 +463,10 @@ contains
    end function kfs_loglik
 
    pure function kfs_predict(model, filtered, h) result(out)
-      ! Propagate filtered state moments and observation moments h steps ahead.
-      type(ssm_model_t), intent(in) :: model
-      type(kfs_filter_t), intent(in) :: filtered
-      integer, intent(in) :: h
+      !! Propagate filtered state moments and observation moments h steps ahead.
+      type(ssm_model_t), intent(in) :: model !! Model specification.
+      type(kfs_filter_t), intent(in) :: filtered !! Filtered.
+      integer, intent(in) :: h !! H.
       type(kfs_prediction_t) :: out
       real(dp), allocatable :: pwork(:, :), noise(:, :)
       integer :: i, n, p, m, tt, tz, th, tr, tq
@@ -499,8 +504,8 @@ contains
    end function kfs_predict
 
    pure function kfs_standardized_innovations(filtered) result(residuals)
-      ! Standardize one-step innovations by their marginal standard deviations.
-      type(kfs_filter_t), intent(in) :: filtered
+      !! Standardize one-step innovations by their marginal standard deviations.
+      type(kfs_filter_t), intent(in) :: filtered !! Filtered.
       real(dp), allocatable :: residuals(:, :)
       integer :: t, i
 
@@ -516,10 +521,10 @@ contains
    end function kfs_standardized_innovations
 
    pure function kfs_disturbance_smooth(model, filtered, tolerance) result(out)
-      ! Compute conditional means of Gaussian observation and state disturbances.
-      type(ssm_model_t), intent(in) :: model
-      type(kfs_filter_t), intent(in) :: filtered
-      real(dp), intent(in), optional :: tolerance
+      !! Compute conditional means of Gaussian observation and state disturbances.
+      type(ssm_model_t), intent(in) :: model !! Model specification.
+      type(kfs_filter_t), intent(in) :: filtered !! Filtered.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(kfs_disturbance_t) :: out
       real(dp), allocatable :: rnext(:), rtrans(:), zobs(:, :), hobs(:, :)
       real(dp), allocatable :: f(:, :), finv(:, :), v(:), kraw(:, :), u(:), eps(:)
@@ -578,29 +583,31 @@ contains
    end function kfs_disturbance_smooth
 
    pure elemental logical function valid_time_extent(extent, n)
-      ! Report whether a system matrix is constant or available for every time.
-      integer, intent(in) :: extent, n
+      !! Report whether a system matrix is constant or available for every time.
+      integer, intent(in) :: extent !! Extent.
+      integer, intent(in) :: n !! Number of observations or elements.
       valid_time_extent = extent == 1 .or. extent >= n
    end function valid_time_extent
 
    pure integer function time_index(x, t) result(index)
-      ! Select the constant or time-varying slice for an in-sample time.
-      real(dp), intent(in) :: x(:, :, :)
-      integer, intent(in) :: t
+      !! Select the constant or time-varying slice for an in-sample time.
+      real(dp), intent(in) :: x(:, :, :) !! Input data or predictor values.
+      integer, intent(in) :: t !! T.
       index = min(t, size(x, 3))
    end function time_index
 
    pure integer function future_index(x, t) result(index)
-      ! Select an available matrix slice, holding the final slice fixed if needed.
-      real(dp), intent(in) :: x(:, :, :)
-      integer, intent(in) :: t
+      !! Select an available matrix slice, holding the final slice fixed if needed.
+      real(dp), intent(in) :: x(:, :, :) !! Input data or predictor values.
+      integer, intent(in) :: t !! T.
       index = min(t, size(x, 3))
    end function future_index
 
    pure logical function is_observed(model, t, i)
-      ! Test whether one observation should enter the measurement update.
-      type(ssm_model_t), intent(in) :: model
-      integer, intent(in) :: t, i
+      !! Test whether one observation should enter the measurement update.
+      type(ssm_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: t !! T.
+      integer, intent(in) :: i !! I.
       is_observed = ieee_is_finite(model%y(t, i))
       if (allocated(model%missing)) is_observed = is_observed .and. .not. model%missing(t, i)
    end function is_observed

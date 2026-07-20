@@ -3,7 +3,7 @@
 program test_fracdiff
    use kind_mod, only: dp
    use fracdiff_mod
-   use time_series_fourier_mod, only: fft_transform
+   use fourier_mod, only: fft_transform
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
    implicit none
    type(fracdiff_semiparametric_t) :: gph, sperio
@@ -119,9 +119,9 @@ program test_fracdiff
 contains
 
    subroutine check(condition, label)
-      ! Stop the test program when one assertion fails.
-      logical, intent(in) :: condition
-      character(*), intent(in) :: label
+      !! Stop the test program when one assertion fails.
+      logical, intent(in) :: condition !! Flag controlling condition.
+      character(*), intent(in) :: label !! Label.
 
       if (.not. condition) then
          write (*, '(a)') 'FAILED: '//label

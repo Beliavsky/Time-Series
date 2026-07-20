@@ -3,9 +3,11 @@
 ! Particle-inference algorithms translated from the GPL bssm package.
 module bssm_mod
    use kind_mod, only: dp
-   use time_series_linalg_mod, only: symmetric_eigen, outer_product
-   use time_series_linalg_mod, only: inverse_logdet, identity_matrix
-   use time_series_random_mod, only: random_standard_normal_matrix
+   use special_functions_mod, only: normal_log_density, &
+      multivariate_normal_log_density
+   use linalg_mod, only: symmetric_eigen, outer_product
+   use linalg_mod, only: inverse_logdet, identity_matrix
+   use random_mod, only: random_standard_normal_matrix
    use kfas_mod, only: ssm_model_t, kfs_filter_t, kfs_smoother_t
    use kfas_mod, only: kfs_filter, kfs_smooth, kfs_fast_smooth, validate_ssm
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite, ieee_value
@@ -262,93 +264,109 @@ module bssm_mod
    abstract interface
       pure function bssm_nonlinear_log_density_t(time, observation, state, &
          parameters) result(log_density)
-         ! Evaluate a nonlinear observation log density.
+         !! Evaluate a nonlinear observation log density.
          import dp
-         integer, intent(in) :: time
-         real(dp), intent(in) :: observation, state(:), parameters(:)
+         integer, intent(in) :: time !! Observation times.
+         real(dp), intent(in) :: observation !! Observed value or vector.
+         real(dp), intent(in) :: state(:) !! State vector or state sequence.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: log_density
       end function bssm_nonlinear_log_density_t
 
       pure subroutine bssm_nonlinear_transition_t(time, state, parameters, &
          mean, noise_loading)
-         ! Evaluate a nonlinear state transition and noise loading.
+         !! Evaluate a nonlinear state transition and noise loading.
          import dp
-         integer, intent(in) :: time
-         real(dp), intent(in) :: state(:), parameters(:)
-         real(dp), intent(out) :: mean(:), noise_loading(:, :)
+         integer, intent(in) :: time !! Observation times.
+         real(dp), intent(in) :: state(:) !! State vector or state sequence.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         real(dp), intent(out) :: mean(:) !! Mean value or vector.
+         real(dp), intent(out) :: noise_loading(:, :) !! Noise loading.
       end subroutine bssm_nonlinear_transition_t
 
       pure subroutine bssm_gaussian_observation_t(time, state, parameters, &
          mean, jacobian, standard_deviation)
-         ! Evaluate a scalar Gaussian observation model and Jacobian.
+         !! Evaluate a scalar Gaussian observation model and Jacobian.
          import dp
-         integer, intent(in) :: time
-         real(dp), intent(in) :: state(:), parameters(:)
-         real(dp), intent(out) :: mean, jacobian(:), standard_deviation
+         integer, intent(in) :: time !! Observation times.
+         real(dp), intent(in) :: state(:) !! State vector or state sequence.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         real(dp), intent(out) :: mean !! Mean value or vector.
+         real(dp), intent(out) :: jacobian(:) !! Jacobian.
+         real(dp), intent(out) :: standard_deviation !! Standard deviation.
       end subroutine bssm_gaussian_observation_t
 
       pure subroutine bssm_multivariate_gaussian_observation_t(time, state, &
          parameters, mean, jacobian, noise_loading)
-         ! Evaluate a multivariate Gaussian observation model.
+         !! Evaluate a multivariate Gaussian observation model.
          import dp
-         integer, intent(in) :: time
-         real(dp), intent(in) :: state(:), parameters(:)
-         real(dp), intent(out) :: mean(:), jacobian(:, :)
-         real(dp), intent(out) :: noise_loading(:, :)
+         integer, intent(in) :: time !! Observation times.
+         real(dp), intent(in) :: state(:) !! State vector or state sequence.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         real(dp), intent(out) :: mean(:) !! Mean value or vector.
+         real(dp), intent(out) :: jacobian(:, :) !! Jacobian.
+         real(dp), intent(out) :: noise_loading(:, :) !! Noise loading.
       end subroutine bssm_multivariate_gaussian_observation_t
 
       pure subroutine bssm_nonlinear_prediction_observation_t(time, state, &
          parameters, mean, noise_loading)
-         ! Evaluate a nonlinear prediction observation model.
+         !! Evaluate a nonlinear prediction observation model.
          import dp
-         integer, intent(in) :: time
-         real(dp), intent(in) :: state(:), parameters(:)
-         real(dp), intent(out) :: mean(:), noise_loading(:, :)
+         integer, intent(in) :: time !! Observation times.
+         real(dp), intent(in) :: state(:) !! State vector or state sequence.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         real(dp), intent(out) :: mean(:) !! Mean value or vector.
+         real(dp), intent(out) :: noise_loading(:, :) !! Noise loading.
       end subroutine bssm_nonlinear_prediction_observation_t
 
       pure subroutine bssm_posterior_observation_model_t(parameters, &
          observation_loading, phi, offset, auxiliary, noise_loading, &
          correlated_gaussian, info)
-         ! Construct an observation model from posterior parameters.
+         !! Construct an observation model from posterior parameters.
          import dp
-         real(dp), intent(in) :: parameters(:)
-         real(dp), intent(out) :: observation_loading(:, :, :)
-         real(dp), intent(out) :: phi(:), offset(:, :), auxiliary(:, :)
-         real(dp), intent(out) :: noise_loading(:, :, :)
-         logical, intent(out) :: correlated_gaussian
-         integer, intent(out) :: info
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         real(dp), intent(out) :: observation_loading(:, :, :) !! Observation loading matrix.
+         real(dp), intent(out) :: phi(:) !! Autoregressive or model coefficient.
+         real(dp), intent(out) :: offset(:, :) !! Known additive offset.
+         real(dp), intent(out) :: auxiliary(:, :) !! Auxiliary.
+         real(dp), intent(out) :: noise_loading(:, :, :) !! Noise loading.
+         logical, intent(out) :: correlated_gaussian !! Flag controlling correlated gaussian.
+         integer, intent(out) :: info !! Status code; zero indicates success.
       end subroutine bssm_posterior_observation_model_t
 
       pure subroutine bssm_nonlinear_transition_jacobian_t(time, state, &
          parameters, mean, jacobian, noise_loading)
-         ! Evaluate a nonlinear transition and its Jacobian.
+         !! Evaluate a nonlinear transition and its Jacobian.
          import dp
-         integer, intent(in) :: time
-         real(dp), intent(in) :: state(:), parameters(:)
-         real(dp), intent(out) :: mean(:), jacobian(:, :)
-         real(dp), intent(out) :: noise_loading(:, :)
+         integer, intent(in) :: time !! Observation times.
+         real(dp), intent(in) :: state(:) !! State vector or state sequence.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         real(dp), intent(out) :: mean(:) !! Mean value or vector.
+         real(dp), intent(out) :: jacobian(:, :) !! Jacobian.
+         real(dp), intent(out) :: noise_loading(:, :) !! Noise loading.
       end subroutine bssm_nonlinear_transition_jacobian_t
 
       pure function bssm_sde_coefficient_t(state, parameters) result(value)
-         ! Evaluate one state-dependent SDE coefficient.
+         !! Evaluate one state-dependent SDE coefficient.
          import dp
-         real(dp), intent(in) :: state, parameters(:)
+         real(dp), intent(in) :: state !! State vector or state sequence.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: value
       end function bssm_sde_coefficient_t
 
       pure function bssm_parameter_log_density_t(parameters) result(value)
-         ! Evaluate a parameter log density.
+         !! Evaluate a parameter log density.
          import dp
-         real(dp), intent(in) :: parameters(:)
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: value
       end function bssm_parameter_log_density_t
 
       pure function bssm_likelihood_estimator_t(parameters, draw_index) &
          result(estimate)
-         ! Estimate a likelihood for one parameter vector and draw.
+         !! Estimate a likelihood for one parameter vector and draw.
          import dp, bssm_likelihood_estimate_t
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
       end function bssm_likelihood_estimator_t
    end interface
@@ -468,12 +486,12 @@ contains
 
    pure function bssm_simulation_smoother_draws(model, initial_normals, &
       observation_normals, state_normals, diffuse_variance) result(out)
-      ! Draw Gaussian state paths by Durbin-Koopman simulation smoothing.
-      type(ssm_model_t), intent(in) :: model
-      real(dp), intent(in) :: initial_normals(:, :)
-      real(dp), intent(in) :: observation_normals(:, :, :)
-      real(dp), intent(in) :: state_normals(:, :, :)
-      real(dp), intent(in), optional :: diffuse_variance
+      !! Draw Gaussian state paths by Durbin-Koopman simulation smoothing.
+      type(ssm_model_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in) :: initial_normals(:, :) !! Initial normals.
+      real(dp), intent(in) :: observation_normals(:, :, :) !! Observation normals.
+      real(dp), intent(in) :: state_normals(:, :, :) !! State normals.
+      real(dp), intent(in), optional :: diffuse_variance !! Diffuse variance.
       type(bssm_simulation_smoother_t) :: out
       type(ssm_model_t) :: working_model, correction_model
       type(kfs_filter_t) :: filtered
@@ -611,11 +629,11 @@ contains
 
    function bssm_simulation_smoother(model, draws, antithetic, &
       diffuse_variance) result(out)
-      ! Draw Gaussian smoothed paths using the shared random-number stream.
-      type(ssm_model_t), intent(in) :: model
-      integer, intent(in) :: draws
-      logical, intent(in), optional :: antithetic
-      real(dp), intent(in), optional :: diffuse_variance
+      !! Draw Gaussian smoothed paths using the shared random-number stream.
+      type(ssm_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: draws !! Draws.
+      logical, intent(in), optional :: antithetic !! Flag controlling antithetic.
+      real(dp), intent(in), optional :: diffuse_variance !! Diffuse variance.
       type(bssm_simulation_smoother_t) :: out
       real(dp), allocatable :: initial_normals(:, :)
       real(dp), allocatable :: observation_normals(:, :, :)
@@ -664,9 +682,9 @@ contains
 
    pure function bssm_scalar_approximation_simulation_draws(approximation, &
       normals) result(out)
-      ! Draw paths from a scalar-observation Gaussian approximation.
-      type(bssm_gaussian_approximation_t), intent(in) :: approximation
-      real(dp), intent(in) :: normals(:, :, :)
+      !! Draw paths from a scalar-observation Gaussian approximation.
+      type(bssm_gaussian_approximation_t), intent(in) :: approximation !! Approximation.
+      real(dp), intent(in) :: normals(:, :, :) !! Independent standard-normal draws.
       type(bssm_simulation_smoother_t) :: out
 
       if (approximation%info /= 0 .or. &
@@ -683,9 +701,9 @@ contains
 
    pure function bssm_multivariate_approximation_simulation_draws( &
       approximation, normals) result(out)
-      ! Draw paths from a mixed-family Gaussian approximation.
-      type(bssm_multivariate_approximation_t), intent(in) :: approximation
-      real(dp), intent(in) :: normals(:, :, :)
+      !! Draw paths from a mixed-family Gaussian approximation.
+      type(bssm_multivariate_approximation_t), intent(in) :: approximation !! Approximation.
+      real(dp), intent(in) :: normals(:, :, :) !! Independent standard-normal draws.
       type(bssm_simulation_smoother_t) :: out
 
       if (approximation%info /= 0 .or. &
@@ -702,10 +720,10 @@ contains
 
    function bssm_scalar_approximation_simulation(approximation, samples, &
       use_antithetic) result(out)
-      ! Randomly draw paths from a scalar-observation approximation.
-      type(bssm_gaussian_approximation_t), intent(in) :: approximation
-      integer, intent(in) :: samples
-      logical, intent(in), optional :: use_antithetic
+      !! Randomly draw paths from a scalar-observation approximation.
+      type(bssm_gaussian_approximation_t), intent(in) :: approximation !! Approximation.
+      integer, intent(in) :: samples !! Samples.
+      logical, intent(in), optional :: use_antithetic !! Whether to use the antithetic.
       type(bssm_simulation_smoother_t) :: out
       real(dp), allocatable :: normals(:, :, :)
       logical :: antithetic
@@ -724,10 +742,10 @@ contains
 
    function bssm_multivariate_approximation_simulation(approximation, &
       samples, use_antithetic) result(out)
-      ! Randomly draw paths from a mixed-family approximation.
-      type(bssm_multivariate_approximation_t), intent(in) :: approximation
-      integer, intent(in) :: samples
-      logical, intent(in), optional :: use_antithetic
+      !! Randomly draw paths from a mixed-family approximation.
+      type(bssm_multivariate_approximation_t), intent(in) :: approximation !! Approximation.
+      integer, intent(in) :: samples !! Samples.
+      logical, intent(in), optional :: use_antithetic !! Whether to use the antithetic.
       type(bssm_simulation_smoother_t) :: out
       real(dp), allocatable :: normals(:, :, :)
       logical :: antithetic
@@ -750,16 +768,22 @@ contains
       initial_covariance, distribution, phi, approximation_iterations, &
       convergence_tolerance, normals, offset, auxiliary, state_offset, &
       initial_mode) result(out)
-      ! Approximate non-Gaussian smoothing using supplied normal draws.
-      real(dp), intent(in) :: y(:), observation_loading(:, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution, approximation_iterations
-      real(dp), intent(in) :: phi, convergence_tolerance
-      real(dp), intent(in) :: normals(:, :, :)
-      real(dp), intent(in), optional :: offset(:), auxiliary(:)
-      real(dp), intent(in), optional :: state_offset(:, :), initial_mode(:)
+      !! Approximate non-Gaussian smoothing using supplied normal draws.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      real(dp), intent(in) :: phi !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: normals(:, :, :) !! Independent standard-normal draws.
+      real(dp), intent(in), optional :: offset(:) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
+      real(dp), intent(in), optional :: initial_mode(:) !! Initial mode.
       type(bssm_simulation_smoother_t) :: out
       type(bssm_gaussian_approximation_t) :: approximation
 
@@ -779,16 +803,23 @@ contains
       distribution, phi, samples, approximation_iterations, &
       convergence_tolerance, use_antithetic, offset, auxiliary, state_offset, &
       initial_mode) result(out)
-      ! Approximate non-Gaussian smoothing using shared random draws.
-      real(dp), intent(in) :: y(:), observation_loading(:, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution, samples, approximation_iterations
-      real(dp), intent(in) :: phi, convergence_tolerance
-      logical, intent(in), optional :: use_antithetic
-      real(dp), intent(in), optional :: offset(:), auxiliary(:)
-      real(dp), intent(in), optional :: state_offset(:, :), initial_mode(:)
+      !! Approximate non-Gaussian smoothing using shared random draws.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: samples !! Samples.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      real(dp), intent(in) :: phi !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      logical, intent(in), optional :: use_antithetic !! Whether to use the antithetic.
+      real(dp), intent(in), optional :: offset(:) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
+      real(dp), intent(in), optional :: initial_mode(:) !! Initial mode.
       type(bssm_simulation_smoother_t) :: out
       type(bssm_gaussian_approximation_t) :: approximation
 
@@ -809,17 +840,22 @@ contains
       initial_covariance, distribution, phi, approximation_iterations, &
       convergence_tolerance, normals, offset, auxiliary, state_offset, &
       initial_mode) result(out)
-      ! Approximate mixed-family smoothing using supplied normal draws.
-      real(dp), intent(in) :: y(:, :), observation_loading(:, :, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution(:), approximation_iterations
-      real(dp), intent(in) :: phi(:), convergence_tolerance
-      real(dp), intent(in) :: normals(:, :, :)
-      real(dp), intent(in), optional :: offset(:, :), auxiliary(:, :)
-      real(dp), intent(in), optional :: state_offset(:, :)
-      real(dp), intent(in), optional :: initial_mode(:, :)
+      !! Approximate mixed-family smoothing using supplied normal draws.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:, :, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution(:) !! Probability-distribution specification.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      real(dp), intent(in) :: phi(:) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: normals(:, :, :) !! Independent standard-normal draws.
+      real(dp), intent(in), optional :: offset(:, :) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:, :) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
+      real(dp), intent(in), optional :: initial_mode(:, :) !! Initial mode.
       type(bssm_simulation_smoother_t) :: out
       type(bssm_multivariate_approximation_t) :: approximation
 
@@ -840,18 +876,23 @@ contains
       distribution, phi, samples, approximation_iterations, &
       convergence_tolerance, use_antithetic, offset, auxiliary, state_offset, &
       initial_mode) result(out)
-      ! Approximate mixed-family smoothing using shared random draws.
-      real(dp), intent(in) :: y(:, :), observation_loading(:, :, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution(:), samples
-      integer, intent(in) :: approximation_iterations
-      real(dp), intent(in) :: phi(:), convergence_tolerance
-      logical, intent(in), optional :: use_antithetic
-      real(dp), intent(in), optional :: offset(:, :), auxiliary(:, :)
-      real(dp), intent(in), optional :: state_offset(:, :)
-      real(dp), intent(in), optional :: initial_mode(:, :)
+      !! Approximate mixed-family smoothing using shared random draws.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:, :, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution(:) !! Probability-distribution specification.
+      integer, intent(in) :: samples !! Samples.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      real(dp), intent(in) :: phi(:) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      logical, intent(in), optional :: use_antithetic !! Whether to use the antithetic.
+      real(dp), intent(in), optional :: offset(:, :) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:, :) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
+      real(dp), intent(in), optional :: initial_mode(:, :) !! Initial mode.
       type(bssm_simulation_smoother_t) :: out
       type(bssm_multivariate_approximation_t) :: approximation
 
@@ -871,18 +912,20 @@ contains
       transition, state_noise_loading, distribution, phi, state_normals, &
       response_normals, response_uniforms, offset, auxiliary, state_offset, &
       observation_noise_loading) result(out)
-      ! Draw future states and responses from supplied random variates.
-      real(dp), intent(in) :: initial_state(:, :)
-      real(dp), intent(in) :: observation_loading(:, :, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      integer, intent(in) :: distribution(:)
-      real(dp), intent(in) :: phi(:), state_normals(:, :, :)
-      real(dp), intent(in) :: response_normals(:, :, :)
-      real(dp), intent(in) :: response_uniforms(:, :, :)
-      real(dp), intent(in), optional :: offset(:, :), auxiliary(:, :)
-      real(dp), intent(in), optional :: state_offset(:, :)
-      real(dp), intent(in), optional :: observation_noise_loading(:, :, :)
+      !! Draw future states and responses from supplied random variates.
+      real(dp), intent(in) :: initial_state(:, :) !! Initial state vector.
+      real(dp), intent(in) :: observation_loading(:, :, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      integer, intent(in) :: distribution(:) !! Probability-distribution specification.
+      real(dp), intent(in) :: phi(:) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: state_normals(:, :, :) !! State normals.
+      real(dp), intent(in) :: response_normals(:, :, :) !! Response normals.
+      real(dp), intent(in) :: response_uniforms(:, :, :) !! Response uniforms.
+      real(dp), intent(in), optional :: offset(:, :) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:, :) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
+      real(dp), intent(in), optional :: observation_noise_loading(:, :, :) !! Observation noise loading.
       type(bssm_prediction_t) :: out
       real(dp), allocatable :: offset_work(:, :), auxiliary_work(:, :)
       real(dp), allocatable :: state_offset_work(:, :)
@@ -945,16 +988,18 @@ contains
    function bssm_predictive_sample(initial_state, observation_loading, &
       transition, state_noise_loading, distribution, phi, horizon, offset, &
       auxiliary, state_offset, observation_noise_loading) result(out)
-      ! Draw future states and responses using the shared random stream.
-      real(dp), intent(in) :: initial_state(:, :)
-      real(dp), intent(in) :: observation_loading(:, :, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      integer, intent(in) :: distribution(:), horizon
-      real(dp), intent(in) :: phi(:)
-      real(dp), intent(in), optional :: offset(:, :), auxiliary(:, :)
-      real(dp), intent(in), optional :: state_offset(:, :)
-      real(dp), intent(in), optional :: observation_noise_loading(:, :, :)
+      !! Draw future states and responses using the shared random stream.
+      real(dp), intent(in) :: initial_state(:, :) !! Initial state vector.
+      real(dp), intent(in) :: observation_loading(:, :, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      integer, intent(in) :: distribution(:) !! Probability-distribution specification.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in) :: phi(:) !! Autoregressive or model coefficient.
+      real(dp), intent(in), optional :: offset(:, :) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:, :) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
+      real(dp), intent(in), optional :: observation_noise_loading(:, :, :) !! Observation noise loading.
       type(bssm_prediction_t) :: out
       real(dp), allocatable :: state_normals(:, :, :)
       real(dp), allocatable :: response_normals(:, :, :)
@@ -988,14 +1033,16 @@ contains
       observation_loading, distribution, phi, response_normals, &
       response_uniforms, offset, auxiliary, observation_noise_loading) &
       result(out)
-      ! Draw in-sample replicated responses conditional on state paths.
-      real(dp), intent(in) :: state(:, :, :)
-      real(dp), intent(in) :: observation_loading(:, :, :)
-      integer, intent(in) :: distribution(:)
-      real(dp), intent(in) :: phi(:), response_normals(:, :, :)
-      real(dp), intent(in) :: response_uniforms(:, :, :)
-      real(dp), intent(in), optional :: offset(:, :), auxiliary(:, :)
-      real(dp), intent(in), optional :: observation_noise_loading(:, :, :)
+      !! Draw in-sample replicated responses conditional on state paths.
+      real(dp), intent(in) :: state(:, :, :) !! State vector or state sequence.
+      real(dp), intent(in) :: observation_loading(:, :, :) !! Observation loading matrix.
+      integer, intent(in) :: distribution(:) !! Probability-distribution specification.
+      real(dp), intent(in) :: phi(:) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: response_normals(:, :, :) !! Response normals.
+      real(dp), intent(in) :: response_uniforms(:, :, :) !! Response uniforms.
+      real(dp), intent(in), optional :: offset(:, :) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:, :) !! Auxiliary.
+      real(dp), intent(in), optional :: observation_noise_loading(:, :, :) !! Observation noise loading.
       type(bssm_prediction_t) :: out
       real(dp), allocatable :: offset_work(:, :), auxiliary_work(:, :)
       real(dp), allocatable :: unused_state_offset(:, :)
@@ -1037,13 +1084,14 @@ contains
    function bssm_predictive_replicates(state, observation_loading, &
       distribution, phi, offset, auxiliary, observation_noise_loading) &
       result(out)
-      ! Draw in-sample replicated responses using the shared random stream.
-      real(dp), intent(in) :: state(:, :, :)
-      real(dp), intent(in) :: observation_loading(:, :, :)
-      integer, intent(in) :: distribution(:)
-      real(dp), intent(in) :: phi(:)
-      real(dp), intent(in), optional :: offset(:, :), auxiliary(:, :)
-      real(dp), intent(in), optional :: observation_noise_loading(:, :, :)
+      !! Draw in-sample replicated responses using the shared random stream.
+      real(dp), intent(in) :: state(:, :, :) !! State vector or state sequence.
+      real(dp), intent(in) :: observation_loading(:, :, :) !! Observation loading matrix.
+      integer, intent(in) :: distribution(:) !! Probability-distribution specification.
+      real(dp), intent(in) :: phi(:) !! Autoregressive or model coefficient.
+      real(dp), intent(in), optional :: offset(:, :) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:, :) !! Auxiliary.
+      real(dp), intent(in), optional :: observation_noise_loading(:, :, :) !! Observation noise loading.
       type(bssm_prediction_t) :: out
       real(dp), allocatable :: response_normals(:, :, :)
       real(dp), allocatable :: response_uniforms(:, :, :)
@@ -1069,12 +1117,13 @@ contains
 
    pure function bssm_predict_past_draws(state, parameters, distribution, &
       update_model, response_normals, response_uniforms) result(out)
-      ! Reconstruct in-sample observations for paired posterior draws.
-      real(dp), intent(in) :: state(:, :, :), parameters(:, :)
-      integer, intent(in) :: distribution(:)
-      procedure(bssm_posterior_observation_model_t) :: update_model
-      real(dp), intent(in) :: response_normals(:, :, :)
-      real(dp), intent(in) :: response_uniforms(:, :, :)
+      !! Reconstruct in-sample observations for paired posterior draws.
+      real(dp), intent(in) :: state(:, :, :) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      integer, intent(in) :: distribution(:) !! Probability-distribution specification.
+      procedure(bssm_posterior_observation_model_t) :: update_model !! Update model callback procedure.
+      real(dp), intent(in) :: response_normals(:, :, :) !! Response normals.
+      real(dp), intent(in) :: response_uniforms(:, :, :) !! Response uniforms.
       type(bssm_prediction_t) :: out
       real(dp), allocatable :: loading(:, :, :), phi(:), offset(:, :)
       real(dp), allocatable :: auxiliary(:, :), noise_loading(:, :, :)
@@ -1153,10 +1202,11 @@ contains
 
    function bssm_predict_past(state, parameters, distribution, update_model) &
       result(out)
-      ! Reconstruct posterior observations using the shared random stream.
-      real(dp), intent(in) :: state(:, :, :), parameters(:, :)
-      integer, intent(in) :: distribution(:)
-      procedure(bssm_posterior_observation_model_t) :: update_model
+      !! Reconstruct posterior observations using the shared random stream.
+      real(dp), intent(in) :: state(:, :, :) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      integer, intent(in) :: distribution(:) !! Probability-distribution specification.
+      procedure(bssm_posterior_observation_model_t) :: update_model !! Update model callback procedure.
       type(bssm_prediction_t) :: out
       real(dp), allocatable :: response_normals(:, :, :)
       real(dp), allocatable :: response_uniforms(:, :, :)
@@ -1182,13 +1232,15 @@ contains
    pure function bssm_nonlinear_predictive_draws(initial_state, parameters, &
       observation_dimension, state_noise_dimension, observation, &
       transition_model, state_normals, response_normals) result(out)
-      ! Draw nonlinear Gaussian forecasts from supplied standard normals.
-      real(dp), intent(in) :: initial_state(:, :), parameters(:, :)
-      integer, intent(in) :: observation_dimension, state_noise_dimension
-      procedure(bssm_nonlinear_prediction_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_t) :: transition_model
-      real(dp), intent(in) :: state_normals(:, :, :)
-      real(dp), intent(in) :: response_normals(:, :, :)
+      !! Draw nonlinear Gaussian forecasts from supplied standard normals.
+      real(dp), intent(in) :: initial_state(:, :) !! Initial state vector.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      integer, intent(in) :: observation_dimension !! Observation dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      procedure(bssm_nonlinear_prediction_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_t) :: transition_model !! Transition model callback procedure.
+      real(dp), intent(in) :: state_normals(:, :, :) !! State normals.
+      real(dp), intent(in) :: response_normals(:, :, :) !! Response normals.
       type(bssm_prediction_t) :: out
       real(dp), allocatable :: transition_mean(:), noise_loading(:, :)
       integer :: state, samples, horizon, sample, time
@@ -1233,12 +1285,14 @@ contains
    function bssm_nonlinear_predictive_sample(initial_state, parameters, &
       observation_dimension, state_noise_dimension, horizon, observation, &
       transition_model) result(out)
-      ! Draw nonlinear Gaussian forecasts using the shared random stream.
-      real(dp), intent(in) :: initial_state(:, :), parameters(:, :)
-      integer, intent(in) :: observation_dimension, state_noise_dimension
-      integer, intent(in) :: horizon
-      procedure(bssm_nonlinear_prediction_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_t) :: transition_model
+      !! Draw nonlinear Gaussian forecasts using the shared random stream.
+      real(dp), intent(in) :: initial_state(:, :) !! Initial state vector.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      integer, intent(in) :: observation_dimension !! Observation dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      procedure(bssm_nonlinear_prediction_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_t) :: transition_model !! Transition model callback procedure.
       type(bssm_prediction_t) :: out
       real(dp), allocatable :: state_normals(:, :, :)
       real(dp), allocatable :: response_normals(:, :, :)
@@ -1265,10 +1319,11 @@ contains
 
    pure function bssm_nonlinear_predictive_replicates_draws(state, &
       parameters, observation, response_normals) result(out)
-      ! Draw nonlinear Gaussian replications conditional on state paths.
-      real(dp), intent(in) :: state(:, :, :), parameters(:, :)
-      procedure(bssm_nonlinear_prediction_observation_t) :: observation
-      real(dp), intent(in) :: response_normals(:, :, :)
+      !! Draw nonlinear Gaussian replications conditional on state paths.
+      real(dp), intent(in) :: state(:, :, :) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      procedure(bssm_nonlinear_prediction_observation_t) :: observation !! Observed value or vector.
+      real(dp), intent(in) :: response_normals(:, :, :) !! Response normals.
       type(bssm_prediction_t) :: out
       integer :: samples
 
@@ -1291,10 +1346,11 @@ contains
 
    function bssm_nonlinear_predictive_replicates(state, parameters, &
       observation_dimension, observation) result(out)
-      ! Draw nonlinear Gaussian replications using the shared random stream.
-      real(dp), intent(in) :: state(:, :, :), parameters(:, :)
-      integer, intent(in) :: observation_dimension
-      procedure(bssm_nonlinear_prediction_observation_t) :: observation
+      !! Draw nonlinear Gaussian replications using the shared random stream.
+      real(dp), intent(in) :: state(:, :, :) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      integer, intent(in) :: observation_dimension !! Observation dimension.
+      procedure(bssm_nonlinear_prediction_observation_t) :: observation !! Observed value or vector.
       type(bssm_prediction_t) :: out
       real(dp), allocatable :: response_normals(:, :, :)
       integer :: sample, samples, times
@@ -1315,10 +1371,11 @@ contains
 
    pure function bssm_nonlinear_predict_past_draws(state, parameters, &
       observation, response_normals) result(out)
-      ! Reconstruct nonlinear Gaussian observations from supplied draws.
-      real(dp), intent(in) :: state(:, :, :), parameters(:, :)
-      procedure(bssm_nonlinear_prediction_observation_t) :: observation
-      real(dp), intent(in) :: response_normals(:, :, :)
+      !! Reconstruct nonlinear Gaussian observations from supplied draws.
+      real(dp), intent(in) :: state(:, :, :) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      procedure(bssm_nonlinear_prediction_observation_t) :: observation !! Observed value or vector.
+      real(dp), intent(in) :: response_normals(:, :, :) !! Response normals.
       type(bssm_prediction_t) :: out
 
       out = bssm_nonlinear_predictive_replicates_draws(state, parameters, &
@@ -1327,10 +1384,11 @@ contains
 
    function bssm_nonlinear_predict_past(state, parameters, &
       observation_dimension, observation) result(out)
-      ! Reconstruct nonlinear Gaussian observations from the random stream.
-      real(dp), intent(in) :: state(:, :, :), parameters(:, :)
-      integer, intent(in) :: observation_dimension
-      procedure(bssm_nonlinear_prediction_observation_t) :: observation
+      !! Reconstruct nonlinear Gaussian observations from the random stream.
+      real(dp), intent(in) :: state(:, :, :) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      integer, intent(in) :: observation_dimension !! Observation dimension.
+      procedure(bssm_nonlinear_prediction_observation_t) :: observation !! Observed value or vector.
       type(bssm_prediction_t) :: out
 
       out = bssm_nonlinear_predictive_replicates(state, parameters, &
@@ -1339,10 +1397,11 @@ contains
 
    pure function bssm_summarize_prediction(prediction, probabilities, &
       sample_weight, counts) result(out)
-      ! Summarize fitted prediction draws with chain and frequency weights.
-      type(bssm_prediction_t), intent(in) :: prediction
-      real(dp), intent(in) :: probabilities(:), sample_weight(:)
-      integer, intent(in), optional :: counts(:)
+      !! Summarize fitted prediction draws with chain and frequency weights.
+      type(bssm_prediction_t), intent(in) :: prediction !! Prediction.
+      real(dp), intent(in) :: probabilities(:) !! Probability values.
+      real(dp), intent(in) :: sample_weight(:) !! Sample weight.
+      integer, intent(in), optional :: counts(:) !! Counts.
       type(bssm_prediction_summary_t) :: out
       real(dp), allocatable :: weight(:), values(:), ordered_weight(:)
       real(dp) :: total, denominator, difference
@@ -1435,8 +1494,9 @@ contains
    contains
 
       pure subroutine sort_weighted_values(value, value_weight)
-         ! Sort values and carry their weights through insertion moves.
-         real(dp), intent(inout) :: value(:), value_weight(:)
+         !! Sort values and carry their weights through insertion moves.
+         real(dp), intent(inout) :: value(:) !! Input value, updated in place.
+         real(dp), intent(inout) :: value_weight(:) !! Value weight, updated in place.
          real(dp) :: current, current_weight
          integer :: index, position
 
@@ -1457,8 +1517,10 @@ contains
 
       pure real(dp) function weighted_quantile(value, value_weight, &
          probability_value) result(quantile)
-         ! Return the inverse weighted empirical distribution function.
-         real(dp), intent(in) :: value(:), value_weight(:), probability_value
+         !! Return the inverse weighted empirical distribution function.
+         real(dp), intent(in) :: value(:) !! Input value.
+         real(dp), intent(in) :: value_weight(:) !! Value weight.
+         real(dp), intent(in) :: probability_value !! Probability value.
          real(dp) :: threshold, cumulative
          integer :: index
 
@@ -1479,12 +1541,14 @@ contains
    pure function bssm_nonlinear_fitted_summary_draws(state, parameters, &
       observation, response_normals, probabilities, sample_weight, counts) &
       result(out)
-      ! Summarize supplied nonlinear in-sample prediction draws.
-      real(dp), intent(in) :: state(:, :, :), parameters(:, :)
-      procedure(bssm_nonlinear_prediction_observation_t) :: observation
-      real(dp), intent(in) :: response_normals(:, :, :)
-      real(dp), intent(in) :: probabilities(:), sample_weight(:)
-      integer, intent(in), optional :: counts(:)
+      !! Summarize supplied nonlinear in-sample prediction draws.
+      real(dp), intent(in) :: state(:, :, :) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      procedure(bssm_nonlinear_prediction_observation_t) :: observation !! Observed value or vector.
+      real(dp), intent(in) :: response_normals(:, :, :) !! Response normals.
+      real(dp), intent(in) :: probabilities(:) !! Probability values.
+      real(dp), intent(in) :: sample_weight(:) !! Sample weight.
+      integer, intent(in), optional :: counts(:) !! Counts.
       type(bssm_prediction_summary_t) :: out
       type(bssm_prediction_t) :: prediction
 
@@ -1506,12 +1570,14 @@ contains
    function bssm_nonlinear_fitted_summary(state, parameters, &
       observation_dimension, observation, probabilities, sample_weight, &
       counts) result(out)
-      ! Summarize nonlinear fitted draws using the shared random stream.
-      real(dp), intent(in) :: state(:, :, :), parameters(:, :)
-      integer, intent(in) :: observation_dimension
-      procedure(bssm_nonlinear_prediction_observation_t) :: observation
-      real(dp), intent(in) :: probabilities(:), sample_weight(:)
-      integer, intent(in), optional :: counts(:)
+      !! Summarize nonlinear fitted draws using the shared random stream.
+      real(dp), intent(in) :: state(:, :, :) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      integer, intent(in) :: observation_dimension !! Observation dimension.
+      procedure(bssm_nonlinear_prediction_observation_t) :: observation !! Observed value or vector.
+      real(dp), intent(in) :: probabilities(:) !! Probability values.
+      real(dp), intent(in) :: sample_weight(:) !! Sample weight.
+      integer, intent(in), optional :: counts(:) !! Counts.
       type(bssm_prediction_summary_t) :: out
       real(dp), allocatable :: response_normals(:, :, :)
       integer :: samples, sample, times
@@ -1538,9 +1604,12 @@ contains
 
    pure elemental real(dp) function bssm_observation_log_density(y, signal, &
       distribution, phi, auxiliary) result(log_density)
-      ! Evaluate a supported BSSM observation log density.
-      real(dp), intent(in) :: y, signal, phi, auxiliary
-      integer, intent(in) :: distribution
+      !! Evaluate a supported BSSM observation log density.
+      real(dp), intent(in) :: y !! Response or time-series observations.
+      real(dp), intent(in) :: signal !! Signal.
+      real(dp), intent(in) :: phi !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: auxiliary !! Auxiliary.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
       real(dp) :: log_mean, log_denominator, mean, variance
       real(dp), parameter :: log_two_pi = log(2.0_dp*acos(-1.0_dp))
 
@@ -1592,11 +1661,15 @@ contains
 
    pure elemental subroutine bssm_laplace_pseudo_observation(y, signal, &
       distribution, phi, auxiliary, pseudo_observation, variance, info)
-      ! Construct one Gaussian pseudo-observation from a Laplace linearization.
-      real(dp), intent(in) :: y, signal, phi, auxiliary
-      integer, intent(in) :: distribution
-      real(dp), intent(out) :: pseudo_observation, variance
-      integer, intent(out) :: info
+      !! Construct one Gaussian pseudo-observation from a Laplace linearization.
+      real(dp), intent(in) :: y !! Response or time-series observations.
+      real(dp), intent(in) :: signal !! Signal.
+      real(dp), intent(in) :: phi !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: auxiliary !! Auxiliary.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      real(dp), intent(out) :: pseudo_observation !! Pseudo observation.
+      real(dp), intent(out) :: variance !! Variance value or matrix.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp) :: mean, probability, response
 
       pseudo_observation = 0.0_dp
@@ -1671,8 +1744,9 @@ contains
    end subroutine bssm_laplace_pseudo_observation
 
    pure function bssm_stratified_resample(probability, uniforms) result(index)
-      ! Draw one ancestor per stratum from normalized probabilities.
-      real(dp), intent(in) :: probability(:), uniforms(:)
+      !! Draw one ancestor per stratum from normalized probabilities.
+      real(dp), intent(in) :: probability(:) !! Probability value.
+      real(dp), intent(in) :: uniforms(:) !! Uniforms.
       integer, allocatable :: index(:)
       real(dp), allocatable :: cumulative(:)
       real(dp) :: target, total
@@ -1706,10 +1780,14 @@ contains
 
    pure real(dp) function bssm_sde_euler_step(state, step_size, normal, &
       parameters, drift, diffusion, positive) result(next_state)
-      ! Advance one scalar SDE Euler-Maruyama substep.
-      real(dp), intent(in) :: state, step_size, normal, parameters(:)
-      logical, intent(in) :: positive
-      procedure(bssm_sde_coefficient_t) :: drift, diffusion
+      !! Advance one scalar SDE Euler-Maruyama substep.
+      real(dp), intent(in) :: state !! State vector or state sequence.
+      real(dp), intent(in) :: step_size !! Step size.
+      real(dp), intent(in) :: normal !! Normal.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      logical, intent(in) :: positive !! Flag controlling positive.
+      procedure(bssm_sde_coefficient_t) :: drift !! Drift callback procedure.
+      procedure(bssm_sde_coefficient_t) :: diffusion !! Diffusion callback procedure.
 
       next_state = state + drift(state, parameters)*step_size + &
          diffusion(state, parameters)*sqrt(step_size)*normal
@@ -1719,11 +1797,15 @@ contains
    pure real(dp) function bssm_sde_milstein_step(state, step_size, normal, &
       parameters, drift, diffusion, diffusion_derivative, positive) &
       result(next_state)
-      ! Advance one scalar SDE Milstein substep.
-      real(dp), intent(in) :: state, step_size, normal, parameters(:)
-      logical, intent(in) :: positive
-      procedure(bssm_sde_coefficient_t) :: drift, diffusion
-      procedure(bssm_sde_coefficient_t) :: diffusion_derivative
+      !! Advance one scalar SDE Milstein substep.
+      real(dp), intent(in) :: state !! State vector or state sequence.
+      real(dp), intent(in) :: step_size !! Step size.
+      real(dp), intent(in) :: normal !! Normal.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      logical, intent(in) :: positive !! Flag controlling positive.
+      procedure(bssm_sde_coefficient_t) :: drift !! Drift callback procedure.
+      procedure(bssm_sde_coefficient_t) :: diffusion !! Diffusion callback procedure.
+      procedure(bssm_sde_coefficient_t) :: diffusion_derivative !! Diffusion derivative callback procedure.
       real(dp) :: scale
 
       scale = diffusion(state, parameters)
@@ -1736,15 +1818,18 @@ contains
    pure function bssm_sde_bootstrap_filter_draws(y, initial_state, &
       parameters, substeps, log_density, drift, diffusion, positive, &
       brownian_normals, resampling_uniforms, diffusion_derivative) result(out)
-      ! Run a draw-driven bootstrap filter for a scalar continuous SDE.
-      real(dp), intent(in) :: y(:), initial_state, parameters(:)
-      integer, intent(in) :: substeps
-      logical, intent(in) :: positive
-      real(dp), intent(in) :: brownian_normals(:, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :)
-      procedure(bssm_nonlinear_log_density_t) :: log_density
-      procedure(bssm_sde_coefficient_t) :: drift, diffusion
-      procedure(bssm_sde_coefficient_t), optional :: diffusion_derivative
+      !! Run a draw-driven bootstrap filter for a scalar continuous SDE.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_state !! Initial state vector.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: substeps !! Substeps.
+      logical, intent(in) :: positive !! Flag controlling positive.
+      real(dp), intent(in) :: brownian_normals(:, :, :) !! Brownian normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :) !! Resampling uniforms.
+      procedure(bssm_nonlinear_log_density_t) :: log_density !! Log-density value.
+      procedure(bssm_sde_coefficient_t) :: drift !! Drift callback procedure.
+      procedure(bssm_sde_coefficient_t) :: diffusion !! Diffusion callback procedure.
+      procedure(bssm_sde_coefficient_t), optional :: diffusion_derivative !! Diffusion derivative callback procedure.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: log_weight(:), probability(:), parent(:)
       real(dp) :: increment, step_size, value
@@ -1845,13 +1930,17 @@ contains
    function bssm_sde_bootstrap_filter(y, initial_state, parameters, substeps, &
       log_density, drift, diffusion, positive, particles, &
       diffusion_derivative) result(out)
-      ! Run an SDE bootstrap filter using the shared random stream.
-      real(dp), intent(in) :: y(:), initial_state, parameters(:)
-      integer, intent(in) :: substeps, particles
-      logical, intent(in) :: positive
-      procedure(bssm_nonlinear_log_density_t) :: log_density
-      procedure(bssm_sde_coefficient_t) :: drift, diffusion
-      procedure(bssm_sde_coefficient_t), optional :: diffusion_derivative
+      !! Run an SDE bootstrap filter using the shared random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_state !! Initial state vector.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: substeps !! Substeps.
+      integer, intent(in) :: particles !! Number of particles.
+      logical, intent(in) :: positive !! Flag controlling positive.
+      procedure(bssm_nonlinear_log_density_t) :: log_density !! Log-density value.
+      procedure(bssm_sde_coefficient_t) :: drift !! Drift callback procedure.
+      procedure(bssm_sde_coefficient_t) :: diffusion !! Diffusion callback procedure.
+      procedure(bssm_sde_coefficient_t), optional :: diffusion_derivative !! Diffusion derivative callback procedure.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: brownian_normals(:, :, :), uniforms(:, :)
       integer :: interval
@@ -1881,17 +1970,20 @@ contains
       parameters, substeps, approximate_log_likelihood, log_density, drift, &
       diffusion, positive, brownian_normals, resampling_uniforms, &
       terminal_uniforms, diffusion_derivative) result(out)
-      ! Draw SDE paths and form fine-versus-approximate IS2 weights.
-      real(dp), intent(in) :: y(:), initial_state, parameters(:, :)
-      integer, intent(in) :: substeps
-      real(dp), intent(in) :: approximate_log_likelihood(:)
-      logical, intent(in) :: positive
-      procedure(bssm_nonlinear_log_density_t) :: log_density
-      procedure(bssm_sde_coefficient_t) :: drift, diffusion
-      real(dp), intent(in) :: brownian_normals(:, :, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :, :)
-      real(dp), intent(in) :: terminal_uniforms(:)
-      procedure(bssm_sde_coefficient_t), optional :: diffusion_derivative
+      !! Draw SDE paths and form fine-versus-approximate IS2 weights.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_state !! Initial state vector.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      integer, intent(in) :: substeps !! Substeps.
+      real(dp), intent(in) :: approximate_log_likelihood(:) !! Approximate log likelihood.
+      logical, intent(in) :: positive !! Flag controlling positive.
+      procedure(bssm_nonlinear_log_density_t) :: log_density !! Log-density value.
+      procedure(bssm_sde_coefficient_t) :: drift !! Drift callback procedure.
+      procedure(bssm_sde_coefficient_t) :: diffusion !! Diffusion callback procedure.
+      real(dp), intent(in) :: brownian_normals(:, :, :, :) !! Brownian normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :, :) !! Resampling uniforms.
+      real(dp), intent(in) :: terminal_uniforms(:) !! Terminal uniforms.
+      procedure(bssm_sde_coefficient_t), optional :: diffusion_derivative !! Diffusion derivative callback procedure.
       type(bssm_sde_state_sample_t) :: out
       type(bssm_particle_filter_t) :: filter
       real(dp), allocatable :: trajectory(:, :)
@@ -1962,14 +2054,18 @@ contains
    function bssm_sde_is2_state_sampler(y, initial_state, parameters, &
       substeps, approximate_log_likelihood, log_density, drift, diffusion, &
       positive, particles, diffusion_derivative) result(out)
-      ! Draw IS2-corrected SDE states using the shared random stream.
-      real(dp), intent(in) :: y(:), initial_state, parameters(:, :)
-      integer, intent(in) :: substeps, particles
-      real(dp), intent(in) :: approximate_log_likelihood(:)
-      logical, intent(in) :: positive
-      procedure(bssm_nonlinear_log_density_t) :: log_density
-      procedure(bssm_sde_coefficient_t) :: drift, diffusion
-      procedure(bssm_sde_coefficient_t), optional :: diffusion_derivative
+      !! Draw IS2-corrected SDE states using the shared random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_state !! Initial state vector.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      integer, intent(in) :: substeps !! Substeps.
+      integer, intent(in) :: particles !! Number of particles.
+      real(dp), intent(in) :: approximate_log_likelihood(:) !! Approximate log likelihood.
+      logical, intent(in) :: positive !! Flag controlling positive.
+      procedure(bssm_nonlinear_log_density_t) :: log_density !! Log-density value.
+      procedure(bssm_sde_coefficient_t) :: drift !! Drift callback procedure.
+      procedure(bssm_sde_coefficient_t) :: diffusion !! Diffusion callback procedure.
+      procedure(bssm_sde_coefficient_t), optional :: diffusion_derivative !! Diffusion derivative callback procedure.
       type(bssm_sde_state_sample_t) :: out
       real(dp), allocatable :: brownian_normals(:, :, :, :)
       real(dp), allocatable :: resampling_uniforms(:, :, :)
@@ -2008,13 +2104,15 @@ contains
    pure function bssm_pmmh_kernel_draws(initial_parameters, prior, estimator, &
       proposal_factor, proposal_normals, acceptance_uniforms, &
       target_acceptance, adaptation_exponent) result(out)
-      ! Run a supplied-draw pseudo-marginal Metropolis-Hastings kernel.
-      real(dp), intent(in) :: initial_parameters(:), proposal_factor(:, :)
-      real(dp), intent(in) :: proposal_normals(:, :), acceptance_uniforms(:)
-      procedure(bssm_parameter_log_density_t) :: prior
-      procedure(bssm_likelihood_estimator_t) :: estimator
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run a supplied-draw pseudo-marginal Metropolis-Hastings kernel.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      real(dp), intent(in) :: proposal_normals(:, :) !! Standard-normal proposal draws.
+      real(dp), intent(in) :: acceptance_uniforms(:) !! Acceptance uniforms.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      procedure(bssm_likelihood_estimator_t) :: estimator !! Estimator callback procedure.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       type(bssm_likelihood_estimate_t) :: estimate
       real(dp), allocatable :: current(:), proposed(:), scale(:, :)
@@ -2121,15 +2219,17 @@ contains
       coarse_estimator, fine_estimator, proposal_factor, proposal_normals, &
       first_stage_uniforms, second_stage_uniforms, target_acceptance, &
       adaptation_exponent) result(out)
-      ! Run a supplied-draw two-estimator delayed-acceptance PMMH kernel.
-      real(dp), intent(in) :: initial_parameters(:), proposal_factor(:, :)
-      real(dp), intent(in) :: proposal_normals(:, :)
-      real(dp), intent(in) :: first_stage_uniforms(:), second_stage_uniforms(:)
-      procedure(bssm_parameter_log_density_t) :: prior
-      procedure(bssm_likelihood_estimator_t) :: coarse_estimator
-      procedure(bssm_likelihood_estimator_t) :: fine_estimator
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run a supplied-draw two-estimator delayed-acceptance PMMH kernel.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      real(dp), intent(in) :: proposal_normals(:, :) !! Standard-normal proposal draws.
+      real(dp), intent(in) :: first_stage_uniforms(:) !! First stage uniforms.
+      real(dp), intent(in) :: second_stage_uniforms(:) !! Second stage uniforms.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      procedure(bssm_likelihood_estimator_t) :: coarse_estimator !! Coarse estimator callback procedure.
+      procedure(bssm_likelihood_estimator_t) :: fine_estimator !! Fine estimator callback procedure.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_da_mcmc_t) :: out
       type(bssm_likelihood_estimate_t) :: estimate
       real(dp), allocatable :: current(:), proposed(:), scale(:, :)
@@ -2266,13 +2366,15 @@ contains
    pure function bssm_approximate_mcmc_draws(initial_parameters, prior, &
       approximate_log_likelihood, proposal_factor, proposal_normals, &
       acceptance_uniforms, target_acceptance, adaptation_exponent) result(out)
-      ! Run supplied-draw MCMC using a deterministic approximate likelihood.
-      real(dp), intent(in) :: initial_parameters(:), proposal_factor(:, :)
-      real(dp), intent(in) :: proposal_normals(:, :), acceptance_uniforms(:)
-      procedure(bssm_parameter_log_density_t) :: prior
-      procedure(bssm_parameter_log_density_t) :: approximate_log_likelihood
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run supplied-draw MCMC using a deterministic approximate likelihood.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      real(dp), intent(in) :: proposal_normals(:, :) !! Standard-normal proposal draws.
+      real(dp), intent(in) :: acceptance_uniforms(:) !! Acceptance uniforms.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      procedure(bssm_parameter_log_density_t) :: approximate_log_likelihood !! Approximate log likelihood callback procedure.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       real(dp) :: exponent
 
@@ -2295,9 +2397,9 @@ contains
    contains
 
       pure function estimator(parameters, draw_index) result(estimate)
-         ! Evaluate the deterministic approximation through the PMMH kernel.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Evaluate the deterministic approximation through the PMMH kernel.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
 
          estimate%value = approximate_log_likelihood(parameters) + &
@@ -2309,13 +2411,14 @@ contains
    function bssm_approximate_mcmc(initial_parameters, prior, &
       approximate_log_likelihood, proposal_factor, iterations, &
       target_acceptance, adaptation_exponent) result(out)
-      ! Run approximate-likelihood MCMC using the shared random stream.
-      real(dp), intent(in) :: initial_parameters(:), proposal_factor(:, :)
-      integer, intent(in) :: iterations
-      procedure(bssm_parameter_log_density_t) :: prior
-      procedure(bssm_parameter_log_density_t) :: approximate_log_likelihood
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run approximate-likelihood MCMC using the shared random stream.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      procedure(bssm_parameter_log_density_t) :: approximate_log_likelihood !! Approximate log likelihood callback procedure.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       real(dp), allocatable :: proposal_normals(:, :), acceptance_uniforms(:)
       real(dp) :: exponent
@@ -2346,12 +2449,12 @@ contains
    pure function bssm_importance_post_correction(parameters, &
       approximate_log_likelihood, exact_log_likelihood, accepted, scheme) &
       result(out)
-      ! Correct an approximate MCMC chain by IS1, IS2, or IS3 weighting.
-      real(dp), intent(in) :: parameters(:, :)
-      real(dp), intent(in) :: approximate_log_likelihood(:)
-      real(dp), intent(in) :: exact_log_likelihood(:, :)
-      logical, intent(in) :: accepted(:)
-      integer, intent(in) :: scheme
+      !! Correct an approximate MCMC chain by IS1, IS2, or IS3 weighting.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      real(dp), intent(in) :: approximate_log_likelihood(:) !! Approximate log likelihood.
+      real(dp), intent(in) :: exact_log_likelihood(:, :) !! Exact log likelihood.
+      logical, intent(in) :: accepted(:) !! Flag controlling accepted.
+      integer, intent(in) :: scheme !! Scheme.
       type(bssm_post_correction_t) :: out
       real(dp), allocatable :: block_log_weight(:), difference(:)
       real(dp) :: block_mean
@@ -2433,12 +2536,13 @@ contains
    pure function bssm_post_correction_from_estimator(parameters, &
       approximate_log_likelihood, accepted, scheme, replications, estimator) &
       result(out)
-      ! Evaluate replicated likelihoods and apply an IS correction scheme.
-      real(dp), intent(in) :: parameters(:, :)
-      real(dp), intent(in) :: approximate_log_likelihood(:)
-      logical, intent(in) :: accepted(:)
-      integer, intent(in) :: scheme, replications
-      procedure(bssm_likelihood_estimator_t) :: estimator
+      !! Evaluate replicated likelihoods and apply an IS correction scheme.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      real(dp), intent(in) :: approximate_log_likelihood(:) !! Approximate log likelihood.
+      logical, intent(in) :: accepted(:) !! Flag controlling accepted.
+      integer, intent(in) :: scheme !! Scheme.
+      integer, intent(in) :: replications !! Replications.
+      procedure(bssm_likelihood_estimator_t) :: estimator !! Estimator callback procedure.
       type(bssm_post_correction_t) :: out
       type(bssm_likelihood_estimate_t) :: estimate
       real(dp), allocatable :: exact_log_likelihood(:, :)
@@ -2508,20 +2612,23 @@ contains
       scheme, noise_dimension, observation, transition_model, &
       approximation_iterations, convergence_tolerance, initial_normals, &
       state_normals, terminal_normals, resampling_uniforms) result(out)
-      ! Post-correct a chain with supplied scalar nonlinear psi-filter draws.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: parameters(:, :)
-      real(dp), intent(in) :: approximate_log_likelihood(:)
-      logical, intent(in) :: accepted(:)
-      integer, intent(in) :: scheme, noise_dimension
-      integer, intent(in) :: approximation_iterations
-      real(dp), intent(in) :: convergence_tolerance
-      real(dp), intent(in) :: initial_normals(:, :, :, :)
-      real(dp), intent(in) :: state_normals(:, :, :, :, :)
-      real(dp), intent(in) :: terminal_normals(:, :, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :, :, :)
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
+      !! Post-correct a chain with supplied scalar nonlinear psi-filter draws.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      real(dp), intent(in) :: approximate_log_likelihood(:) !! Approximate log likelihood.
+      logical, intent(in) :: accepted(:) !! Flag controlling accepted.
+      integer, intent(in) :: scheme !! Scheme.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: initial_normals(:, :, :, :) !! Initial normals.
+      real(dp), intent(in) :: state_normals(:, :, :, :, :) !! State normals.
+      real(dp), intent(in) :: terminal_normals(:, :, :, :) !! Terminal normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :, :, :) !! Resampling uniforms.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
       type(bssm_post_correction_t) :: out
       integer :: state, particles, times, samples, replications
 
@@ -2555,9 +2662,9 @@ contains
    contains
 
       pure function estimator(parameter, draw_index) result(estimate)
-         ! Evaluate one supplied scalar nonlinear psi likelihood.
-         real(dp), intent(in) :: parameter(:)
-         integer, intent(in) :: draw_index
+         !! Evaluate one supplied scalar nonlinear psi likelihood.
+         real(dp), intent(in) :: parameter(:) !! Parameter.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_particle_filter_t) :: fit
          integer :: sample, replication
@@ -2583,16 +2690,21 @@ contains
       scheme, noise_dimension, observation, transition_model, &
       approximation_iterations, convergence_tolerance, particles, &
       replications) result(out)
-      ! Post-correct a scalar nonlinear chain using shared randomness.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: parameters(:, :)
-      real(dp), intent(in) :: approximate_log_likelihood(:)
-      logical, intent(in) :: accepted(:)
-      integer, intent(in) :: scheme, noise_dimension
-      integer, intent(in) :: approximation_iterations, particles, replications
-      real(dp), intent(in) :: convergence_tolerance
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
+      !! Post-correct a scalar nonlinear chain using shared randomness.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      real(dp), intent(in) :: approximate_log_likelihood(:) !! Approximate log likelihood.
+      logical, intent(in) :: accepted(:) !! Flag controlling accepted.
+      integer, intent(in) :: scheme !! Scheme.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: replications !! Replications.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
       type(bssm_post_correction_t) :: out
       real(dp), allocatable :: initial_normals(:, :, :, :)
       real(dp), allocatable :: state_normals(:, :, :, :, :)
@@ -2641,20 +2753,24 @@ contains
       transition_model, approximation_iterations, convergence_tolerance, &
       initial_normals, state_normals, terminal_normals, &
       resampling_uniforms) result(out)
-      ! Post-correct a chain with supplied vector nonlinear psi-filter draws.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), parameters(:, :)
-      real(dp), intent(in) :: approximate_log_likelihood(:)
-      logical, intent(in) :: accepted(:)
-      integer, intent(in) :: scheme, observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, approximation_iterations
-      real(dp), intent(in) :: convergence_tolerance
-      real(dp), intent(in) :: initial_normals(:, :, :, :)
-      real(dp), intent(in) :: state_normals(:, :, :, :, :)
-      real(dp), intent(in) :: terminal_normals(:, :, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :, :, :)
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
+      !! Post-correct a chain with supplied vector nonlinear psi-filter draws.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      real(dp), intent(in) :: approximate_log_likelihood(:) !! Approximate log likelihood.
+      logical, intent(in) :: accepted(:) !! Flag controlling accepted.
+      integer, intent(in) :: scheme !! Scheme.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: initial_normals(:, :, :, :) !! Initial normals.
+      real(dp), intent(in) :: state_normals(:, :, :, :, :) !! State normals.
+      real(dp), intent(in) :: terminal_normals(:, :, :, :) !! Terminal normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :, :, :) !! Resampling uniforms.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
       type(bssm_post_correction_t) :: out
       integer :: state, particles, times, samples, replications
 
@@ -2689,9 +2805,9 @@ contains
    contains
 
       pure function estimator(parameter, draw_index) result(estimate)
-         ! Evaluate one supplied vector nonlinear psi likelihood.
-         real(dp), intent(in) :: parameter(:)
-         integer, intent(in) :: draw_index
+         !! Evaluate one supplied vector nonlinear psi likelihood.
+         real(dp), intent(in) :: parameter(:) !! Parameter.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_particle_filter_t) :: fit
          integer :: sample, replication
@@ -2717,17 +2833,22 @@ contains
       scheme, observation_noise_dimension, state_noise_dimension, &
       observation, transition_model, approximation_iterations, &
       convergence_tolerance, particles, replications) result(out)
-      ! Post-correct a vector nonlinear chain using shared randomness.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), parameters(:, :)
-      real(dp), intent(in) :: approximate_log_likelihood(:)
-      logical, intent(in) :: accepted(:)
-      integer, intent(in) :: scheme, observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, approximation_iterations
-      integer, intent(in) :: particles, replications
-      real(dp), intent(in) :: convergence_tolerance
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
+      !! Post-correct a vector nonlinear chain using shared randomness.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      real(dp), intent(in) :: approximate_log_likelihood(:) !! Approximate log likelihood.
+      logical, intent(in) :: accepted(:) !! Flag controlling accepted.
+      integer, intent(in) :: scheme !! Scheme.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: replications !! Replications.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
       type(bssm_post_correction_t) :: out
       real(dp), allocatable :: initial_normals(:, :, :, :)
       real(dp), allocatable :: state_normals(:, :, :, :, :)
@@ -2776,10 +2897,10 @@ contains
 
    pure function bssm_corrected_state_moments(conditional_mean, &
       conditional_covariance, sample_weight) result(out)
-      ! Combine conditional state summaries using total expectation and variance.
-      real(dp), intent(in) :: conditional_mean(:, :, :)
-      real(dp), intent(in) :: conditional_covariance(:, :, :, :)
-      real(dp), intent(in) :: sample_weight(:)
+      !! Combine conditional state summaries using total expectation and variance.
+      real(dp), intent(in) :: conditional_mean(:, :, :) !! Conditional mean.
+      real(dp), intent(in) :: conditional_covariance(:, :, :, :) !! Conditional covariance matrix.
+      real(dp), intent(in) :: sample_weight(:) !! Sample weight.
       type(bssm_state_posterior_t) :: out
       real(dp), allocatable :: weight(:), difference(:)
       real(dp) :: total
@@ -2826,10 +2947,10 @@ contains
 
    pure function bssm_linear_signal_moments(state_posterior, loading, offset) &
       result(out)
-      ! Transform corrected state moments to linear fitted or predictive signals.
-      type(bssm_state_posterior_t), intent(in) :: state_posterior
-      real(dp), intent(in) :: loading(:, :, :)
-      real(dp), intent(in), optional :: offset(:, :)
+      !! Transform corrected state moments to linear fitted or predictive signals.
+      type(bssm_state_posterior_t), intent(in) :: state_posterior !! State posterior.
+      real(dp), intent(in) :: loading(:, :, :) !! Loading.
+      real(dp), intent(in), optional :: offset(:, :) !! Known additive offset.
       type(bssm_state_posterior_t) :: out
       integer :: series, state, times, time
 
@@ -2873,10 +2994,11 @@ contains
 
    pure function bssm_corrected_trajectory_draws(trajectories, &
       particle_weight, sample_weight, uniforms) result(out)
-      ! Resample trajectories from corrected chain and conditional weights.
-      real(dp), intent(in) :: trajectories(:, :, :, :)
-      real(dp), intent(in) :: particle_weight(:, :), sample_weight(:)
-      real(dp), intent(in) :: uniforms(:, :)
+      !! Resample trajectories from corrected chain and conditional weights.
+      real(dp), intent(in) :: trajectories(:, :, :, :) !! Trajectories.
+      real(dp), intent(in) :: particle_weight(:, :) !! Particle weight.
+      real(dp), intent(in) :: sample_weight(:) !! Sample weight.
+      real(dp), intent(in) :: uniforms(:, :) !! Uniforms.
       type(bssm_trajectory_sample_t) :: out
       real(dp), allocatable :: chain_probability(:), particle_probability(:)
       real(dp) :: total
@@ -2929,10 +3051,10 @@ contains
 
    pure function bssm_suggest_particles(particle_counts, &
       log_likelihood_estimates, target_standard_deviation) result(out)
-      ! Select the first particle count with sufficiently stable log likelihoods.
-      integer, intent(in) :: particle_counts(:)
-      real(dp), intent(in) :: log_likelihood_estimates(:, :)
-      real(dp), intent(in), optional :: target_standard_deviation
+      !! Select the first particle count with sufficiently stable log likelihoods.
+      integer, intent(in) :: particle_counts(:) !! Particle counts.
+      real(dp), intent(in) :: log_likelihood_estimates(:, :) !! Log likelihood estimates.
+      real(dp), intent(in), optional :: target_standard_deviation !! Target standard deviation.
       type(bssm_particle_count_t) :: out
       real(dp) :: target, center
       integer :: replications, candidates, candidate
@@ -2968,18 +3090,22 @@ contains
       transition_model, approximation_iterations, convergence_tolerance, &
       particle_counts, initial_normals, state_normals, terminal_normals, &
       resampling_uniforms, target_standard_deviation) result(out)
-      ! Select a scalar nonlinear psi particle count with supplied draws.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: parameters(:), convergence_tolerance
-      integer, intent(in) :: noise_dimension, approximation_iterations
-      integer, intent(in) :: particle_counts(:)
-      real(dp), intent(in) :: initial_normals(:, :, :, :)
-      real(dp), intent(in) :: state_normals(:, :, :, :, :)
-      real(dp), intent(in) :: terminal_normals(:, :, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :, :, :)
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      real(dp), intent(in), optional :: target_standard_deviation
+      !! Select a scalar nonlinear psi particle count with supplied draws.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      integer, intent(in) :: particle_counts(:) !! Particle counts.
+      real(dp), intent(in) :: initial_normals(:, :, :, :) !! Initial normals.
+      real(dp), intent(in) :: state_normals(:, :, :, :, :) !! State normals.
+      real(dp), intent(in) :: terminal_normals(:, :, :, :) !! Terminal normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :, :, :) !! Resampling uniforms.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      real(dp), intent(in), optional :: target_standard_deviation !! Target standard deviation.
       type(bssm_particle_count_t) :: out
       type(bssm_particle_filter_t) :: fit
       real(dp), allocatable :: log_likelihood(:, :)
@@ -3044,14 +3170,19 @@ contains
       initial_covariance, parameters, noise_dimension, observation, &
       transition_model, approximation_iterations, convergence_tolerance, &
       particle_counts, replications, target_standard_deviation) result(out)
-      ! Select a scalar nonlinear psi particle count with shared randomness.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: parameters(:), convergence_tolerance
-      integer, intent(in) :: noise_dimension, approximation_iterations
-      integer, intent(in) :: particle_counts(:), replications
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      real(dp), intent(in), optional :: target_standard_deviation
+      !! Select a scalar nonlinear psi particle count with shared randomness.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      integer, intent(in) :: particle_counts(:) !! Particle counts.
+      integer, intent(in) :: replications !! Replications.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      real(dp), intent(in), optional :: target_standard_deviation !! Target standard deviation.
       type(bssm_particle_count_t) :: out
       real(dp), allocatable :: initial_normals(:, :, :, :)
       real(dp), allocatable :: state_normals(:, :, :, :, :)
@@ -3111,20 +3242,23 @@ contains
       transition_model, approximation_iterations, convergence_tolerance, &
       particle_counts, initial_normals, state_normals, terminal_normals, &
       resampling_uniforms, target_standard_deviation) result(out)
-      ! Select a vector nonlinear psi particle count with supplied draws.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), parameters(:)
-      real(dp), intent(in) :: convergence_tolerance
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, approximation_iterations
-      integer, intent(in) :: particle_counts(:)
-      real(dp), intent(in) :: initial_normals(:, :, :, :)
-      real(dp), intent(in) :: state_normals(:, :, :, :, :)
-      real(dp), intent(in) :: terminal_normals(:, :, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :, :, :)
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      real(dp), intent(in), optional :: target_standard_deviation
+      !! Select a vector nonlinear psi particle count with supplied draws.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      integer, intent(in) :: particle_counts(:) !! Particle counts.
+      real(dp), intent(in) :: initial_normals(:, :, :, :) !! Initial normals.
+      real(dp), intent(in) :: state_normals(:, :, :, :, :) !! State normals.
+      real(dp), intent(in) :: terminal_normals(:, :, :, :) !! Terminal normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :, :, :) !! Resampling uniforms.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      real(dp), intent(in), optional :: target_standard_deviation !! Target standard deviation.
       type(bssm_particle_count_t) :: out
       type(bssm_particle_filter_t) :: fit
       real(dp), allocatable :: log_likelihood(:, :)
@@ -3193,16 +3327,20 @@ contains
       state_noise_dimension, observation, transition_model, &
       approximation_iterations, convergence_tolerance, particle_counts, &
       replications, target_standard_deviation) result(out)
-      ! Select a vector nonlinear psi particle count with shared randomness.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), parameters(:)
-      real(dp), intent(in) :: convergence_tolerance
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, approximation_iterations
-      integer, intent(in) :: particle_counts(:), replications
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      real(dp), intent(in), optional :: target_standard_deviation
+      !! Select a vector nonlinear psi particle count with shared randomness.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      integer, intent(in) :: particle_counts(:) !! Particle counts.
+      integer, intent(in) :: replications !! Replications.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      real(dp), intent(in), optional :: target_standard_deviation !! Target standard deviation.
       type(bssm_particle_count_t) :: out
       real(dp), allocatable :: initial_normals(:, :, :, :)
       real(dp), allocatable :: state_normals(:, :, :, :, :)
@@ -3261,9 +3399,9 @@ contains
 
    pure real(dp) function bssm_integrated_autocorrelation_time(x, method) &
       result(iact)
-      ! Estimate integrated autocorrelation time by Sokal or Geyer truncation.
-      real(dp), intent(in) :: x(:)
-      integer, intent(in), optional :: method
+      !! Estimate integrated autocorrelation time by Sokal or Geyer truncation.
+      real(dp), intent(in) :: x(:) !! Input data or predictor values.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
       real(dp), allocatable :: centered(:), standardized(:)
       real(dp) :: mean, scale, tau, window, correlation
       real(dp) :: gamma_zero, pair, previous_pair
@@ -3323,10 +3461,10 @@ contains
 
    pure real(dp) function bssm_asymptotic_variance(x, weight, method) &
       result(variance)
-      ! Estimate the variance of a weighted Markov-chain mean.
-      real(dp), intent(in) :: x(:)
-      real(dp), intent(in), optional :: weight(:)
-      integer, intent(in), optional :: method
+      !! Estimate the variance of a weighted Markov-chain mean.
+      real(dp), intent(in) :: x(:) !! Input data or predictor values.
+      real(dp), intent(in), optional :: weight(:) !! Weight.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
       real(dp), allocatable :: work_weight(:), z(:)
       real(dp) :: weight_mean, estimate_mean, z_mean, z_variance, iact
       integer :: n, selected_method
@@ -3360,10 +3498,10 @@ contains
    end function bssm_asymptotic_variance
 
    pure function bssm_mcmc_diagnostics(samples, method, weight) result(out)
-      ! Compute weighted MCMC means, errors, autocorrelation, and ESS by row.
-      real(dp), intent(in) :: samples(:, :)
-      integer, intent(in), optional :: method
-      real(dp), intent(in), optional :: weight(:)
+      !! Compute weighted MCMC means, errors, autocorrelation, and ESS by row.
+      real(dp), intent(in) :: samples(:, :) !! Samples.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      real(dp), intent(in), optional :: weight(:) !! Weight.
       type(bssm_mcmc_diagnostics_t) :: out
       real(dp), allocatable :: work_weight(:), z(:)
       real(dp) :: total_weight, denominator
@@ -3426,10 +3564,10 @@ contains
    end function bssm_mcmc_diagnostics
 
    pure function bssm_chain_diagnostics(chain, method, weight) result(out)
-      ! Compute diagnostics directly from a retained BSSM parameter chain.
-      type(bssm_mcmc_t), intent(in) :: chain
-      integer, intent(in), optional :: method
-      real(dp), intent(in), optional :: weight(:)
+      !! Compute diagnostics directly from a retained BSSM parameter chain.
+      type(bssm_mcmc_t), intent(in) :: chain !! Chain.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      real(dp), intent(in), optional :: weight(:) !! Weight.
       type(bssm_mcmc_diagnostics_t) :: out
       integer :: selected_method
 
@@ -3447,10 +3585,10 @@ contains
    end function bssm_chain_diagnostics
 
    pure function bssm_da_chain_diagnostics(chain, method, weight) result(out)
-      ! Compute diagnostics from a delayed-acceptance parameter chain.
-      type(bssm_da_mcmc_t), intent(in) :: chain
-      integer, intent(in), optional :: method
-      real(dp), intent(in), optional :: weight(:)
+      !! Compute diagnostics from a delayed-acceptance parameter chain.
+      type(bssm_da_mcmc_t), intent(in) :: chain !! Chain.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      real(dp), intent(in), optional :: weight(:) !! Weight.
       type(bssm_mcmc_diagnostics_t) :: out
       integer :: selected_method
 
@@ -3472,20 +3610,25 @@ contains
       proposal_factor, proposal_normals, acceptance_uniforms, &
       brownian_normals, resampling_uniforms, diffusion_derivative, &
       target_acceptance, adaptation_exponent) result(out)
-      ! Run a draw-driven particle marginal Metropolis-Hastings chain.
-      real(dp), intent(in) :: y(:), initial_state, initial_parameters(:)
-      integer, intent(in) :: substeps, particles
-      logical, intent(in) :: positive
-      real(dp), intent(in) :: proposal_factor(:, :)
-      real(dp), intent(in) :: proposal_normals(:, :), acceptance_uniforms(:)
-      real(dp), intent(in) :: brownian_normals(:, :, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :, :)
-      procedure(bssm_nonlinear_log_density_t) :: log_density
-      procedure(bssm_sde_coefficient_t) :: drift, diffusion
-      procedure(bssm_parameter_log_density_t) :: prior
-      procedure(bssm_sde_coefficient_t), optional :: diffusion_derivative
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run a draw-driven particle marginal Metropolis-Hastings chain.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_state !! Initial state vector.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      integer, intent(in) :: substeps !! Substeps.
+      integer, intent(in) :: particles !! Number of particles.
+      logical, intent(in) :: positive !! Flag controlling positive.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      real(dp), intent(in) :: proposal_normals(:, :) !! Standard-normal proposal draws.
+      real(dp), intent(in) :: acceptance_uniforms(:) !! Acceptance uniforms.
+      real(dp), intent(in) :: brownian_normals(:, :, :, :) !! Brownian normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :, :) !! Resampling uniforms.
+      procedure(bssm_nonlinear_log_density_t) :: log_density !! Log-density value.
+      procedure(bssm_sde_coefficient_t) :: drift !! Drift callback procedure.
+      procedure(bssm_sde_coefficient_t) :: diffusion !! Diffusion callback procedure.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      procedure(bssm_sde_coefficient_t), optional :: diffusion_derivative !! Diffusion derivative callback procedure.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       real(dp) :: exponent
       integer :: parameter_count, iterations, times
@@ -3521,9 +3664,9 @@ contains
    contains
 
       pure function estimator(parameters, draw_index) result(estimate)
-         ! Evaluate one independent SDE particle likelihood estimate.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Evaluate one independent SDE particle likelihood estimate.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_particle_filter_t) :: fit
 
@@ -3548,17 +3691,22 @@ contains
       particles, iterations, log_density, drift, diffusion, positive, prior, &
       proposal_factor, diffusion_derivative, target_acceptance, &
       adaptation_exponent) result(out)
-      ! Run SDE particle marginal Metropolis-Hastings with shared randomness.
-      real(dp), intent(in) :: y(:), initial_state, initial_parameters(:)
-      integer, intent(in) :: substeps, particles, iterations
-      logical, intent(in) :: positive
-      real(dp), intent(in) :: proposal_factor(:, :)
-      procedure(bssm_nonlinear_log_density_t) :: log_density
-      procedure(bssm_sde_coefficient_t) :: drift, diffusion
-      procedure(bssm_parameter_log_density_t) :: prior
-      procedure(bssm_sde_coefficient_t), optional :: diffusion_derivative
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run SDE particle marginal Metropolis-Hastings with shared randomness.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_state !! Initial state vector.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      integer, intent(in) :: substeps !! Substeps.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      logical, intent(in) :: positive !! Flag controlling positive.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      procedure(bssm_nonlinear_log_density_t) :: log_density !! Log-density value.
+      procedure(bssm_sde_coefficient_t) :: drift !! Drift callback procedure.
+      procedure(bssm_sde_coefficient_t) :: diffusion !! Diffusion callback procedure.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      procedure(bssm_sde_coefficient_t), optional :: diffusion_derivative !! Diffusion derivative callback procedure.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       real(dp), allocatable :: proposal_normals(:, :), acceptance_uniforms(:)
       real(dp), allocatable :: brownian_normals(:, :, :, :)
@@ -3622,23 +3770,29 @@ contains
       coarse_brownian_normals, coarse_resampling_uniforms, &
       fine_brownian_normals, fine_resampling_uniforms, &
       diffusion_derivative, target_acceptance, adaptation_exponent) result(out)
-      ! Run draw-driven delayed-acceptance PMMH for an SDE model.
-      real(dp), intent(in) :: y(:), initial_state, initial_parameters(:)
-      integer, intent(in) :: coarse_substeps, fine_substeps, particles
-      logical, intent(in) :: positive
-      real(dp), intent(in) :: proposal_factor(:, :), proposal_normals(:, :)
-      real(dp), intent(in) :: first_stage_uniforms(:)
-      real(dp), intent(in) :: second_stage_uniforms(:)
-      real(dp), intent(in) :: coarse_brownian_normals(:, :, :, :)
-      real(dp), intent(in) :: coarse_resampling_uniforms(:, :, :)
-      real(dp), intent(in) :: fine_brownian_normals(:, :, :, :)
-      real(dp), intent(in) :: fine_resampling_uniforms(:, :, :)
-      procedure(bssm_nonlinear_log_density_t) :: log_density
-      procedure(bssm_sde_coefficient_t) :: drift, diffusion
-      procedure(bssm_parameter_log_density_t) :: prior
-      procedure(bssm_sde_coefficient_t), optional :: diffusion_derivative
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run draw-driven delayed-acceptance PMMH for an SDE model.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_state !! Initial state vector.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      integer, intent(in) :: coarse_substeps !! Coarse substeps.
+      integer, intent(in) :: fine_substeps !! Fine substeps.
+      integer, intent(in) :: particles !! Number of particles.
+      logical, intent(in) :: positive !! Flag controlling positive.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      real(dp), intent(in) :: proposal_normals(:, :) !! Standard-normal proposal draws.
+      real(dp), intent(in) :: first_stage_uniforms(:) !! First stage uniforms.
+      real(dp), intent(in) :: second_stage_uniforms(:) !! Second stage uniforms.
+      real(dp), intent(in) :: coarse_brownian_normals(:, :, :, :) !! Coarse brownian normals.
+      real(dp), intent(in) :: coarse_resampling_uniforms(:, :, :) !! Coarse resampling uniforms.
+      real(dp), intent(in) :: fine_brownian_normals(:, :, :, :) !! Fine brownian normals.
+      real(dp), intent(in) :: fine_resampling_uniforms(:, :, :) !! Fine resampling uniforms.
+      procedure(bssm_nonlinear_log_density_t) :: log_density !! Log-density value.
+      procedure(bssm_sde_coefficient_t) :: drift !! Drift callback procedure.
+      procedure(bssm_sde_coefficient_t) :: diffusion !! Diffusion callback procedure.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      procedure(bssm_sde_coefficient_t), optional :: diffusion_derivative !! Diffusion derivative callback procedure.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_da_mcmc_t) :: out
       real(dp) :: exponent
       integer :: parameter_count, iterations, times
@@ -3683,9 +3837,9 @@ contains
    contains
 
       pure function coarse_estimator(parameters, draw_index) result(estimate)
-         ! Evaluate one coarse SDE particle likelihood estimate.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Evaluate one coarse SDE particle likelihood estimate.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_particle_filter_t) :: fit
 
@@ -3706,9 +3860,9 @@ contains
       end function coarse_estimator
 
       pure function fine_estimator(parameters, draw_index) result(estimate)
-         ! Evaluate one fine SDE particle likelihood estimate.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Evaluate one fine SDE particle likelihood estimate.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_particle_filter_t) :: fit
 
@@ -3734,18 +3888,23 @@ contains
       coarse_substeps, fine_substeps, particles, iterations, log_density, &
       drift, diffusion, positive, prior, proposal_factor, &
       diffusion_derivative, target_acceptance, adaptation_exponent) result(out)
-      ! Run delayed-acceptance SDE PMMH using the shared random stream.
-      real(dp), intent(in) :: y(:), initial_state, initial_parameters(:)
-      integer, intent(in) :: coarse_substeps, fine_substeps
-      integer, intent(in) :: particles, iterations
-      logical, intent(in) :: positive
-      real(dp), intent(in) :: proposal_factor(:, :)
-      procedure(bssm_nonlinear_log_density_t) :: log_density
-      procedure(bssm_sde_coefficient_t) :: drift, diffusion
-      procedure(bssm_parameter_log_density_t) :: prior
-      procedure(bssm_sde_coefficient_t), optional :: diffusion_derivative
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run delayed-acceptance SDE PMMH using the shared random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_state !! Initial state vector.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      integer, intent(in) :: coarse_substeps !! Coarse substeps.
+      integer, intent(in) :: fine_substeps !! Fine substeps.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      logical, intent(in) :: positive !! Flag controlling positive.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      procedure(bssm_nonlinear_log_density_t) :: log_density !! Log-density value.
+      procedure(bssm_sde_coefficient_t) :: drift !! Drift callback procedure.
+      procedure(bssm_sde_coefficient_t) :: diffusion !! Diffusion callback procedure.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      procedure(bssm_sde_coefficient_t), optional :: diffusion_derivative !! Diffusion derivative callback procedure.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_da_mcmc_t) :: out
       real(dp), allocatable :: proposal_normals(:, :)
       real(dp), allocatable :: first_stage_uniforms(:), second_stage_uniforms(:)
@@ -3822,16 +3981,21 @@ contains
       transition, state_noise_loading, initial_mean, initial_covariance, &
       distribution, phi, initial_normals, innovation_normals, &
       resampling_uniforms, offset, auxiliary, state_offset) result(out)
-      ! Run a draw-driven bootstrap filter with linear Gaussian dynamics.
-      real(dp), intent(in) :: y(:), observation_loading(:)
-      real(dp), intent(in) :: transition(:, :), state_noise_loading(:, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution
-      real(dp), intent(in) :: phi, initial_normals(:, :)
-      real(dp), intent(in) :: innovation_normals(:, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :)
-      real(dp), intent(in), optional :: offset(:), auxiliary(:)
-      real(dp), intent(in), optional :: state_offset(:)
+      !! Run a draw-driven bootstrap filter with linear Gaussian dynamics.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      real(dp), intent(in) :: phi !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: initial_normals(:, :) !! Initial normals.
+      real(dp), intent(in) :: innovation_normals(:, :, :) !! Innovation normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :) !! Resampling uniforms.
+      real(dp), intent(in), optional :: offset(:) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:) !! State offset.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: observation_schedule(:, :)
       real(dp), allocatable :: transition_schedule(:, :, :)
@@ -3879,17 +4043,21 @@ contains
       transition, state_noise_loading, initial_mean, initial_covariance, &
       distribution, phi, initial_normals, innovation_normals, &
       resampling_uniforms, offset, auxiliary, state_offset) result(out)
-      ! Run a draw-driven bootstrap filter with scheduled linear dynamics.
-      real(dp), intent(in) :: y(:), observation_loading(:, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution
-      real(dp), intent(in) :: phi, initial_normals(:, :)
-      real(dp), intent(in) :: innovation_normals(:, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :)
-      real(dp), intent(in), optional :: offset(:), auxiliary(:)
-      real(dp), intent(in), optional :: state_offset(:, :)
+      !! Run a draw-driven bootstrap filter with scheduled linear dynamics.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      real(dp), intent(in) :: phi !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: initial_normals(:, :) !! Initial normals.
+      real(dp), intent(in) :: innovation_normals(:, :, :) !! Innovation normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :) !! Resampling uniforms.
+      real(dp), intent(in), optional :: offset(:) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: factor(:, :), log_weight(:), probability(:)
       real(dp), allocatable :: offset_work(:), auxiliary_work(:)
@@ -3993,7 +4161,7 @@ contains
    contains
 
       pure logical function valid_filter_dimensions() result(valid)
-         ! Validate all state, particle, and random-array dimensions.
+         !! Validate all state, particle, and random-array dimensions.
          valid = state > 0 .and. particles > 0 .and. times > 0 .and. noise > 0
          valid = valid .and. all(shape(observation_loading) == [state, times])
          valid = valid .and. all(shape(transition) == [state, state, times])
@@ -4018,14 +4186,19 @@ contains
    function bssm_bootstrap_filter(y, observation_loading, transition, &
       state_noise_loading, initial_mean, initial_covariance, distribution, &
       phi, particles, offset, auxiliary, state_offset) result(out)
-      ! Run a bootstrap filter using the shared pseudo-random stream.
-      real(dp), intent(in) :: y(:), observation_loading(:)
-      real(dp), intent(in) :: transition(:, :), state_noise_loading(:, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution, particles
-      real(dp), intent(in) :: phi
-      real(dp), intent(in), optional :: offset(:), auxiliary(:)
-      real(dp), intent(in), optional :: state_offset(:)
+      !! Run a bootstrap filter using the shared pseudo-random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: particles !! Number of particles.
+      real(dp), intent(in) :: phi !! Autoregressive or model coefficient.
+      real(dp), intent(in), optional :: offset(:) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:) !! State offset.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: initial_normals(:, :)
       real(dp), allocatable :: innovation_normals(:, :, :), uniforms(:, :)
@@ -4080,15 +4253,19 @@ contains
    function bssm_bootstrap_filter_tv(y, observation_loading, transition, &
       state_noise_loading, initial_mean, initial_covariance, distribution, &
       phi, particles, offset, auxiliary, state_offset) result(out)
-      ! Run a scheduled linear bootstrap filter using the shared random stream.
-      real(dp), intent(in) :: y(:), observation_loading(:, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution, particles
-      real(dp), intent(in) :: phi
-      real(dp), intent(in), optional :: offset(:), auxiliary(:)
-      real(dp), intent(in), optional :: state_offset(:, :)
+      !! Run a scheduled linear bootstrap filter using the shared random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: particles !! Number of particles.
+      real(dp), intent(in) :: phi !! Autoregressive or model coefficient.
+      real(dp), intent(in), optional :: offset(:) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: initial_normals(:, :)
       real(dp), allocatable :: innovation_normals(:, :, :), uniforms(:, :)
@@ -4143,14 +4320,17 @@ contains
    pure function bssm_nonlinear_bootstrap_filter_draws(y, initial_mean, &
       initial_covariance, parameters, noise_dimension, log_density, transition, &
       initial_normals, innovation_normals, resampling_uniforms) result(out)
-      ! Run a draw-driven bootstrap filter for a nonlinear Gaussian state model.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: parameters(:), initial_normals(:, :)
-      integer, intent(in) :: noise_dimension
-      procedure(bssm_nonlinear_log_density_t) :: log_density
-      procedure(bssm_nonlinear_transition_t) :: transition
-      real(dp), intent(in) :: innovation_normals(:, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :)
+      !! Run a draw-driven bootstrap filter for a nonlinear Gaussian state model.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(in) :: initial_normals(:, :) !! Initial normals.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      procedure(bssm_nonlinear_log_density_t) :: log_density !! Log-density value.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      real(dp), intent(in) :: innovation_normals(:, :, :) !! Innovation normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :) !! Resampling uniforms.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: factor(:, :), log_weight(:), probability(:)
       real(dp), allocatable :: parent(:, :), transition_mean(:)
@@ -4241,12 +4421,15 @@ contains
    function bssm_nonlinear_bootstrap_filter(y, initial_mean, &
       initial_covariance, parameters, noise_dimension, log_density, transition, &
       particles) result(out)
-      ! Run a nonlinear bootstrap filter using the shared random stream.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: parameters(:)
-      integer, intent(in) :: noise_dimension, particles
-      procedure(bssm_nonlinear_log_density_t) :: log_density
-      procedure(bssm_nonlinear_transition_t) :: transition
+      !! Run a nonlinear bootstrap filter using the shared random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: particles !! Number of particles.
+      procedure(bssm_nonlinear_log_density_t) :: log_density !! Log-density value.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: initial_normals(:, :)
       real(dp), allocatable :: innovation_normals(:, :, :), uniforms(:, :)
@@ -4274,16 +4457,18 @@ contains
       observation_noise_dimension, state_noise_dimension, observation, &
       transition, initial_normals, innovation_normals, &
       resampling_uniforms) result(out)
-      ! Run a supplied-draw multivariate nonlinear Gaussian bootstrap filter.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), parameters(:)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_t) :: transition
-      real(dp), intent(in) :: initial_normals(:, :)
-      real(dp), intent(in) :: innovation_normals(:, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :)
+      !! Run a supplied-draw multivariate nonlinear Gaussian bootstrap filter.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      real(dp), intent(in) :: initial_normals(:, :) !! Initial normals.
+      real(dp), intent(in) :: innovation_normals(:, :, :) !! Innovation normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :) !! Resampling uniforms.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: factor(:, :), log_weight(:), probability(:)
       real(dp), allocatable :: parent(:, :), transition_mean(:)
@@ -4379,13 +4564,16 @@ contains
    function bssm_multivariate_nonlinear_bootstrap_filter(y, initial_mean, &
       initial_covariance, parameters, observation_noise_dimension, &
       state_noise_dimension, observation, transition, particles) result(out)
-      ! Run a multivariate nonlinear bootstrap filter from the random stream.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), parameters(:)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, particles
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_t) :: transition
+      !! Run a multivariate nonlinear bootstrap filter from the random stream.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: particles !! Number of particles.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: initial_normals(:, :)
       real(dp), allocatable :: innovation_normals(:, :, :), uniforms(:, :)
@@ -4417,19 +4605,23 @@ contains
       transition, prior, proposal_factor, proposal_normals, &
       acceptance_uniforms, initial_normals, innovation_normals, &
       resampling_uniforms, target_acceptance, adaptation_exponent) result(out)
-      ! Run draw-driven PMMH with a nonlinear bootstrap particle filter.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: initial_parameters(:), proposal_factor(:, :)
-      real(dp), intent(in) :: proposal_normals(:, :), acceptance_uniforms(:)
-      real(dp), intent(in) :: initial_normals(:, :, :)
-      real(dp), intent(in) :: innovation_normals(:, :, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :, :)
-      integer, intent(in) :: noise_dimension
-      procedure(bssm_nonlinear_log_density_t) :: log_density
-      procedure(bssm_nonlinear_transition_t) :: transition
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run draw-driven PMMH with a nonlinear bootstrap particle filter.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      real(dp), intent(in) :: proposal_normals(:, :) !! Standard-normal proposal draws.
+      real(dp), intent(in) :: acceptance_uniforms(:) !! Acceptance uniforms.
+      real(dp), intent(in) :: initial_normals(:, :, :) !! Initial normals.
+      real(dp), intent(in) :: innovation_normals(:, :, :, :) !! Innovation normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :, :) !! Resampling uniforms.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      procedure(bssm_nonlinear_log_density_t) :: log_density !! Log-density value.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       integer :: state, particles, times, iterations
       real(dp) :: exponent
@@ -4469,9 +4661,9 @@ contains
    contains
 
       pure function estimator(parameters, draw_index) result(estimate)
-         ! Estimate the nonlinear bootstrap-filter log likelihood.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Estimate the nonlinear bootstrap-filter log likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_particle_filter_t) :: fit
 
@@ -4490,15 +4682,20 @@ contains
       initial_parameters, noise_dimension, log_density, transition, prior, &
       proposal_factor, particles, iterations, target_acceptance, &
       adaptation_exponent) result(out)
-      ! Run nonlinear bootstrap-filter PMMH using the shared random stream.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: initial_parameters(:), proposal_factor(:, :)
-      integer, intent(in) :: noise_dimension, particles, iterations
-      procedure(bssm_nonlinear_log_density_t) :: log_density
-      procedure(bssm_nonlinear_transition_t) :: transition
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run nonlinear bootstrap-filter PMMH using the shared random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      procedure(bssm_nonlinear_log_density_t) :: log_density !! Log-density value.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       real(dp), allocatable :: proposal_normals(:, :), acceptance_uniforms(:)
       real(dp), allocatable :: initial_normals(:, :, :)
@@ -4554,21 +4751,24 @@ contains
       proposal_normals, acceptance_uniforms, initial_normals, &
       innovation_normals, resampling_uniforms, target_acceptance, &
       adaptation_exponent) result(out)
-      ! Run draw-driven multivariate nonlinear bootstrap-filter PMMH.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), initial_parameters(:)
-      real(dp), intent(in) :: proposal_factor(:, :), proposal_normals(:, :)
-      real(dp), intent(in) :: acceptance_uniforms(:)
-      real(dp), intent(in) :: initial_normals(:, :, :)
-      real(dp), intent(in) :: innovation_normals(:, :, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :, :)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_t) :: transition
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run draw-driven multivariate nonlinear bootstrap-filter PMMH.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      real(dp), intent(in) :: proposal_normals(:, :) !! Standard-normal proposal draws.
+      real(dp), intent(in) :: acceptance_uniforms(:) !! Acceptance uniforms.
+      real(dp), intent(in) :: initial_normals(:, :, :) !! Initial normals.
+      real(dp), intent(in) :: innovation_normals(:, :, :, :) !! Innovation normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :, :) !! Resampling uniforms.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       real(dp) :: exponent
       integer :: state, particles, times, iterations
@@ -4609,9 +4809,9 @@ contains
    contains
 
       pure function estimator(parameters, draw_index) result(estimate)
-         ! Estimate the multivariate nonlinear bootstrap log likelihood.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Estimate the multivariate nonlinear bootstrap log likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_particle_filter_t) :: fit
 
@@ -4631,17 +4831,21 @@ contains
       initial_covariance, initial_parameters, observation_noise_dimension, &
       state_noise_dimension, observation, transition, prior, proposal_factor, &
       particles, iterations, target_acceptance, adaptation_exponent) result(out)
-      ! Run multivariate nonlinear bootstrap PMMH with shared randomness.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), initial_parameters(:)
-      real(dp), intent(in) :: proposal_factor(:, :)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, particles, iterations
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_t) :: transition
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run multivariate nonlinear bootstrap PMMH with shared randomness.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       real(dp), allocatable :: proposal_normals(:, :), acceptance_uniforms(:)
       real(dp), allocatable :: initial_normals(:, :, :)
@@ -4701,23 +4905,28 @@ contains
       parameter_normals, first_stage_uniforms, second_stage_uniforms, &
       initial_normals, innovation_normals, resampling_uniforms, &
       target_acceptance, adaptation_exponent) result(out)
-      ! Run draw-driven IEKF-screened multivariate bootstrap PMMH.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), initial_parameters(:)
-      real(dp), intent(in) :: convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :), parameter_normals(:, :)
-      real(dp), intent(in) :: first_stage_uniforms(:), second_stage_uniforms(:)
-      real(dp), intent(in) :: initial_normals(:, :, :)
-      real(dp), intent(in) :: innovation_normals(:, :, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :, :)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, iekf_iterations
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      procedure(bssm_nonlinear_transition_t) :: transition
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run draw-driven IEKF-screened multivariate bootstrap PMMH.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      real(dp), intent(in) :: parameter_normals(:, :) !! Parameter normals.
+      real(dp), intent(in) :: first_stage_uniforms(:) !! First stage uniforms.
+      real(dp), intent(in) :: second_stage_uniforms(:) !! Second stage uniforms.
+      real(dp), intent(in) :: initial_normals(:, :, :) !! Initial normals.
+      real(dp), intent(in) :: innovation_normals(:, :, :, :) !! Innovation normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :, :) !! Resampling uniforms.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: iekf_iterations !! Number of iterated extended Kalman filter iterations.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_da_mcmc_t) :: out
       real(dp) :: exponent
       integer :: state, particles, times, iterations
@@ -4761,9 +4970,9 @@ contains
    contains
 
       pure function coarse_estimator(parameters, draw_index) result(estimate)
-         ! Evaluate the deterministic multivariate IEKF likelihood.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Evaluate the deterministic multivariate IEKF likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_multivariate_ekf_t) :: fit
 
@@ -4776,9 +4985,9 @@ contains
       end function coarse_estimator
 
       pure function fine_estimator(parameters, draw_index) result(estimate)
-         ! Evaluate the multivariate bootstrap particle likelihood.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Evaluate the multivariate bootstrap particle likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_particle_filter_t) :: fit
 
@@ -4799,19 +5008,24 @@ contains
       state_noise_dimension, observation, transition_model, transition, prior, &
       iekf_iterations, convergence_tolerance, proposal_factor, particles, &
       iterations, target_acceptance, adaptation_exponent) result(out)
-      ! Run IEKF-screened multivariate bootstrap PMMH with shared randomness.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), initial_parameters(:)
-      real(dp), intent(in) :: convergence_tolerance, proposal_factor(:, :)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, iekf_iterations
-      integer, intent(in) :: particles, iterations
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      procedure(bssm_nonlinear_transition_t) :: transition
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run IEKF-screened multivariate bootstrap PMMH with shared randomness.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: iekf_iterations !! Number of iterated extended Kalman filter iterations.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_da_mcmc_t) :: out
       real(dp), allocatable :: parameter_normals(:, :)
       real(dp), allocatable :: first_stage_uniforms(:), second_stage_uniforms(:)
@@ -4877,22 +5091,28 @@ contains
       parameter_normals, first_stage_uniforms, second_stage_uniforms, &
       initial_normals, innovation_normals, resampling_uniforms, &
       target_acceptance, adaptation_exponent) result(out)
-      ! Run nonlinear delayed acceptance with Gaussian and bootstrap likelihoods.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: initial_parameters(:), convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :), parameter_normals(:, :)
-      real(dp), intent(in) :: first_stage_uniforms(:), second_stage_uniforms(:)
-      real(dp), intent(in) :: initial_normals(:, :, :)
-      real(dp), intent(in) :: innovation_normals(:, :, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :, :)
-      integer, intent(in) :: noise_dimension, approximation_iterations
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      procedure(bssm_nonlinear_log_density_t) :: log_density
-      procedure(bssm_nonlinear_transition_t) :: transition
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run nonlinear delayed acceptance with Gaussian and bootstrap likelihoods.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      real(dp), intent(in) :: parameter_normals(:, :) !! Parameter normals.
+      real(dp), intent(in) :: first_stage_uniforms(:) !! First stage uniforms.
+      real(dp), intent(in) :: second_stage_uniforms(:) !! Second stage uniforms.
+      real(dp), intent(in) :: initial_normals(:, :, :) !! Initial normals.
+      real(dp), intent(in) :: innovation_normals(:, :, :, :) !! Innovation normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :, :) !! Resampling uniforms.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      procedure(bssm_nonlinear_log_density_t) :: log_density !! Log-density value.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_da_mcmc_t) :: out
       real(dp) :: exponent
       integer :: state, particles, times, iterations
@@ -4935,9 +5155,9 @@ contains
    contains
 
       pure function coarse_estimator(parameters, draw_index) result(estimate)
-         ! Evaluate the deterministic Gaussian-approximation likelihood.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Evaluate the deterministic Gaussian-approximation likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_nonlinear_approximation_t) :: approximation
 
@@ -4951,9 +5171,9 @@ contains
       end function coarse_estimator
 
       pure function fine_estimator(parameters, draw_index) result(estimate)
-         ! Evaluate the nonlinear bootstrap particle likelihood.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Evaluate the nonlinear bootstrap particle likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_particle_filter_t) :: fit
 
@@ -4973,19 +5193,24 @@ contains
       log_density, transition, prior, approximation_iterations, &
       convergence_tolerance, proposal_factor, particles, iterations, &
       target_acceptance, adaptation_exponent) result(out)
-      ! Run nonlinear Gaussian-screened bootstrap PMMH with shared randomness.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: initial_parameters(:), convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :)
-      integer, intent(in) :: noise_dimension, approximation_iterations
-      integer, intent(in) :: particles, iterations
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      procedure(bssm_nonlinear_log_density_t) :: log_density
-      procedure(bssm_nonlinear_transition_t) :: transition
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run nonlinear Gaussian-screened bootstrap PMMH with shared randomness.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      procedure(bssm_nonlinear_log_density_t) :: log_density !! Log-density value.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_da_mcmc_t) :: out
       real(dp), allocatable :: parameter_normals(:, :)
       real(dp), allocatable :: first_stage_uniforms(:), second_stage_uniforms(:)
@@ -5043,13 +5268,16 @@ contains
    pure function bssm_nonlinear_gaussian_approximation(y, initial_mean, &
       initial_covariance, parameters, noise_dimension, observation, &
       transition_model, max_iterations, convergence_tolerance) result(out)
-      ! Build a global iterated-EKS approximation to a nonlinear model.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: parameters(:)
-      integer, intent(in) :: noise_dimension, max_iterations
-      real(dp), intent(in) :: convergence_tolerance
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
+      !! Build a global iterated-EKS approximation to a nonlinear model.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
       type(bssm_nonlinear_approximation_t) :: out
       type(ssm_model_t) :: model
       type(kfs_filter_t) :: filtered
@@ -5230,17 +5458,17 @@ contains
       pure subroutine linearize_model(current_mode, model_work, center_work, &
          observation_intercept, observation_jacobian, observation_sigma, &
          transition_intercept, transition_jacobian, noise_loading, status)
-         ! Linearize both nonlinear equations around one state trajectory.
-         real(dp), intent(in) :: current_mode(:, :)
-         type(ssm_model_t), intent(inout) :: model_work
-         real(dp), intent(out) :: center_work(:, :)
-         real(dp), intent(out) :: observation_intercept(:)
-         real(dp), intent(out) :: observation_jacobian(:, :)
-         real(dp), intent(out) :: observation_sigma(:)
-         real(dp), intent(out) :: transition_intercept(:, :)
-         real(dp), intent(out) :: transition_jacobian(:, :, :)
-         real(dp), intent(out) :: noise_loading(:, :, :)
-         integer, intent(out) :: status
+         !! Linearize both nonlinear equations around one state trajectory.
+         real(dp), intent(in) :: current_mode(:, :) !! Current mode.
+         type(ssm_model_t), intent(inout) :: model_work !! Model work, updated in place.
+         real(dp), intent(out) :: center_work(:, :) !! Center work.
+         real(dp), intent(out) :: observation_intercept(:) !! Observation intercept.
+         real(dp), intent(out) :: observation_jacobian(:, :) !! Observation jacobian.
+         real(dp), intent(out) :: observation_sigma(:) !! Observation sigma.
+         real(dp), intent(out) :: transition_intercept(:, :) !! Transition intercept.
+         real(dp), intent(out) :: transition_jacobian(:, :, :) !! Transition jacobian.
+         real(dp), intent(out) :: noise_loading(:, :, :) !! Noise loading.
+         integer, intent(out) :: status !! Status.
          real(dp) :: mean, sigma
          real(dp) :: gradient(state), transition_mean(state)
          real(dp) :: jacobian(state, state)
@@ -5292,14 +5520,17 @@ contains
       initial_mean, initial_covariance, parameters, &
       observation_noise_dimension, state_noise_dimension, observation, &
       transition_model, max_iterations, convergence_tolerance) result(out)
-      ! Build a global iterated-EKS approximation for vector observations.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), parameters(:)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, max_iterations
-      real(dp), intent(in) :: convergence_tolerance
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
+      !! Build a global iterated-EKS approximation for vector observations.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
       type(bssm_multivariate_nonlinear_approximation_t) :: out
       type(ssm_model_t) :: model
       type(kfs_filter_t) :: filtered
@@ -5504,17 +5735,17 @@ contains
       pure subroutine linearize_model(current_mode, model_work, center_work, &
          observation_intercept, observation_jacobian, observation_loading, &
          transition_intercept, transition_jacobian, state_loading, status)
-         ! Linearize vector observation and transition equations.
-         real(dp), intent(in) :: current_mode(:, :)
-         type(ssm_model_t), intent(inout) :: model_work
-         real(dp), intent(out) :: center_work(:, :)
-         real(dp), intent(out) :: observation_intercept(:, :)
-         real(dp), intent(out) :: observation_jacobian(:, :, :)
-         real(dp), intent(out) :: observation_loading(:, :, :)
-         real(dp), intent(out) :: transition_intercept(:, :)
-         real(dp), intent(out) :: transition_jacobian(:, :, :)
-         real(dp), intent(out) :: state_loading(:, :, :)
-         integer, intent(out) :: status
+         !! Linearize vector observation and transition equations.
+         real(dp), intent(in) :: current_mode(:, :) !! Current mode.
+         type(ssm_model_t), intent(inout) :: model_work !! Model work, updated in place.
+         real(dp), intent(out) :: center_work(:, :) !! Center work.
+         real(dp), intent(out) :: observation_intercept(:, :) !! Observation intercept.
+         real(dp), intent(out) :: observation_jacobian(:, :, :) !! Observation jacobian.
+         real(dp), intent(out) :: observation_loading(:, :, :) !! Observation loading matrix.
+         real(dp), intent(out) :: transition_intercept(:, :) !! Transition intercept.
+         real(dp), intent(out) :: transition_jacobian(:, :, :) !! Transition jacobian.
+         real(dp), intent(out) :: state_loading(:, :, :) !! State loading.
+         integer, intent(out) :: status !! Status.
          real(dp) :: mean(series), jacobian(series, state)
          real(dp) :: obs_loading(series, observation_noise_dimension)
          real(dp) :: transition_mean(state), transition_derivative(state, state)
@@ -5562,8 +5793,10 @@ contains
       end subroutine linearize_model
 
       pure function observed_log_density(value, mean, covariance) result(value_log)
-         ! Evaluate a Gaussian vector density over finite components.
-         real(dp), intent(in) :: value(:), mean(:), covariance(:, :)
+         !! Evaluate a Gaussian vector density over finite components.
+         real(dp), intent(in) :: value(:) !! Input value.
+         real(dp), intent(in) :: mean(:) !! Mean value or vector.
+         real(dp), intent(in) :: covariance(:, :) !! Covariance matrix.
          real(dp) :: value_log
          real(dp), allocatable :: compact_covariance(:, :)
          integer, allocatable :: observed(:)
@@ -5595,17 +5828,22 @@ contains
       transition_model, prior, approximation_iterations, &
       convergence_tolerance, proposal_factor, proposal_normals, &
       acceptance_uniforms, target_acceptance, adaptation_exponent) result(out)
-      ! Run MCMC using the nonlinear Gaussian-approximation likelihood.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: initial_parameters(:), convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :), proposal_normals(:, :)
-      real(dp), intent(in) :: acceptance_uniforms(:)
-      integer, intent(in) :: noise_dimension, approximation_iterations
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run MCMC using the nonlinear Gaussian-approximation likelihood.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      real(dp), intent(in) :: proposal_normals(:, :) !! Standard-normal proposal draws.
+      real(dp), intent(in) :: acceptance_uniforms(:) !! Acceptance uniforms.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       real(dp) :: exponent
 
@@ -5634,8 +5872,8 @@ contains
    contains
 
       pure function approximate_likelihood(parameters) result(value)
-         ! Evaluate the nonlinear Gaussian-approximation likelihood.
-         real(dp), intent(in) :: parameters(:)
+         !! Evaluate the nonlinear Gaussian-approximation likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: value
          type(bssm_nonlinear_approximation_t) :: approximation
 
@@ -5657,17 +5895,21 @@ contains
       transition_model, prior, approximation_iterations, &
       convergence_tolerance, proposal_factor, iterations, target_acceptance, &
       adaptation_exponent) result(out)
-      ! Run nonlinear Gaussian-approximation MCMC with shared randomness.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: initial_parameters(:), convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :)
-      integer, intent(in) :: noise_dimension, approximation_iterations
-      integer, intent(in) :: iterations
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run nonlinear Gaussian-approximation MCMC with shared randomness.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       real(dp), allocatable :: proposal_normals(:, :), acceptance_uniforms(:)
       real(dp) :: exponent
@@ -5704,17 +5946,22 @@ contains
       transition_model, prior, iekf_iterations, convergence_tolerance, &
       proposal_factor, proposal_normals, acceptance_uniforms, &
       target_acceptance, adaptation_exponent) result(out)
-      ! Run MCMC using an extended-Kalman approximate likelihood.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: initial_parameters(:), convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :), proposal_normals(:, :)
-      real(dp), intent(in) :: acceptance_uniforms(:)
-      integer, intent(in) :: noise_dimension, iekf_iterations
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run MCMC using an extended-Kalman approximate likelihood.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      real(dp), intent(in) :: proposal_normals(:, :) !! Standard-normal proposal draws.
+      real(dp), intent(in) :: acceptance_uniforms(:) !! Acceptance uniforms.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: iekf_iterations !! Number of iterated extended Kalman filter iterations.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       real(dp) :: exponent
 
@@ -5743,8 +5990,8 @@ contains
    contains
 
       pure function approximate_likelihood(parameters) result(value)
-         ! Evaluate the extended-Kalman approximate likelihood.
-         real(dp), intent(in) :: parameters(:)
+         !! Evaluate the extended-Kalman approximate likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: value
          type(bssm_ekf_t) :: fit
 
@@ -5764,16 +6011,21 @@ contains
       initial_parameters, noise_dimension, observation, transition_model, &
       prior, iekf_iterations, convergence_tolerance, proposal_factor, &
       iterations, target_acceptance, adaptation_exponent) result(out)
-      ! Run extended-Kalman approximate MCMC with shared randomness.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: initial_parameters(:), convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :)
-      integer, intent(in) :: noise_dimension, iekf_iterations, iterations
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run extended-Kalman approximate MCMC with shared randomness.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: iekf_iterations !! Number of iterated extended Kalman filter iterations.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       real(dp), allocatable :: proposal_normals(:, :), acceptance_uniforms(:)
       real(dp) :: exponent
@@ -5810,17 +6062,20 @@ contains
       transition_model, approximation_iterations, convergence_tolerance, &
       initial_normals, proposal_normals, terminal_normals, &
       resampling_uniforms) result(out)
-      ! Run a draw-driven psi filter for a nonlinear Gaussian model.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: parameters(:)
-      integer, intent(in) :: noise_dimension, approximation_iterations
-      real(dp), intent(in) :: convergence_tolerance
-      real(dp), intent(in) :: initial_normals(:, :)
-      real(dp), intent(in) :: proposal_normals(:, :, :)
-      real(dp), intent(in) :: terminal_normals(:, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :)
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
+      !! Run a draw-driven psi filter for a nonlinear Gaussian model.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: initial_normals(:, :) !! Initial normals.
+      real(dp), intent(in) :: proposal_normals(:, :, :) !! Standard-normal proposal draws.
+      real(dp), intent(in) :: terminal_normals(:, :) !! Terminal normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :) !! Resampling uniforms.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
       type(bssm_particle_filter_t) :: out
       type(bssm_nonlinear_approximation_t) :: approximation
       real(dp), allocatable :: parent(:, :), probability(:), log_weight(:)
@@ -5970,14 +6225,17 @@ contains
    function bssm_nonlinear_psi_filter(y, initial_mean, initial_covariance, &
       parameters, noise_dimension, observation, transition_model, particles, &
       approximation_iterations, convergence_tolerance) result(out)
-      ! Run a nonlinear Gaussian psi filter using the shared random stream.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: parameters(:)
-      integer, intent(in) :: noise_dimension, particles
-      integer, intent(in) :: approximation_iterations
-      real(dp), intent(in) :: convergence_tolerance
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
+      !! Run a nonlinear Gaussian psi filter using the shared random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: initial_normals(:, :)
       real(dp), allocatable :: proposal_normals(:, :, :)
@@ -6010,18 +6268,21 @@ contains
       transition_model, approximation_iterations, convergence_tolerance, &
       initial_normals, proposal_normals, terminal_normals, &
       resampling_uniforms) result(out)
-      ! Run a draw-driven psi filter for vector nonlinear Gaussian data.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), parameters(:)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, approximation_iterations
-      real(dp), intent(in) :: convergence_tolerance
-      real(dp), intent(in) :: initial_normals(:, :)
-      real(dp), intent(in) :: proposal_normals(:, :, :)
-      real(dp), intent(in) :: terminal_normals(:, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :)
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
+      !! Run a draw-driven psi filter for vector nonlinear Gaussian data.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: initial_normals(:, :) !! Initial normals.
+      real(dp), intent(in) :: proposal_normals(:, :, :) !! Standard-normal proposal draws.
+      real(dp), intent(in) :: terminal_normals(:, :) !! Terminal normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :) !! Resampling uniforms.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
       type(bssm_particle_filter_t) :: out
       type(bssm_multivariate_nonlinear_approximation_t) :: approximation
       real(dp), allocatable :: parent(:, :), probability(:), log_weight(:)
@@ -6194,8 +6455,10 @@ contains
    contains
 
       pure function observed_density(value, mean, covariance) result(value_log)
-         ! Evaluate a Gaussian density over the finite vector components.
-         real(dp), intent(in) :: value(:), mean(:), covariance(:, :)
+         !! Evaluate a Gaussian density over the finite vector components.
+         real(dp), intent(in) :: value(:) !! Input value.
+         real(dp), intent(in) :: mean(:) !! Mean value or vector.
+         real(dp), intent(in) :: covariance(:, :) !! Covariance matrix.
          real(dp) :: value_log
          real(dp), allocatable :: compact_covariance(:, :)
          integer, allocatable :: observed(:)
@@ -6226,15 +6489,18 @@ contains
       initial_covariance, parameters, observation_noise_dimension, &
       state_noise_dimension, observation, transition_model, particles, &
       approximation_iterations, convergence_tolerance) result(out)
-      ! Run a vector nonlinear Gaussian psi filter with shared randomness.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), parameters(:)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, particles
-      integer, intent(in) :: approximation_iterations
-      real(dp), intent(in) :: convergence_tolerance
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
+      !! Run a vector nonlinear Gaussian psi filter with shared randomness.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: initial_normals(:, :)
       real(dp), allocatable :: proposal_normals(:, :, :)
@@ -6270,21 +6536,26 @@ contains
       convergence_tolerance, proposal_factor, parameter_normals, &
       acceptance_uniforms, initial_normals, state_normals, terminal_normals, &
       resampling_uniforms, target_acceptance, adaptation_exponent) result(out)
-      ! Run draw-driven PMMH with a nonlinear psi particle filter.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: initial_parameters(:), convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :), parameter_normals(:, :)
-      real(dp), intent(in) :: acceptance_uniforms(:)
-      real(dp), intent(in) :: initial_normals(:, :, :)
-      real(dp), intent(in) :: state_normals(:, :, :, :)
-      real(dp), intent(in) :: terminal_normals(:, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :, :)
-      integer, intent(in) :: noise_dimension, approximation_iterations
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run draw-driven PMMH with a nonlinear psi particle filter.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      real(dp), intent(in) :: parameter_normals(:, :) !! Parameter normals.
+      real(dp), intent(in) :: acceptance_uniforms(:) !! Acceptance uniforms.
+      real(dp), intent(in) :: initial_normals(:, :, :) !! Initial normals.
+      real(dp), intent(in) :: state_normals(:, :, :, :) !! State normals.
+      real(dp), intent(in) :: terminal_normals(:, :, :) !! Terminal normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :, :) !! Resampling uniforms.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       integer :: state, particles, times, iterations
       real(dp) :: exponent
@@ -6328,9 +6599,9 @@ contains
    contains
 
       pure function estimator(parameters, draw_index) result(estimate)
-         ! Estimate the nonlinear psi-filter log likelihood.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Estimate the nonlinear psi-filter log likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_particle_filter_t) :: fit
 
@@ -6352,17 +6623,22 @@ contains
       prior, approximation_iterations, convergence_tolerance, &
       proposal_factor, particles, iterations, target_acceptance, &
       adaptation_exponent) result(out)
-      ! Run nonlinear psi-filter PMMH using the shared random stream.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: initial_parameters(:), convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :)
-      integer, intent(in) :: noise_dimension, approximation_iterations
-      integer, intent(in) :: particles, iterations
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run nonlinear psi-filter PMMH using the shared random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       real(dp), allocatable :: parameter_normals(:, :), acceptance_uniforms(:)
       real(dp), allocatable :: initial_normals(:, :, :)
@@ -6425,23 +6701,27 @@ contains
       parameter_normals, acceptance_uniforms, initial_normals, state_normals, &
       terminal_normals, resampling_uniforms, target_acceptance, &
       adaptation_exponent) result(out)
-      ! Run draw-driven PMMH with a vector nonlinear psi particle filter.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), initial_parameters(:)
-      real(dp), intent(in) :: convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :), parameter_normals(:, :)
-      real(dp), intent(in) :: acceptance_uniforms(:)
-      real(dp), intent(in) :: initial_normals(:, :, :)
-      real(dp), intent(in) :: state_normals(:, :, :, :)
-      real(dp), intent(in) :: terminal_normals(:, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :, :)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, approximation_iterations
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run draw-driven PMMH with a vector nonlinear psi particle filter.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      real(dp), intent(in) :: parameter_normals(:, :) !! Parameter normals.
+      real(dp), intent(in) :: acceptance_uniforms(:) !! Acceptance uniforms.
+      real(dp), intent(in) :: initial_normals(:, :, :) !! Initial normals.
+      real(dp), intent(in) :: state_normals(:, :, :, :) !! State normals.
+      real(dp), intent(in) :: terminal_normals(:, :, :) !! Terminal normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :, :) !! Resampling uniforms.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       integer :: state, particles, times, iterations
       real(dp) :: exponent
@@ -6487,9 +6767,9 @@ contains
    contains
 
       pure function estimator(parameters, draw_index) result(estimate)
-         ! Estimate the vector nonlinear psi-filter log likelihood.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Estimate the vector nonlinear psi-filter log likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_particle_filter_t) :: fit
 
@@ -6513,19 +6793,23 @@ contains
       approximation_iterations, convergence_tolerance, proposal_factor, &
       particles, iterations, target_acceptance, adaptation_exponent) &
       result(out)
-      ! Run vector nonlinear psi-filter PMMH using shared randomness.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), initial_parameters(:)
-      real(dp), intent(in) :: convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, approximation_iterations
-      integer, intent(in) :: particles, iterations
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run vector nonlinear psi-filter PMMH using shared randomness.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       real(dp), allocatable :: parameter_normals(:, :), acceptance_uniforms(:)
       real(dp), allocatable :: initial_normals(:, :, :)
@@ -6594,23 +6878,28 @@ contains
       first_stage_uniforms, second_stage_uniforms, initial_normals, &
       state_normals, terminal_normals, resampling_uniforms, &
       target_acceptance, adaptation_exponent) result(out)
-      ! Run draw-driven delayed acceptance with a vector nonlinear psi filter.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), initial_parameters(:)
-      real(dp), intent(in) :: convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :), parameter_normals(:, :)
-      real(dp), intent(in) :: first_stage_uniforms(:), second_stage_uniforms(:)
-      real(dp), intent(in) :: initial_normals(:, :, :)
-      real(dp), intent(in) :: state_normals(:, :, :, :)
-      real(dp), intent(in) :: terminal_normals(:, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :, :)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, approximation_iterations
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run draw-driven delayed acceptance with a vector nonlinear psi filter.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      real(dp), intent(in) :: parameter_normals(:, :) !! Parameter normals.
+      real(dp), intent(in) :: first_stage_uniforms(:) !! First stage uniforms.
+      real(dp), intent(in) :: second_stage_uniforms(:) !! Second stage uniforms.
+      real(dp), intent(in) :: initial_normals(:, :, :) !! Initial normals.
+      real(dp), intent(in) :: state_normals(:, :, :, :) !! State normals.
+      real(dp), intent(in) :: terminal_normals(:, :, :) !! Terminal normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :, :) !! Resampling uniforms.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_da_mcmc_t) :: out
       integer :: state, particles, times, iterations
       real(dp) :: exponent
@@ -6658,9 +6947,9 @@ contains
    contains
 
       pure function coarse_estimator(parameters, draw_index) result(estimate)
-         ! Evaluate the global Gaussian-approximation likelihood.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Evaluate the global Gaussian-approximation likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_multivariate_nonlinear_approximation_t) :: approximation
 
@@ -6675,9 +6964,9 @@ contains
       end function coarse_estimator
 
       pure function fine_estimator(parameters, draw_index) result(estimate)
-         ! Evaluate the vector nonlinear psi particle likelihood.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Evaluate the vector nonlinear psi particle likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_particle_filter_t) :: fit
 
@@ -6701,19 +6990,23 @@ contains
       approximation_iterations, convergence_tolerance, proposal_factor, &
       particles, iterations, target_acceptance, adaptation_exponent) &
       result(out)
-      ! Run delayed-acceptance vector nonlinear psi PMMH with shared randomness.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), initial_parameters(:)
-      real(dp), intent(in) :: convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, approximation_iterations
-      integer, intent(in) :: particles, iterations
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run delayed-acceptance vector nonlinear psi PMMH with shared randomness.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_da_mcmc_t) :: out
       real(dp), allocatable :: parameter_normals(:, :)
       real(dp), allocatable :: first_stage_uniforms(:), second_stage_uniforms(:)
@@ -6780,13 +7073,16 @@ contains
    pure function bssm_iekf(y, initial_mean, initial_covariance, parameters, &
       noise_dimension, observation, transition, max_iterations, &
       convergence_tolerance) result(out)
-      ! Run an ordinary or iterated extended Kalman filter.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: parameters(:)
-      integer, intent(in) :: noise_dimension, max_iterations
-      real(dp), intent(in) :: convergence_tolerance
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition
+      !! Run an ordinary or iterated extended Kalman filter.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition !! State transition matrix.
       type(bssm_ekf_t) :: out
       real(dp), allocatable :: transition_jacobian(:, :), noise_loading(:, :)
       real(dp) :: innovation, innovation_variance
@@ -6863,13 +7159,16 @@ contains
    pure function bssm_ekf_smoother(y, initial_mean, initial_covariance, &
       parameters, noise_dimension, observation, transition, max_iterations, &
       convergence_tolerance) result(out)
-      ! Run an ordinary or iterated extended Kalman covariance smoother.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: parameters(:)
-      integer, intent(in) :: noise_dimension, max_iterations
-      real(dp), intent(in) :: convergence_tolerance
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition
+      !! Run an ordinary or iterated extended Kalman covariance smoother.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition !! State transition matrix.
       type(bssm_ekf_smoother_t) :: out
       type(bssm_ekf_t) :: fit
       type(ssm_model_t) :: model
@@ -6904,13 +7203,16 @@ contains
    pure function bssm_ekf_fast_smoother(y, initial_mean, &
       initial_covariance, parameters, noise_dimension, observation, &
       transition, max_iterations, convergence_tolerance) result(out)
-      ! Run an extended Kalman smoother without smoothed covariances.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: parameters(:)
-      integer, intent(in) :: noise_dimension, max_iterations
-      real(dp), intent(in) :: convergence_tolerance
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition
+      !! Run an extended Kalman smoother without smoothed covariances.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition !! State transition matrix.
       type(bssm_ekf_smoother_t) :: out
       type(bssm_ekf_t) :: fit
       type(ssm_model_t) :: model
@@ -6945,14 +7247,17 @@ contains
       parameters, observation_noise_dimension, state_noise_dimension, &
       observation, transition, max_iterations, convergence_tolerance) &
       result(out)
-      ! Run a multivariate ordinary or iterated extended Kalman filter.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), parameters(:)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, max_iterations
-      real(dp), intent(in) :: convergence_tolerance
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition
+      !! Run a multivariate ordinary or iterated extended Kalman filter.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition !! State transition matrix.
       type(bssm_multivariate_ekf_t) :: out
       real(dp), allocatable :: transition_jacobian(:, :), noise_loading(:, :)
       real(dp) :: log_density
@@ -7029,14 +7334,17 @@ contains
       initial_covariance, parameters, observation_noise_dimension, &
       state_noise_dimension, observation, transition, max_iterations, &
       convergence_tolerance) result(out)
-      ! Smooth states from a multivariate ordinary or iterated EKF.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), parameters(:)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, max_iterations
-      real(dp), intent(in) :: convergence_tolerance
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition
+      !! Smooth states from a multivariate ordinary or iterated EKF.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition !! State transition matrix.
       type(bssm_ekf_smoother_t) :: out
       type(bssm_multivariate_ekf_t) :: fit
       type(ssm_model_t) :: model
@@ -7072,14 +7380,17 @@ contains
       initial_covariance, parameters, observation_noise_dimension, &
       state_noise_dimension, observation, transition, max_iterations, &
       convergence_tolerance) result(out)
-      ! Smooth multivariate EKF state means without covariance output.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), parameters(:)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, max_iterations
-      real(dp), intent(in) :: convergence_tolerance
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition
+      !! Smooth multivariate EKF state means without covariance output.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition !! State transition matrix.
       type(bssm_ekf_smoother_t) :: out
       type(bssm_multivariate_ekf_t) :: fit
       type(ssm_model_t) :: model
@@ -7112,12 +7423,17 @@ contains
 
    pure function bssm_ukf(y, initial_mean, initial_covariance, parameters, &
       noise_dimension, observation, transition, alpha, beta, kappa) result(out)
-      ! Run an unscented Kalman filter for a nonlinear Gaussian model.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: parameters(:), alpha, beta, kappa
-      integer, intent(in) :: noise_dimension
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition
+      !! Run an unscented Kalman filter for a nonlinear Gaussian model.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in) :: beta !! Regression or model coefficients.
+      real(dp), intent(in) :: kappa !! Kappa.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition !! State transition matrix.
       type(bssm_ekf_t) :: out
       real(dp), allocatable :: mean_weight(:), covariance_weight(:)
       real(dp), allocatable :: sigma(:, :), propagated(:, :), sigma_y(:)
@@ -7266,14 +7582,18 @@ contains
    pure function bssm_multivariate_ukf(y, initial_mean, initial_covariance, &
       parameters, observation_noise_dimension, state_noise_dimension, &
       observation, transition, alpha, beta, kappa) result(out)
-      ! Run an unscented Kalman filter with vector Gaussian observations.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), parameters(:)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition
-      real(dp), intent(in) :: alpha, beta, kappa
+      !! Run an unscented Kalman filter with vector Gaussian observations.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition !! State transition matrix.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in) :: beta !! Regression or model coefficients.
+      real(dp), intent(in) :: kappa !! Kappa.
       type(bssm_multivariate_ekf_t) :: out
       real(dp), allocatable :: mean_weight(:), covariance_weight(:)
       real(dp), allocatable :: sigma(:, :), propagated(:, :)
@@ -7464,15 +7784,21 @@ contains
       transition, state_noise_loading, initial_mean, initial_covariance, &
       distribution, phi, max_iterations, convergence_tolerance, offset, &
       auxiliary, state_offset, initial_mode) result(out)
-      ! Find a Laplace Gaussian approximation with the same conditional mode.
-      real(dp), intent(in) :: y(:), observation_loading(:, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution, max_iterations
-      real(dp), intent(in) :: phi, convergence_tolerance
-      real(dp), intent(in), optional :: offset(:), auxiliary(:)
-      real(dp), intent(in), optional :: state_offset(:, :), initial_mode(:)
+      !! Find a Laplace Gaussian approximation with the same conditional mode.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in) :: phi !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in), optional :: offset(:) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
+      real(dp), intent(in), optional :: initial_mode(:) !! Initial mode.
       type(bssm_gaussian_approximation_t) :: out
       type(ssm_model_t) :: model
       type(kfs_filter_t) :: filtered
@@ -7638,16 +7964,21 @@ contains
       initial_covariance, distribution, phi, max_iterations, &
       convergence_tolerance, offset, auxiliary, state_offset, initial_mode) &
       result(out)
-      ! Find a mixed-family multivariate Laplace Gaussian approximation.
-      real(dp), intent(in) :: y(:, :), observation_loading(:, :, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution(:), max_iterations
-      real(dp), intent(in) :: phi(:), convergence_tolerance
-      real(dp), intent(in), optional :: offset(:, :), auxiliary(:, :)
-      real(dp), intent(in), optional :: state_offset(:, :)
-      real(dp), intent(in), optional :: initial_mode(:, :)
+      !! Find a mixed-family multivariate Laplace Gaussian approximation.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:, :, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution(:) !! Probability-distribution specification.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in) :: phi(:) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in), optional :: offset(:, :) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:, :) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
+      real(dp), intent(in), optional :: initial_mode(:, :) !! Initial mode.
       type(bssm_multivariate_approximation_t) :: out
       type(ssm_model_t) :: model
       type(kfs_filter_t) :: filtered
@@ -7837,17 +8168,21 @@ contains
       initial_covariance, distribution, phi, initial_normals, &
       innovation_normals, resampling_uniforms, offset, auxiliary, &
       state_offset) result(out)
-      ! Run a draw-driven bootstrap filter for mixed observation families.
-      real(dp), intent(in) :: y(:, :), observation_loading(:, :, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution(:)
-      real(dp), intent(in) :: phi(:), initial_normals(:, :)
-      real(dp), intent(in) :: innovation_normals(:, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :)
-      real(dp), intent(in), optional :: offset(:, :), auxiliary(:, :)
-      real(dp), intent(in), optional :: state_offset(:, :)
+      !! Run a draw-driven bootstrap filter for mixed observation families.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:, :, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution(:) !! Probability-distribution specification.
+      real(dp), intent(in) :: phi(:) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: initial_normals(:, :) !! Initial normals.
+      real(dp), intent(in) :: innovation_normals(:, :, :) !! Innovation normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :) !! Resampling uniforms.
+      real(dp), intent(in), optional :: offset(:, :) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:, :) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: offset_work(:, :), auxiliary_work(:, :)
       real(dp), allocatable :: state_offset_work(:, :), factor(:, :)
@@ -7976,15 +8311,19 @@ contains
       transition, state_noise_loading, initial_mean, initial_covariance, &
       distribution, phi, particles, offset, auxiliary, state_offset) &
       result(out)
-      ! Run a multivariate mixed-family bootstrap filter with shared randomness.
-      real(dp), intent(in) :: y(:, :), observation_loading(:, :, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution(:), particles
-      real(dp), intent(in) :: phi(:)
-      real(dp), intent(in), optional :: offset(:, :), auxiliary(:, :)
-      real(dp), intent(in), optional :: state_offset(:, :)
+      !! Run a multivariate mixed-family bootstrap filter with shared randomness.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:, :, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution(:) !! Probability-distribution specification.
+      integer, intent(in) :: particles !! Number of particles.
+      real(dp), intent(in) :: phi(:) !! Autoregressive or model coefficient.
+      real(dp), intent(in), optional :: offset(:, :) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:, :) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: initial_normals(:, :)
       real(dp), allocatable :: innovation_normals(:, :, :), uniforms(:, :)
@@ -8013,19 +8352,24 @@ contains
       distribution, phi, approximation_iterations, convergence_tolerance, &
       proposal_normals, terminal_normals, resampling_uniforms, offset, &
       auxiliary, state_offset, initial_mode) result(out)
-      ! Run a draw-driven psi filter for mixed multivariate observations.
-      real(dp), intent(in) :: y(:, :), observation_loading(:, :, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution(:), approximation_iterations
-      real(dp), intent(in) :: phi(:), convergence_tolerance
-      real(dp), intent(in) :: proposal_normals(:, :, :)
-      real(dp), intent(in) :: terminal_normals(:, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :)
-      real(dp), intent(in), optional :: offset(:, :), auxiliary(:, :)
-      real(dp), intent(in), optional :: state_offset(:, :)
-      real(dp), intent(in), optional :: initial_mode(:, :)
+      !! Run a draw-driven psi filter for mixed multivariate observations.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:, :, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution(:) !! Probability-distribution specification.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      real(dp), intent(in) :: phi(:) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_normals(:, :, :) !! Standard-normal proposal draws.
+      real(dp), intent(in) :: terminal_normals(:, :) !! Terminal normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :) !! Resampling uniforms.
+      real(dp), intent(in), optional :: offset(:, :) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:, :) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
+      real(dp), intent(in), optional :: initial_mode(:, :) !! Initial mode.
       type(bssm_particle_filter_t) :: out
       type(bssm_multivariate_approximation_t) :: approximation
       real(dp), allocatable :: offset_work(:, :), auxiliary_work(:, :)
@@ -8171,17 +8515,22 @@ contains
       state_noise_loading, initial_mean, initial_covariance, distribution, &
       phi, particles, approximation_iterations, convergence_tolerance, &
       offset, auxiliary, state_offset, initial_mode) result(out)
-      ! Run a mixed-family multivariate psi filter with shared randomness.
-      real(dp), intent(in) :: y(:, :), observation_loading(:, :, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution(:), particles
-      integer, intent(in) :: approximation_iterations
-      real(dp), intent(in) :: phi(:), convergence_tolerance
-      real(dp), intent(in), optional :: offset(:, :), auxiliary(:, :)
-      real(dp), intent(in), optional :: state_offset(:, :)
-      real(dp), intent(in), optional :: initial_mode(:, :)
+      !! Run a mixed-family multivariate psi filter with shared randomness.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:, :, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution(:) !! Probability-distribution specification.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      real(dp), intent(in) :: phi(:) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in), optional :: offset(:, :) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:, :) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
+      real(dp), intent(in), optional :: initial_mode(:, :) !! Initial mode.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: proposal_normals(:, :, :)
       real(dp), allocatable :: terminal_normals(:, :), uniforms(:, :)
@@ -8211,18 +8560,23 @@ contains
       initial_covariance, distribution, phi, approximation_iterations, &
       convergence_tolerance, proposal_normals, terminal_normals, offset, &
       auxiliary, state_offset, initial_mode) result(out)
-      ! Draw mixed-family multivariate trajectories for SPDK sampling.
-      real(dp), intent(in) :: y(:, :), observation_loading(:, :, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution(:), approximation_iterations
-      real(dp), intent(in) :: phi(:), convergence_tolerance
-      real(dp), intent(in) :: proposal_normals(:, :, :)
-      real(dp), intent(in) :: terminal_normals(:, :)
-      real(dp), intent(in), optional :: offset(:, :), auxiliary(:, :)
-      real(dp), intent(in), optional :: state_offset(:, :)
-      real(dp), intent(in), optional :: initial_mode(:, :)
+      !! Draw mixed-family multivariate trajectories for SPDK sampling.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:, :, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution(:) !! Probability-distribution specification.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      real(dp), intent(in) :: phi(:) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_normals(:, :, :) !! Standard-normal proposal draws.
+      real(dp), intent(in) :: terminal_normals(:, :) !! Terminal normals.
+      real(dp), intent(in), optional :: offset(:, :) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:, :) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
+      real(dp), intent(in), optional :: initial_mode(:, :) !! Initial mode.
       type(bssm_importance_sample_t) :: out
       type(bssm_multivariate_approximation_t) :: approximation
       real(dp), allocatable :: offset_work(:, :), auxiliary_work(:, :)
@@ -8350,18 +8704,23 @@ contains
       distribution, phi, samples, approximation_iterations, &
       convergence_tolerance, use_antithetic, offset, auxiliary, state_offset, &
       initial_mode) result(out)
-      ! Run multivariate SPDK importance sampling with shared randomness.
-      real(dp), intent(in) :: y(:, :), observation_loading(:, :, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution(:), samples
-      integer, intent(in) :: approximation_iterations
-      real(dp), intent(in) :: phi(:), convergence_tolerance
-      logical, intent(in) :: use_antithetic
-      real(dp), intent(in), optional :: offset(:, :), auxiliary(:, :)
-      real(dp), intent(in), optional :: state_offset(:, :)
-      real(dp), intent(in), optional :: initial_mode(:, :)
+      !! Run multivariate SPDK importance sampling with shared randomness.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:, :, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution(:) !! Probability-distribution specification.
+      integer, intent(in) :: samples !! Samples.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      real(dp), intent(in) :: phi(:) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      logical, intent(in) :: use_antithetic !! Whether to use the antithetic.
+      real(dp), intent(in), optional :: offset(:, :) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:, :) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
+      real(dp), intent(in), optional :: initial_mode(:, :) !! Initial mode.
       type(bssm_importance_sample_t) :: out
       real(dp), allocatable :: proposal_normals(:, :, :)
       real(dp), allocatable :: terminal_normals(:, :)
@@ -8412,18 +8771,24 @@ contains
       phi, approximation_iterations, convergence_tolerance, proposal_normals, &
       terminal_normals, resampling_uniforms, offset, auxiliary, state_offset, &
       initial_mode) result(out)
-      ! Run a draw-driven psi auxiliary particle filter.
-      real(dp), intent(in) :: y(:), observation_loading(:, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution, approximation_iterations
-      real(dp), intent(in) :: phi, convergence_tolerance
-      real(dp), intent(in) :: proposal_normals(:, :, :)
-      real(dp), intent(in) :: terminal_normals(:, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :)
-      real(dp), intent(in), optional :: offset(:), auxiliary(:)
-      real(dp), intent(in), optional :: state_offset(:, :), initial_mode(:)
+      !! Run a draw-driven psi auxiliary particle filter.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      real(dp), intent(in) :: phi !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_normals(:, :, :) !! Standard-normal proposal draws.
+      real(dp), intent(in) :: terminal_normals(:, :) !! Terminal normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :) !! Resampling uniforms.
+      real(dp), intent(in), optional :: offset(:) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
+      real(dp), intent(in), optional :: initial_mode(:) !! Initial mode.
       type(bssm_particle_filter_t) :: out
       type(bssm_gaussian_approximation_t) :: approximation
       real(dp), allocatable :: offset_work(:), auxiliary_work(:)
@@ -8560,15 +8925,22 @@ contains
       state_noise_loading, initial_mean, initial_covariance, distribution, &
       phi, particles, approximation_iterations, convergence_tolerance, offset, &
       auxiliary, state_offset, initial_mode) result(out)
-      ! Run a psi auxiliary particle filter using the shared random stream.
-      real(dp), intent(in) :: y(:), observation_loading(:, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution, particles, approximation_iterations
-      real(dp), intent(in) :: phi, convergence_tolerance
-      real(dp), intent(in), optional :: offset(:), auxiliary(:)
-      real(dp), intent(in), optional :: state_offset(:, :), initial_mode(:)
+      !! Run a psi auxiliary particle filter using the shared random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      real(dp), intent(in) :: phi !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in), optional :: offset(:) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
+      real(dp), intent(in), optional :: initial_mode(:) !! Initial mode.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: proposal_normals(:, :, :)
       real(dp), allocatable :: terminal_normals(:, :), uniforms(:, :)
@@ -8598,17 +8970,23 @@ contains
       distribution, phi, approximation_iterations, convergence_tolerance, &
       proposal_normals, terminal_normals, offset, auxiliary, state_offset, &
       initial_mode) result(out)
-      ! Draw complete Gaussian-approximation trajectories for SPDK sampling.
-      real(dp), intent(in) :: y(:), observation_loading(:, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution, approximation_iterations
-      real(dp), intent(in) :: phi, convergence_tolerance
-      real(dp), intent(in) :: proposal_normals(:, :, :)
-      real(dp), intent(in) :: terminal_normals(:, :)
-      real(dp), intent(in), optional :: offset(:), auxiliary(:)
-      real(dp), intent(in), optional :: state_offset(:, :), initial_mode(:)
+      !! Draw complete Gaussian-approximation trajectories for SPDK sampling.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      real(dp), intent(in) :: phi !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_normals(:, :, :) !! Standard-normal proposal draws.
+      real(dp), intent(in) :: terminal_normals(:, :) !! Terminal normals.
+      real(dp), intent(in), optional :: offset(:) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
+      real(dp), intent(in), optional :: initial_mode(:) !! Initial mode.
       type(bssm_importance_sample_t) :: out
       type(bssm_gaussian_approximation_t) :: approximation
       real(dp), allocatable :: offset_work(:), auxiliary_work(:)
@@ -8726,16 +9104,23 @@ contains
       state_noise_loading, initial_mean, initial_covariance, distribution, &
       phi, samples, approximation_iterations, convergence_tolerance, &
       use_antithetic, offset, auxiliary, state_offset, initial_mode) result(out)
-      ! Run SPDK importance sampling using the shared random stream.
-      real(dp), intent(in) :: y(:), observation_loading(:, :)
-      real(dp), intent(in) :: transition(:, :, :)
-      real(dp), intent(in) :: state_noise_loading(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: distribution, samples, approximation_iterations
-      real(dp), intent(in) :: phi, convergence_tolerance
-      logical, intent(in) :: use_antithetic
-      real(dp), intent(in), optional :: offset(:), auxiliary(:)
-      real(dp), intent(in), optional :: state_offset(:, :), initial_mode(:)
+      !! Run SPDK importance sampling using the shared random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: observation_loading(:, :) !! Observation loading matrix.
+      real(dp), intent(in) :: transition(:, :, :) !! State transition matrix.
+      real(dp), intent(in) :: state_noise_loading(:, :, :) !! State noise loading.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: samples !! Samples.
+      integer, intent(in) :: approximation_iterations !! Number of approximation iterations.
+      real(dp), intent(in) :: phi !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      logical, intent(in) :: use_antithetic !! Whether to use the antithetic.
+      real(dp), intent(in), optional :: offset(:) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
+      real(dp), intent(in), optional :: initial_mode(:) !! Initial mode.
       type(bssm_importance_sample_t) :: out
       real(dp), allocatable :: proposal_normals(:, :, :)
       real(dp), allocatable :: terminal_normals(:, :)
@@ -8785,16 +9170,19 @@ contains
       parameters, noise_dimension, observation, transition, initial_normals, &
       proposal_normals, resampling_uniforms, iekf_iterations, &
       convergence_tolerance) result(out)
-      ! Run a draw-driven extended Kalman particle filter.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: parameters(:), initial_normals(:, :)
-      integer, intent(in) :: noise_dimension
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_t) :: transition
-      real(dp), intent(in) :: proposal_normals(:, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :)
-      integer, intent(in), optional :: iekf_iterations
-      real(dp), intent(in), optional :: convergence_tolerance
+      !! Run a draw-driven extended Kalman particle filter.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(in) :: initial_normals(:, :) !! Initial normals.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      real(dp), intent(in) :: proposal_normals(:, :, :) !! Standard-normal proposal draws.
+      real(dp), intent(in) :: resampling_uniforms(:, :) !! Resampling uniforms.
+      integer, intent(in), optional :: iekf_iterations !! Number of iterated extended Kalman filter iterations.
+      real(dp), intent(in), optional :: convergence_tolerance !! Convergence tolerance.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: prior_mean(:, :), proposal_mean(:, :)
       real(dp), allocatable :: prior_covariance(:, :, :)
@@ -8956,14 +9344,17 @@ contains
    function bssm_ekpf(y, initial_mean, initial_covariance, parameters, &
       noise_dimension, observation, transition, particles, iekf_iterations, &
       convergence_tolerance) result(out)
-      ! Run an extended Kalman particle filter using the shared random stream.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: parameters(:)
-      integer, intent(in) :: noise_dimension, particles
-      integer, intent(in), optional :: iekf_iterations
-      real(dp), intent(in), optional :: convergence_tolerance
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_t) :: transition
+      !! Run an extended Kalman particle filter using the shared random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in), optional :: iekf_iterations !! Number of iterated extended Kalman filter iterations.
+      real(dp), intent(in), optional :: convergence_tolerance !! Convergence tolerance.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: initial_normals(:, :)
       real(dp), allocatable :: proposal_normals(:, :, :), uniforms(:, :)
@@ -8997,18 +9388,20 @@ contains
       state_noise_dimension, observation, transition, initial_normals, &
       proposal_normals, resampling_uniforms, iekf_iterations, &
       convergence_tolerance) result(out)
-      ! Run a supplied-draw multivariate extended Kalman particle filter.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), parameters(:)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_t) :: transition
-      real(dp), intent(in) :: initial_normals(:, :)
-      real(dp), intent(in) :: proposal_normals(:, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :)
-      integer, intent(in), optional :: iekf_iterations
-      real(dp), intent(in), optional :: convergence_tolerance
+      !! Run a supplied-draw multivariate extended Kalman particle filter.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      real(dp), intent(in) :: initial_normals(:, :) !! Initial normals.
+      real(dp), intent(in) :: proposal_normals(:, :, :) !! Standard-normal proposal draws.
+      real(dp), intent(in) :: resampling_uniforms(:, :) !! Resampling uniforms.
+      integer, intent(in), optional :: iekf_iterations !! Number of iterated extended Kalman filter iterations.
+      real(dp), intent(in), optional :: convergence_tolerance !! Convergence tolerance.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: prior_mean(:, :), proposal_mean(:, :)
       real(dp), allocatable :: prior_covariance(:, :, :)
@@ -9173,15 +9566,18 @@ contains
       parameters, observation_noise_dimension, state_noise_dimension, &
       observation, transition, particles, iekf_iterations, &
       convergence_tolerance) result(out)
-      ! Run a multivariate EKF-proposal filter from the shared random stream.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), parameters(:)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, particles
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_t) :: transition
-      integer, intent(in), optional :: iekf_iterations
-      real(dp), intent(in), optional :: convergence_tolerance
+      !! Run a multivariate EKF-proposal filter from the shared random stream.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: particles !! Number of particles.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      integer, intent(in), optional :: iekf_iterations !! Number of iterated extended Kalman filter iterations.
+      real(dp), intent(in), optional :: convergence_tolerance !! Convergence tolerance.
       type(bssm_particle_filter_t) :: out
       real(dp), allocatable :: initial_normals(:, :)
       real(dp), allocatable :: proposal_normals(:, :, :), uniforms(:, :)
@@ -9218,20 +9614,25 @@ contains
       proposal_factor, parameter_normals, acceptance_uniforms, &
       initial_normals, state_normals, resampling_uniforms, &
       target_acceptance, adaptation_exponent) result(out)
-      ! Run draw-driven PMMH with an EKF-proposal particle filter.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: initial_parameters(:), convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :), parameter_normals(:, :)
-      real(dp), intent(in) :: acceptance_uniforms(:)
-      real(dp), intent(in) :: initial_normals(:, :, :)
-      real(dp), intent(in) :: state_normals(:, :, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :, :)
-      integer, intent(in) :: noise_dimension, iekf_iterations
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_t) :: transition
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run draw-driven PMMH with an EKF-proposal particle filter.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      real(dp), intent(in) :: parameter_normals(:, :) !! Parameter normals.
+      real(dp), intent(in) :: acceptance_uniforms(:) !! Acceptance uniforms.
+      real(dp), intent(in) :: initial_normals(:, :, :) !! Initial normals.
+      real(dp), intent(in) :: state_normals(:, :, :, :) !! State normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :, :) !! Resampling uniforms.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: iekf_iterations !! Number of iterated extended Kalman filter iterations.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       integer :: state, particles, times, iterations
       real(dp) :: exponent
@@ -9272,9 +9673,9 @@ contains
    contains
 
       pure function estimator(parameters, draw_index) result(estimate)
-         ! Estimate the EKF-proposal particle-filter log likelihood.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Estimate the EKF-proposal particle-filter log likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_particle_filter_t) :: fit
 
@@ -9294,17 +9695,22 @@ contains
       initial_parameters, noise_dimension, observation, transition, prior, &
       iekf_iterations, convergence_tolerance, proposal_factor, particles, &
       iterations, target_acceptance, adaptation_exponent) result(out)
-      ! Run EKF-proposal particle-filter PMMH using shared randomness.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: initial_parameters(:), convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :)
-      integer, intent(in) :: noise_dimension, iekf_iterations
-      integer, intent(in) :: particles, iterations
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_t) :: transition
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run EKF-proposal particle-filter PMMH using shared randomness.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: iekf_iterations !! Number of iterated extended Kalman filter iterations.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       real(dp), allocatable :: parameter_normals(:, :), acceptance_uniforms(:)
       real(dp), allocatable :: initial_normals(:, :, :)
@@ -9363,22 +9769,26 @@ contains
       convergence_tolerance, proposal_factor, parameter_normals, &
       acceptance_uniforms, initial_normals, state_normals, &
       resampling_uniforms, target_acceptance, adaptation_exponent) result(out)
-      ! Run draw-driven multivariate EKF-proposal particle PMMH.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), initial_parameters(:)
-      real(dp), intent(in) :: convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :), parameter_normals(:, :)
-      real(dp), intent(in) :: acceptance_uniforms(:)
-      real(dp), intent(in) :: initial_normals(:, :, :)
-      real(dp), intent(in) :: state_normals(:, :, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :, :)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, iekf_iterations
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_t) :: transition
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run draw-driven multivariate EKF-proposal particle PMMH.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      real(dp), intent(in) :: parameter_normals(:, :) !! Parameter normals.
+      real(dp), intent(in) :: acceptance_uniforms(:) !! Acceptance uniforms.
+      real(dp), intent(in) :: initial_normals(:, :, :) !! Initial normals.
+      real(dp), intent(in) :: state_normals(:, :, :, :) !! State normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :, :) !! Resampling uniforms.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: iekf_iterations !! Number of iterated extended Kalman filter iterations.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       real(dp) :: exponent
       integer :: state, particles, times, iterations
@@ -9420,9 +9830,9 @@ contains
    contains
 
       pure function estimator(parameters, draw_index) result(estimate)
-         ! Estimate the multivariate EKF-proposal particle log likelihood.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Estimate the multivariate EKF-proposal particle log likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_particle_filter_t) :: fit
 
@@ -9444,18 +9854,23 @@ contains
       observation, transition, prior, iekf_iterations, &
       convergence_tolerance, proposal_factor, particles, iterations, &
       target_acceptance, adaptation_exponent) result(out)
-      ! Run multivariate EKF-proposal particle PMMH with shared randomness.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), initial_parameters(:)
-      real(dp), intent(in) :: convergence_tolerance, proposal_factor(:, :)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, iekf_iterations
-      integer, intent(in) :: particles, iterations
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_t) :: transition
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run multivariate EKF-proposal particle PMMH with shared randomness.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: iekf_iterations !! Number of iterated extended Kalman filter iterations.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_mcmc_t) :: out
       real(dp), allocatable :: parameter_normals(:, :), acceptance_uniforms(:)
       real(dp), allocatable :: initial_normals(:, :, :)
@@ -9517,23 +9932,28 @@ contains
       parameter_normals, first_stage_uniforms, second_stage_uniforms, &
       initial_normals, state_normals, resampling_uniforms, target_acceptance, &
       adaptation_exponent) result(out)
-      ! Run draw-driven IEKF-screened multivariate EKPF-PMMH.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), initial_parameters(:)
-      real(dp), intent(in) :: convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :), parameter_normals(:, :)
-      real(dp), intent(in) :: first_stage_uniforms(:), second_stage_uniforms(:)
-      real(dp), intent(in) :: initial_normals(:, :, :)
-      real(dp), intent(in) :: state_normals(:, :, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :, :)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, iekf_iterations
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      procedure(bssm_nonlinear_transition_t) :: transition
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run draw-driven IEKF-screened multivariate EKPF-PMMH.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      real(dp), intent(in) :: parameter_normals(:, :) !! Parameter normals.
+      real(dp), intent(in) :: first_stage_uniforms(:) !! First stage uniforms.
+      real(dp), intent(in) :: second_stage_uniforms(:) !! Second stage uniforms.
+      real(dp), intent(in) :: initial_normals(:, :, :) !! Initial normals.
+      real(dp), intent(in) :: state_normals(:, :, :, :) !! State normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :, :) !! Resampling uniforms.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: iekf_iterations !! Number of iterated extended Kalman filter iterations.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_da_mcmc_t) :: out
       real(dp) :: exponent
       integer :: state, particles, times, iterations
@@ -9577,9 +9997,9 @@ contains
    contains
 
       pure function coarse_estimator(parameters, draw_index) result(estimate)
-         ! Evaluate the deterministic multivariate IEKF likelihood.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Evaluate the deterministic multivariate IEKF likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_multivariate_ekf_t) :: fit
 
@@ -9592,9 +10012,9 @@ contains
       end function coarse_estimator
 
       pure function fine_estimator(parameters, draw_index) result(estimate)
-         ! Evaluate the multivariate EKF-proposal particle likelihood.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Evaluate the multivariate EKF-proposal particle likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_particle_filter_t) :: fit
 
@@ -9616,19 +10036,24 @@ contains
       state_noise_dimension, observation, transition_model, transition, prior, &
       iekf_iterations, convergence_tolerance, proposal_factor, particles, &
       iterations, target_acceptance, adaptation_exponent) result(out)
-      ! Run IEKF-screened multivariate EKPF-PMMH with shared randomness.
-      real(dp), intent(in) :: y(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), initial_parameters(:)
-      real(dp), intent(in) :: convergence_tolerance, proposal_factor(:, :)
-      integer, intent(in) :: observation_noise_dimension
-      integer, intent(in) :: state_noise_dimension, iekf_iterations
-      integer, intent(in) :: particles, iterations
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      procedure(bssm_nonlinear_transition_t) :: transition
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run IEKF-screened multivariate EKPF-PMMH with shared randomness.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      integer, intent(in) :: observation_noise_dimension !! Observation noise dimension.
+      integer, intent(in) :: state_noise_dimension !! State noise dimension.
+      integer, intent(in) :: iekf_iterations !! Number of iterated extended Kalman filter iterations.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_da_mcmc_t) :: out
       real(dp), allocatable :: parameter_normals(:, :)
       real(dp), allocatable :: first_stage_uniforms(:), second_stage_uniforms(:)
@@ -9693,21 +10118,27 @@ contains
       first_stage_uniforms, second_stage_uniforms, initial_normals, &
       state_normals, resampling_uniforms, target_acceptance, &
       adaptation_exponent) result(out)
-      ! Run delayed acceptance with EKF and EKF-proposal particle likelihoods.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: initial_parameters(:), convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :), parameter_normals(:, :)
-      real(dp), intent(in) :: first_stage_uniforms(:), second_stage_uniforms(:)
-      real(dp), intent(in) :: initial_normals(:, :, :)
-      real(dp), intent(in) :: state_normals(:, :, :, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :, :)
-      integer, intent(in) :: noise_dimension, iekf_iterations
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      procedure(bssm_nonlinear_transition_t) :: transition
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run delayed acceptance with EKF and EKF-proposal particle likelihoods.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      real(dp), intent(in) :: parameter_normals(:, :) !! Parameter normals.
+      real(dp), intent(in) :: first_stage_uniforms(:) !! First stage uniforms.
+      real(dp), intent(in) :: second_stage_uniforms(:) !! Second stage uniforms.
+      real(dp), intent(in) :: initial_normals(:, :, :) !! Initial normals.
+      real(dp), intent(in) :: state_normals(:, :, :, :) !! State normals.
+      real(dp), intent(in) :: resampling_uniforms(:, :, :) !! Resampling uniforms.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: iekf_iterations !! Number of iterated extended Kalman filter iterations.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_da_mcmc_t) :: out
       real(dp) :: exponent
       integer :: state, particles, times, iterations
@@ -9750,9 +10181,9 @@ contains
    contains
 
       pure function coarse_estimator(parameters, draw_index) result(estimate)
-         ! Evaluate the deterministic extended-Kalman likelihood.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Evaluate the deterministic extended-Kalman likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_ekf_t) :: fit
 
@@ -9764,9 +10195,9 @@ contains
       end function coarse_estimator
 
       pure function fine_estimator(parameters, draw_index) result(estimate)
-         ! Evaluate the EKF-proposal particle likelihood.
-         real(dp), intent(in) :: parameters(:)
-         integer, intent(in) :: draw_index
+         !! Evaluate the EKF-proposal particle likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         integer, intent(in) :: draw_index !! Index of draw.
          type(bssm_likelihood_estimate_t) :: estimate
          type(bssm_particle_filter_t) :: fit
 
@@ -9787,18 +10218,23 @@ contains
       transition_model, transition, prior, iekf_iterations, &
       convergence_tolerance, proposal_factor, particles, iterations, &
       target_acceptance, adaptation_exponent) result(out)
-      ! Run EKF-screened EKF-proposal PMMH using the shared random stream.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: initial_parameters(:), convergence_tolerance
-      real(dp), intent(in) :: proposal_factor(:, :)
-      integer, intent(in) :: noise_dimension, iekf_iterations
-      integer, intent(in) :: particles, iterations
-      procedure(bssm_gaussian_observation_t) :: observation
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model
-      procedure(bssm_nonlinear_transition_t) :: transition
-      procedure(bssm_parameter_log_density_t) :: prior
-      real(dp), intent(in), optional :: target_acceptance
-      real(dp), intent(in), optional :: adaptation_exponent
+      !! Run EKF-screened EKF-proposal PMMH using the shared random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
+      real(dp), intent(in) :: proposal_factor(:, :) !! Proposal factor.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      integer, intent(in) :: iekf_iterations !! Number of iterated extended Kalman filter iterations.
+      integer, intent(in) :: particles !! Number of particles.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition_model !! Transition model callback procedure.
+      procedure(bssm_nonlinear_transition_t) :: transition !! State transition matrix.
+      procedure(bssm_parameter_log_density_t) :: prior !! Prior-distribution specification.
+      real(dp), intent(in), optional :: target_acceptance !! Target acceptance.
+      real(dp), intent(in), optional :: adaptation_exponent !! Adaptation exponent.
       type(bssm_da_mcmc_t) :: out
       real(dp), allocatable :: parameter_normals(:, :)
       real(dp), allocatable :: first_stage_uniforms(:), second_stage_uniforms(:)
@@ -9855,11 +10291,11 @@ contains
 
    pure subroutine bssm_trace_resampled_sde_path(filter, terminal_uniform, &
       trajectory, info)
-      ! Trace one SDE path from the final resampled particle generation.
-      type(bssm_particle_filter_t), intent(in) :: filter
-      real(dp), intent(in) :: terminal_uniform
-      real(dp), allocatable, intent(out) :: trajectory(:, :)
-      integer, intent(out) :: info
+      !! Trace one SDE path from the final resampled particle generation.
+      type(bssm_particle_filter_t), intent(in) :: filter !! Filter.
+      real(dp), intent(in) :: terminal_uniform !! Terminal uniform.
+      real(dp), allocatable, intent(out) :: trajectory(:, :) !! Trajectory.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       integer :: state, particles, times, current, time
 
       info = 1
@@ -9889,8 +10325,8 @@ contains
    end subroutine bssm_trace_resampled_sde_path
 
    pure function bssm_particle_smoother(filter) result(out)
-      ! Trace particle genealogies and compute weighted smoothed moments.
-      type(bssm_particle_filter_t), intent(in) :: filter
+      !! Trace particle genealogies and compute weighted smoothed moments.
+      type(bssm_particle_filter_t), intent(in) :: filter !! Filter.
       type(bssm_particle_smoother_t) :: out
       real(dp), allocatable :: sample(:, :), probability(:)
       integer :: state, particles, times, endpoint, current, time
@@ -9935,8 +10371,8 @@ contains
    end function bssm_particle_smoother
 
    pure function bssm_psi_particle_smoother(filter) result(out)
-      ! Trace terminal psi-filter genealogies through all n+1 states.
-      type(bssm_particle_filter_t), intent(in) :: filter
+      !! Trace terminal psi-filter genealogies through all n+1 states.
+      type(bssm_particle_filter_t), intent(in) :: filter !! Filter.
       type(bssm_particle_smoother_t) :: out
       real(dp), allocatable :: sample(:, :)
       integer :: state, particles, times, endpoint, current, time
@@ -9983,9 +10419,9 @@ contains
 
    pure function bssm_post_corrected_particle_moments(filters, sample_weight) &
       result(out)
-      ! Combine terminal particle smoothers over corrected chain weights.
-      type(bssm_particle_filter_t), intent(in) :: filters(:)
-      real(dp), intent(in) :: sample_weight(:)
+      !! Combine terminal particle smoothers over corrected chain weights.
+      type(bssm_particle_filter_t), intent(in) :: filters(:) !! Filters.
+      real(dp), intent(in) :: sample_weight(:) !! Sample weight.
       type(bssm_state_posterior_t) :: out
       type(bssm_particle_smoother_t) :: smoother
       real(dp), allocatable :: conditional_mean(:, :, :)
@@ -10028,9 +10464,10 @@ contains
 
    pure function bssm_post_corrected_particle_trajectories_draws(filters, &
       sample_weight, uniforms) result(out)
-      ! Resample terminal particle paths over corrected chain weights.
-      type(bssm_particle_filter_t), intent(in) :: filters(:)
-      real(dp), intent(in) :: sample_weight(:), uniforms(:, :)
+      !! Resample terminal particle paths over corrected chain weights.
+      type(bssm_particle_filter_t), intent(in) :: filters(:) !! Filters.
+      real(dp), intent(in) :: sample_weight(:) !! Sample weight.
+      real(dp), intent(in) :: uniforms(:, :) !! Uniforms.
       type(bssm_trajectory_sample_t) :: out
       type(bssm_particle_smoother_t) :: smoother
       real(dp), allocatable :: trajectories(:, :, :, :)
@@ -10073,10 +10510,10 @@ contains
 
    function bssm_post_corrected_particle_trajectories(filters, sample_weight, &
       draws) result(out)
-      ! Resample corrected terminal particle paths with shared randomness.
-      type(bssm_particle_filter_t), intent(in) :: filters(:)
-      real(dp), intent(in) :: sample_weight(:)
-      integer, intent(in) :: draws
+      !! Resample corrected terminal particle paths with shared randomness.
+      type(bssm_particle_filter_t), intent(in) :: filters(:) !! Filters.
+      real(dp), intent(in) :: sample_weight(:) !! Sample weight.
+      integer, intent(in) :: draws !! Draws.
       type(bssm_trajectory_sample_t) :: out
       real(dp), allocatable :: uniforms(:, :)
 
@@ -10091,9 +10528,11 @@ contains
    end function bssm_post_corrected_particle_trajectories
 
    pure subroutine form_sigma_points(mean, factor, scale, sigma)
-      ! Construct symmetric scaled unscented-transform sigma points.
-      real(dp), intent(in) :: mean(:), factor(:, :), scale
-      real(dp), intent(out) :: sigma(:, :)
+      !! Construct symmetric scaled unscented-transform sigma points.
+      real(dp), intent(in) :: mean(:) !! Mean value or vector.
+      real(dp), intent(in) :: factor(:, :) !! Factor.
+      real(dp), intent(in) :: scale !! Scale.
+      real(dp), intent(out) :: sigma(:, :) !! Scale parameter or standard deviation.
       integer :: state
 
       sigma(:, 1) = mean
@@ -10105,14 +10544,14 @@ contains
 
    pure subroutine bssm_ekf_smoothing_inputs(fit, parameters, &
       noise_dimension, transition, model, filtered, info)
-      ! Adapt nonlinear EKF output to the shared linearized RTS smoother.
-      type(bssm_ekf_t), intent(in) :: fit
-      real(dp), intent(in) :: parameters(:)
-      integer, intent(in) :: noise_dimension
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition
-      type(ssm_model_t), intent(out) :: model
-      type(kfs_filter_t), intent(out) :: filtered
-      integer, intent(out) :: info
+      !! Adapt nonlinear EKF output to the shared linearized RTS smoother.
+      type(bssm_ekf_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition !! State transition matrix.
+      type(ssm_model_t), intent(out) :: model !! Model specification.
+      type(kfs_filter_t), intent(out) :: filtered !! Filtered.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: mean(:), noise_loading(:, :)
       integer :: state, times, time
 
@@ -10147,14 +10586,14 @@ contains
 
    pure subroutine bssm_multivariate_ekf_smoothing_inputs(fit, parameters, &
       noise_dimension, transition, model, filtered, info)
-      ! Adapt multivariate EKF output to the shared linearized RTS smoother.
-      type(bssm_multivariate_ekf_t), intent(in) :: fit
-      real(dp), intent(in) :: parameters(:)
-      integer, intent(in) :: noise_dimension
-      procedure(bssm_nonlinear_transition_jacobian_t) :: transition
-      type(ssm_model_t), intent(out) :: model
-      type(kfs_filter_t), intent(out) :: filtered
-      integer, intent(out) :: info
+      !! Adapt multivariate EKF output to the shared linearized RTS smoother.
+      type(bssm_multivariate_ekf_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      procedure(bssm_nonlinear_transition_jacobian_t) :: transition !! State transition matrix.
+      type(ssm_model_t), intent(out) :: model !! Model specification.
+      type(kfs_filter_t), intent(out) :: filtered !! Filtered.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: mean(:), noise_loading(:, :)
       integer :: state, times, time
 
@@ -10192,18 +10631,23 @@ contains
       posterior_mean, posterior_covariance, final_innovation, &
       final_innovation_covariance, log_density, info, max_iterations, &
       convergence_tolerance, iterations_used)
-      ! Form one partially observed multivariate extended Kalman update.
-      integer, intent(in) :: time, noise_dimension
-      real(dp), intent(in) :: observation_value(:), prior_mean(:)
-      real(dp), intent(in) :: prior_covariance(:, :), parameters(:)
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
-      real(dp), intent(out) :: posterior_mean(:), posterior_covariance(:, :)
-      real(dp), intent(out) :: final_innovation(:)
-      real(dp), intent(out) :: final_innovation_covariance(:, :)
-      real(dp), intent(out) :: log_density
-      integer, intent(out) :: info, iterations_used
-      integer, intent(in) :: max_iterations
-      real(dp), intent(in) :: convergence_tolerance
+      !! Form one partially observed multivariate extended Kalman update.
+      integer, intent(in) :: time !! Observation times.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      real(dp), intent(in) :: observation_value(:) !! Observation value.
+      real(dp), intent(in) :: prior_mean(:) !! Prior mean.
+      real(dp), intent(in) :: prior_covariance(:, :) !! Prior covariance.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
+      real(dp), intent(out) :: posterior_mean(:) !! Posterior mean.
+      real(dp), intent(out) :: posterior_covariance(:, :) !! Posterior covariance matrix.
+      real(dp), intent(out) :: final_innovation(:) !! Final innovation.
+      real(dp), intent(out) :: final_innovation_covariance(:, :) !! Final innovation covariance matrix.
+      real(dp), intent(out) :: log_density !! Log-density value.
+      integer, intent(out) :: info !! Status code; zero indicates success.
+      integer, intent(out) :: iterations_used !! Iterations used.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in) :: convergence_tolerance !! Convergence tolerance.
       real(dp), allocatable :: observed_mean(:), observed_jacobian(:, :)
       real(dp), allocatable :: observation_covariance(:, :)
       real(dp), allocatable :: innovation_covariance(:, :), inverse(:, :)
@@ -10297,11 +10741,12 @@ contains
 
       pure subroutine evaluate_observation(state_value, compact_mean, &
          compact_jacobian, compact_covariance, status)
-         ! Evaluate and compact the nonlinear observation moments.
-         real(dp), intent(in) :: state_value(:)
-         real(dp), intent(out) :: compact_mean(:), compact_jacobian(:, :)
-         real(dp), intent(out) :: compact_covariance(:, :)
-         integer, intent(out) :: status
+         !! Evaluate and compact the nonlinear observation moments.
+         real(dp), intent(in) :: state_value(:) !! State value.
+         real(dp), intent(out) :: compact_mean(:) !! Compact mean.
+         real(dp), intent(out) :: compact_jacobian(:, :) !! Compact jacobian.
+         real(dp), intent(out) :: compact_covariance(:, :) !! Compact covariance matrix.
+         integer, intent(out) :: status !! Status.
          real(dp), allocatable :: full_mean(:), full_jacobian(:, :)
          real(dp), allocatable :: full_noise_loading(:, :)
          real(dp), allocatable :: full_covariance(:, :)
@@ -10336,18 +10781,21 @@ contains
       prior_covariance, parameters, observation, posterior_mean, &
       posterior_covariance, info, max_iterations, convergence_tolerance, &
       iterations_used, final_innovation, final_innovation_variance)
-      ! Form one scalar-observation extended Kalman proposal update.
-      integer, intent(in) :: time
-      real(dp), intent(in) :: observation_value, prior_mean(:)
-      real(dp), intent(in) :: prior_covariance(:, :), parameters(:)
-      procedure(bssm_gaussian_observation_t) :: observation
-      real(dp), intent(out) :: posterior_mean(:), posterior_covariance(:, :)
-      integer, intent(out) :: info
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: convergence_tolerance
-      integer, intent(out), optional :: iterations_used
-      real(dp), intent(out), optional :: final_innovation
-      real(dp), intent(out), optional :: final_innovation_variance
+      !! Form one scalar-observation extended Kalman proposal update.
+      integer, intent(in) :: time !! Observation times.
+      real(dp), intent(in) :: observation_value !! Observation value.
+      real(dp), intent(in) :: prior_mean(:) !! Prior mean.
+      real(dp), intent(in) :: prior_covariance(:, :) !! Prior covariance.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      procedure(bssm_gaussian_observation_t) :: observation !! Observed value or vector.
+      real(dp), intent(out) :: posterior_mean(:) !! Posterior mean.
+      real(dp), intent(out) :: posterior_covariance(:, :) !! Posterior covariance matrix.
+      integer, intent(out) :: info !! Status code; zero indicates success.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: convergence_tolerance !! Convergence tolerance.
+      integer, intent(out), optional :: iterations_used !! Iterations used.
+      real(dp), intent(out), optional :: final_innovation !! Final innovation.
+      real(dp), intent(out), optional :: final_innovation_variance !! Final innovation variance.
       real(dp), allocatable :: jacobian(:), gain(:), residual_operator(:, :)
       real(dp), allocatable :: estimate(:), next_estimate(:)
       real(dp) :: observation_mean, standard_deviation, innovation_variance
@@ -10427,10 +10875,13 @@ contains
 
    pure function multivariate_gaussian_observation_log_density(time, value, &
       state, parameters, noise_dimension, observation) result(log_density)
-      ! Evaluate a partially observed nonlinear Gaussian vector density.
-      integer, intent(in) :: time, noise_dimension
-      real(dp), intent(in) :: value(:), state(:), parameters(:)
-      procedure(bssm_multivariate_gaussian_observation_t) :: observation
+      !! Evaluate a partially observed nonlinear Gaussian vector density.
+      integer, intent(in) :: time !! Observation times.
+      integer, intent(in) :: noise_dimension !! Noise dimension.
+      real(dp), intent(in) :: value(:) !! Input value.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      procedure(bssm_multivariate_gaussian_observation_t) :: observation !! Observed value or vector.
       real(dp) :: log_density
       real(dp), allocatable :: mean(:), jacobian(:, :), noise_loading(:, :)
       real(dp), allocatable :: covariance(:, :), compact_covariance(:, :)
@@ -10467,54 +10918,16 @@ contains
          mean(observed), compact_covariance)
    end function multivariate_gaussian_observation_log_density
 
-   pure function multivariate_normal_log_density(value, mean, covariance) &
-      result(log_density)
-      ! Evaluate a nonsingular multivariate Gaussian log density.
-      real(dp), intent(in) :: value(:), mean(:), covariance(:, :)
-      real(dp) :: log_density
-      real(dp), allocatable :: inverse(:, :), difference(:)
-      real(dp) :: log_determinant
-      integer :: info
-
-      if (size(value) /= size(mean) .or. &
-         any(shape(covariance) /= [size(mean), size(mean)])) then
-         log_density = -huge(1.0_dp)
-         return
-      end if
-      allocate(inverse(size(mean), size(mean)))
-      call inverse_logdet(covariance, inverse, log_determinant, info, &
-         1.0e-12_dp)
-      if (info /= 0) then
-         log_density = -huge(1.0_dp)
-         return
-      end if
-      difference = value - mean
-      log_density = -0.5_dp*(real(size(value), dp)* &
-         log(2.0_dp*acos(-1.0_dp)) + log_determinant + &
-         dot_product(difference, matmul(inverse, difference)))
-   end function multivariate_normal_log_density
-
-   pure elemental real(dp) function normal_log_density(value, mean, &
-      standard_deviation) result(log_density)
-      ! Evaluate a scalar Gaussian log density.
-      real(dp), intent(in) :: value, mean, standard_deviation
-
-      if (standard_deviation <= 0.0_dp) then
-         log_density = -huge(1.0_dp)
-      else
-         log_density = -0.5_dp*log(2.0_dp*acos(-1.0_dp)) - &
-            log(standard_deviation) - &
-            0.5_dp*((value - mean)/standard_deviation)**2
-      end if
-   end function normal_log_density
-
    pure subroutine ram_proposal_update(factor, normal, probability, target, &
       iteration, exponent, info)
-      ! Apply one robust adaptive Metropolis proposal-factor update.
-      real(dp), allocatable, intent(inout) :: factor(:, :)
-      real(dp), intent(in) :: normal(:), probability, target, exponent
-      integer, intent(in) :: iteration
-      integer, intent(out) :: info
+      !! Apply one robust adaptive Metropolis proposal-factor update.
+      real(dp), allocatable, intent(inout) :: factor(:, :) !! Factor, updated in place.
+      real(dp), intent(in) :: normal(:) !! Normal.
+      real(dp), intent(in) :: probability !! Probability value.
+      real(dp), intent(in) :: target !! Target.
+      real(dp), intent(in) :: exponent !! Exponent.
+      integer, intent(in) :: iteration !! Iteration.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: direction(:), covariance(:, :), next_factor(:, :)
       real(dp) :: norm_squared, step_size
 
@@ -10531,10 +10944,10 @@ contains
    end subroutine ram_proposal_update
 
    pure subroutine positive_semidefinite_factor(covariance, factor, info)
-      ! Form a square root of a symmetric positive-semidefinite matrix.
-      real(dp), intent(in) :: covariance(:, :)
-      real(dp), allocatable, intent(out) :: factor(:, :)
-      integer, intent(out) :: info
+      !! Form a square root of a symmetric positive-semidefinite matrix.
+      real(dp), intent(in) :: covariance(:, :) !! Covariance matrix.
+      real(dp), allocatable, intent(out) :: factor(:, :) !! Factor.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: values(:), vectors(:, :)
       real(dp) :: tolerance
       integer :: n
@@ -10559,14 +10972,15 @@ contains
 
    pure subroutine bssm_form_nonlinear_prediction(state, parameters, &
       observation, response_normals, signal, mean, response, info)
-      ! Evaluate nonlinear Gaussian means and add observation disturbances.
-      real(dp), intent(in) :: state(:, :, :), parameters(:, :)
-      procedure(bssm_nonlinear_prediction_observation_t) :: observation
-      real(dp), intent(in) :: response_normals(:, :, :)
-      real(dp), allocatable, intent(out) :: signal(:, :, :)
-      real(dp), allocatable, intent(out) :: mean(:, :, :)
-      real(dp), allocatable, intent(out) :: response(:, :, :)
-      integer, intent(out) :: info
+      !! Evaluate nonlinear Gaussian means and add observation disturbances.
+      real(dp), intent(in) :: state(:, :, :) !! State vector or state sequence.
+      real(dp), intent(in) :: parameters(:, :) !! Model parameter values.
+      procedure(bssm_nonlinear_prediction_observation_t) :: observation !! Observed value or vector.
+      real(dp), intent(in) :: response_normals(:, :, :) !! Response normals.
+      real(dp), allocatable, intent(out) :: signal(:, :, :) !! Signal.
+      real(dp), allocatable, intent(out) :: mean(:, :, :) !! Mean value or vector.
+      real(dp), allocatable, intent(out) :: response(:, :, :) !! Response observations.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: observation_mean(:), noise_loading(:, :)
       integer :: observation_dimension, times, samples, sample, time
 
@@ -10600,14 +11014,17 @@ contains
    pure subroutine bssm_prediction_options(series, state, times, offset, &
       auxiliary, state_offset, offset_work, auxiliary_work, &
       state_offset_work, info)
-      ! Validate and expand optional predictive offsets and exposures.
-      integer, intent(in) :: series, state, times
-      real(dp), intent(in), optional :: offset(:, :), auxiliary(:, :)
-      real(dp), intent(in), optional :: state_offset(:, :)
-      real(dp), allocatable, intent(out) :: offset_work(:, :)
-      real(dp), allocatable, intent(out) :: auxiliary_work(:, :)
-      real(dp), allocatable, intent(out) :: state_offset_work(:, :)
-      integer, intent(out) :: info
+      !! Validate and expand optional predictive offsets and exposures.
+      integer, intent(in) :: series !! Time-series observations.
+      integer, intent(in) :: state !! State vector or state sequence.
+      integer, intent(in) :: times !! Times.
+      real(dp), intent(in), optional :: offset(:, :) !! Known additive offset.
+      real(dp), intent(in), optional :: auxiliary(:, :) !! Auxiliary.
+      real(dp), intent(in), optional :: state_offset(:, :) !! State offset.
+      real(dp), allocatable, intent(out) :: offset_work(:, :) !! Offset work.
+      real(dp), allocatable, intent(out) :: auxiliary_work(:, :) !! Auxiliary work.
+      real(dp), allocatable, intent(out) :: state_offset_work(:, :) !! State offset work.
+      integer, intent(out) :: info !! Status code; zero indicates success.
 
       allocate(offset_work(series, times), auxiliary_work(series, times))
       allocate(state_offset_work(state, times))
@@ -10637,18 +11054,20 @@ contains
    pure subroutine bssm_form_predictive_response(state, observation_loading, &
       distribution, phi, response_normals, response_uniforms, offset, &
       auxiliary, signal, mean, response, info, observation_noise_loading)
-      ! Transform predictive states into means and sampled observations.
-      real(dp), intent(in) :: state(:, :, :)
-      real(dp), intent(in) :: observation_loading(:, :, :)
-      integer, intent(in) :: distribution(:)
-      real(dp), intent(in) :: phi(:), response_normals(:, :, :)
-      real(dp), intent(in) :: response_uniforms(:, :, :)
-      real(dp), intent(in) :: offset(:, :), auxiliary(:, :)
-      real(dp), intent(in), optional :: observation_noise_loading(:, :, :)
-      real(dp), allocatable, intent(out) :: signal(:, :, :)
-      real(dp), allocatable, intent(out) :: mean(:, :, :)
-      real(dp), allocatable, intent(out) :: response(:, :, :)
-      integer, intent(out) :: info
+      !! Transform predictive states into means and sampled observations.
+      real(dp), intent(in) :: state(:, :, :) !! State vector or state sequence.
+      real(dp), intent(in) :: observation_loading(:, :, :) !! Observation loading matrix.
+      integer, intent(in) :: distribution(:) !! Probability-distribution specification.
+      real(dp), intent(in) :: phi(:) !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: response_normals(:, :, :) !! Response normals.
+      real(dp), intent(in) :: response_uniforms(:, :, :) !! Response uniforms.
+      real(dp), intent(in) :: offset(:, :) !! Known additive offset.
+      real(dp), intent(in) :: auxiliary(:, :) !! Auxiliary.
+      real(dp), intent(in), optional :: observation_noise_loading(:, :, :) !! Observation noise loading.
+      real(dp), allocatable, intent(out) :: signal(:, :, :) !! Signal.
+      real(dp), allocatable, intent(out) :: mean(:, :, :) !! Mean value or vector.
+      real(dp), allocatable, intent(out) :: response(:, :, :) !! Response observations.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: gaussian_noise(:)
       real(dp) :: total_mean, gamma_value
       integer :: count
@@ -10789,10 +11208,11 @@ contains
    end subroutine bssm_form_predictive_response
 
    pure subroutine bssm_poisson_quantile(mean, uniform, value, info)
-      ! Invert a Poisson CDF using normalized log probabilities.
-      real(dp), intent(in) :: mean, uniform
-      integer, intent(out) :: value
-      integer, intent(out) :: info
+      !! Invert a Poisson CDF using normalized log probabilities.
+      real(dp), intent(in) :: mean !! Mean value or vector.
+      real(dp), intent(in) :: uniform !! Uniform.
+      integer, intent(out) :: value !! Input value.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp) :: log_probability, maximum, total, cumulative, target
       integer :: upper, candidate
 
@@ -10836,11 +11256,12 @@ contains
 
    pure subroutine bssm_binomial_quantile(trials, probability, uniform, &
       value, info)
-      ! Invert a binomial CDF using normalized log probabilities.
-      integer, intent(in) :: trials
-      real(dp), intent(in) :: probability, uniform
-      integer, intent(out) :: value
-      integer, intent(out) :: info
+      !! Invert a binomial CDF using normalized log probabilities.
+      integer, intent(in) :: trials !! Trials.
+      real(dp), intent(in) :: probability !! Probability value.
+      real(dp), intent(in) :: uniform !! Uniform.
+      integer, intent(out) :: value !! Input value.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp) :: log_probability, maximum, total, cumulative, target
       integer :: candidate
 
@@ -10893,10 +11314,12 @@ contains
 
    pure subroutine bssm_negative_binomial_quantile(mean, dispersion, uniform, &
       value, info)
-      ! Invert a mean-dispersion negative-binomial CDF.
-      real(dp), intent(in) :: mean, dispersion, uniform
-      integer, intent(out) :: value
-      integer, intent(out) :: info
+      !! Invert a mean-dispersion negative-binomial CDF.
+      real(dp), intent(in) :: mean !! Mean value or vector.
+      real(dp), intent(in) :: dispersion !! Dispersion.
+      real(dp), intent(in) :: uniform !! Uniform.
+      integer, intent(out) :: value !! Input value.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp) :: variance, log_probability, maximum, total, cumulative
       real(dp) :: target, log_denominator
       integer :: upper, candidate
@@ -10949,10 +11372,11 @@ contains
    end subroutine bssm_negative_binomial_quantile
 
    pure subroutine bssm_gamma_quantile(shape, uniform, value, info)
-      ! Invert a unit-scale Gamma CDF by bracketed bisection.
-      real(dp), intent(in) :: shape, uniform
-      real(dp), intent(out) :: value
-      integer, intent(out) :: info
+      !! Invert a unit-scale Gamma CDF by bracketed bisection.
+      real(dp), intent(in) :: shape !! Shape.
+      real(dp), intent(in) :: uniform !! Uniform.
+      real(dp), intent(out) :: value !! Input value.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp) :: lower, upper, target
       integer :: iteration
 
@@ -10987,8 +11411,9 @@ contains
 
    pure real(dp) function bssm_regularized_gamma(shape, value) &
       result(probability)
-      ! Evaluate the regularized lower incomplete Gamma function.
-      real(dp), intent(in) :: shape, value
+      !! Evaluate the regularized lower incomplete Gamma function.
+      real(dp), intent(in) :: shape !! Shape.
+      real(dp), intent(in) :: value !! Input value.
       real(dp) :: sum, term, ap, b, c, d, h, factor, an, delta
       integer :: iteration
 
@@ -11033,18 +11458,20 @@ contains
 
    pure logical function bssm_valid_prediction_extent(extent, times) &
       result(valid)
-      ! Test a constant or fully time-varying predictive matrix extent.
-      integer, intent(in) :: extent, times
+      !! Test a constant or fully time-varying predictive matrix extent.
+      integer, intent(in) :: extent !! Extent.
+      integer, intent(in) :: times !! Times.
 
       valid = extent == 1 .or. extent >= times
    end function bssm_valid_prediction_extent
 
    pure function bssm_conditional_simulation_draws(center, factor, &
       conditional_matrix, normals) result(out)
-      ! Draw paths from a forward conditional Gaussian representation.
-      real(dp), intent(in) :: center(:, :), factor(:, :, :)
-      real(dp), intent(in) :: conditional_matrix(:, :, :)
-      real(dp), intent(in) :: normals(:, :, :)
+      !! Draw paths from a forward conditional Gaussian representation.
+      real(dp), intent(in) :: center(:, :) !! Center.
+      real(dp), intent(in) :: factor(:, :, :) !! Factor.
+      real(dp), intent(in) :: conditional_matrix(:, :, :) !! Conditional matrix.
+      real(dp), intent(in) :: normals(:, :, :) !! Independent standard-normal draws.
       type(bssm_simulation_smoother_t) :: out
       real(dp), allocatable :: difference(:)
       integer :: state, times, samples, sample, time
@@ -11093,10 +11520,12 @@ contains
 
    subroutine bssm_random_approximation_normals(state, samples, times, &
       use_antithetic, normals)
-      ! Generate independent or paired normals for approximation paths.
-      integer, intent(in) :: state, samples, times
-      logical, intent(in) :: use_antithetic
-      real(dp), allocatable, intent(out) :: normals(:, :, :)
+      !! Generate independent or paired normals for approximation paths.
+      integer, intent(in) :: state !! State vector or state sequence.
+      integer, intent(in) :: samples !! Samples.
+      integer, intent(in) :: times !! Times.
+      logical, intent(in) :: use_antithetic !! Whether to use the antithetic.
+      real(dp), allocatable, intent(out) :: normals(:, :, :) !! Independent standard-normal draws.
       integer :: base_samples, paired_samples, time
 
       allocate(normals(state, samples, times))
@@ -11121,17 +11550,18 @@ contains
    end subroutine bssm_random_approximation_normals
 
    pure integer function bssm_time_index(matrix, time) result(index)
-      ! Select a constant or time-varying state-space matrix slice.
-      real(dp), intent(in) :: matrix(:, :, :)
-      integer, intent(in) :: time
+      !! Select a constant or time-varying state-space matrix slice.
+      real(dp), intent(in) :: matrix(:, :, :) !! Input matrix.
+      integer, intent(in) :: time !! Observation times.
 
       index = min(time, size(matrix, 3))
    end function bssm_time_index
 
    pure logical function bssm_is_observed(model, time, component) result(observed)
-      ! Test whether one state-space observation is available.
-      type(ssm_model_t), intent(in) :: model
-      integer, intent(in) :: time, component
+      !! Test whether one state-space observation is available.
+      type(ssm_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: time !! Observation times.
+      integer, intent(in) :: component !! Component.
 
       observed = ieee_is_finite(model%y(time, component))
       if (allocated(model%missing)) then
@@ -11140,16 +11570,17 @@ contains
    end function bssm_is_observed
 
    pure elemental logical function valid_log_value(value) result(valid)
-      ! Test whether a log density is finite and above the rejection sentinel.
-      real(dp), intent(in) :: value
+      !! Test whether a log density is finite and above the rejection sentinel.
+      real(dp), intent(in) :: value !! Input value.
 
       valid = ieee_is_finite(value) .and. &
          value > -0.5_dp*huge(1.0_dp)
    end function valid_log_value
 
    pure integer function discrete_index(probability, uniform) result(index)
-      ! Select an index from normalized nonnegative probabilities.
-      real(dp), intent(in) :: probability(:), uniform
+      !! Select an index from normalized nonnegative probabilities.
+      real(dp), intent(in) :: probability(:) !! Probability value.
+      real(dp), intent(in) :: uniform !! Uniform.
       real(dp) :: cumulative
 
       cumulative = 0.0_dp
@@ -11162,10 +11593,11 @@ contains
 
    pure subroutine normalize_log_weights(log_weight, probability, &
       log_mean_weight, info)
-      ! Normalize log weights and return their log arithmetic mean.
-      real(dp), intent(in) :: log_weight(:)
-      real(dp), intent(out) :: probability(:), log_mean_weight
-      integer, intent(out) :: info
+      !! Normalize log weights and return their log arithmetic mean.
+      real(dp), intent(in) :: log_weight(:) !! Log weight.
+      real(dp), intent(out) :: probability(:) !! Probability value.
+      real(dp), intent(out) :: log_mean_weight !! Log mean weight.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp) :: maximum, total
 
       maximum = maxval(log_weight)
@@ -11189,9 +11621,10 @@ contains
    end subroutine normalize_log_weights
 
    pure subroutine particle_summary(particles, mean, covariance)
-      ! Compute equally weighted particle means and population covariances.
-      real(dp), intent(in) :: particles(:, :)
-      real(dp), intent(out) :: mean(:), covariance(:, :)
+      !! Compute equally weighted particle means and population covariances.
+      real(dp), intent(in) :: particles(:, :) !! Number of particles.
+      real(dp), intent(out) :: mean(:) !! Mean value or vector.
+      real(dp), intent(out) :: covariance(:, :) !! Covariance matrix.
       real(dp), allocatable :: difference(:)
       integer :: particle
 
@@ -11207,9 +11640,11 @@ contains
 
    pure subroutine weighted_particle_summary(particles, probability, mean, &
       covariance)
-      ! Compute normalized weighted particle means and covariances.
-      real(dp), intent(in) :: particles(:, :), probability(:)
-      real(dp), intent(out) :: mean(:), covariance(:, :)
+      !! Compute normalized weighted particle means and covariances.
+      real(dp), intent(in) :: particles(:, :) !! Number of particles.
+      real(dp), intent(in) :: probability(:) !! Probability value.
+      real(dp), intent(out) :: mean(:) !! Mean value or vector.
+      real(dp), intent(out) :: covariance(:, :) !! Covariance matrix.
       real(dp), allocatable :: difference(:)
       real(dp) :: total
       integer :: particle
@@ -11227,8 +11662,8 @@ contains
    end subroutine weighted_particle_summary
 
    pure elemental real(dp) function softplus(x) result(value)
-      ! Evaluate log(1 + exp(x)) without avoidable overflow.
-      real(dp), intent(in) :: x
+      !! Evaluate log(1 + exp(x)) without avoidable overflow.
+      real(dp), intent(in) :: x !! Input data or predictor values.
 
       if (x > 0.0_dp) then
          value = x + log(1.0_dp + exp(-x))
@@ -11238,16 +11673,16 @@ contains
    end function softplus
 
    pure elemental real(dp) function bounded_exp(x) result(value)
-      ! Exponentiate while retaining a finite positive result.
-      real(dp), intent(in) :: x
+      !! Exponentiate while retaining a finite positive result.
+      real(dp), intent(in) :: x !! Input data or predictor values.
 
       value = exp(min(max(x, log(tiny(1.0_dp))), &
          log(huge(1.0_dp)) - 2.0_dp))
    end function bounded_exp
 
    pure elemental real(dp) function logistic(x) result(value)
-      ! Evaluate the logistic inverse link without overflow.
-      real(dp), intent(in) :: x
+      !! Evaluate the logistic inverse link without overflow.
+      real(dp), intent(in) :: x !! Input data or predictor values.
 
       if (x >= 0.0_dp) then
          value = 1.0_dp/(1.0_dp + exp(-x))
@@ -11259,8 +11694,9 @@ contains
    end function logistic
 
    pure elemental real(dp) function log_add_exp(x, y) result(value)
-      ! Evaluate log(exp(x) + exp(y)) stably.
-      real(dp), intent(in) :: x, y
+      !! Evaluate log(exp(x) + exp(y)) stably.
+      real(dp), intent(in) :: x !! Input data or predictor values.
+      real(dp), intent(in) :: y !! Response or time-series observations.
       real(dp) :: maximum
 
       maximum = max(x, y)

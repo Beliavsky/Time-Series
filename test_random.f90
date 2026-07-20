@@ -2,7 +2,7 @@
 ! SPDX-FileComment: Regression tests for the shared random-number module.
 program test_random
    use kind_mod, only: dp
-   use time_series_random_mod
+   use random_mod
    implicit none
    real(dp) :: first(3, 4), second(3, 4), mean(2), covariance(2, 2), standard(2), draw(2), uniform
    integer :: info
@@ -27,14 +27,14 @@ program test_random
    covariance(2, 2) = -1.0_dp
    call multivariate_normal_from_standard(mean, covariance, standard, draw, info)
    call check(info == 2, 'invalid covariance')
-   print '(a)', 'All time_series_random_mod tests passed.'
+   print '(a)', 'All random_mod tests passed.'
 
 contains
 
    subroutine check(ok, name)
-      ! Stop the test program when a named assertion fails.
-      logical, intent(in) :: ok
-      character(len=*), intent(in) :: name
+      !! Stop the test program when a named assertion fails.
+      logical, intent(in) :: ok !! Flag controlling ok.
+      character(len=*), intent(in) :: name !! Name.
       if (.not. ok) then
          print '(a)', 'FAILED: '//name
          error stop 1

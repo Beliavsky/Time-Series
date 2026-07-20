@@ -2,8 +2,9 @@
 ! SPDX-FileComment: Optimization routines adapted from GARCH-BFGS.
 ! Shared numerical optimization algorithms for time-series estimation.
 ! Adapted from GARCH-BFGS/bfgs.f90, Copyright (c) 2026 Beliavsky, MIT licensed.
-module time_series_optimization_mod
+module optimization_mod
    use kind_mod, only: dp
+   use linalg_mod, only: outer_product
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
    implicit none
    private
@@ -19,24 +20,115 @@ module time_series_optimization_mod
 
    abstract interface
       pure function objective_function_t(parameters) result(value)
-         ! Evaluate a scalar optimization objective.
+         !! Evaluate a scalar optimization objective.
          import :: dp
-         real(dp), intent(in) :: parameters(:)
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: value
       end function objective_function_t
+
+      pure function gradient_function_t(parameters) result(gradient)
+         !! Evaluate an optimization-objective gradient.
+         import :: dp
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         real(dp) :: gradient(size(parameters))
+      end function gradient_function_t
    end interface
 
-   public :: bfgs_minimize_fd, nelder_mead_minimize, finite_difference_hessian
+   public :: bfgs_minimize, bfgs_minimize_fd
+   public :: nelder_mead_minimize, finite_difference_hessian
 
 contains
 
+   pure function bfgs_minimize(objective, gradient_function, initial, &
+      max_iterations, gradient_tolerance) result(out)
+      !! Minimize a pure objective using BFGS and an analytic gradient.
+      procedure(objective_function_t) :: objective !! Objective callback procedure.
+      procedure(gradient_function_t) :: gradient_function !! Gradient callback procedure.
+      real(dp), intent(in) :: initial(:) !! Initial parameter values.
+      integer, intent(in), optional :: max_iterations !! Maximum BFGS iterations.
+      real(dp), intent(in), optional :: gradient_tolerance !! Gradient convergence tolerance.
+      type(optimization_result_t) :: out
+      real(dp), allocatable :: x(:), candidate(:), gradient(:), new_gradient(:)
+      real(dp), allocatable :: direction(:), inverse_hessian(:, :), identity(:, :)
+      real(dp), allocatable :: s(:), y(:), update_left(:, :)
+      real(dp) :: value, new_value, tolerance, sy, rho
+      integer :: limit, iteration, n, i
+      logical :: accepted
+
+      n = size(initial)
+      limit = 200
+      if (present(max_iterations)) limit = max_iterations
+      tolerance = 1.0e-6_dp
+      if (present(gradient_tolerance)) tolerance = gradient_tolerance
+      if (n < 1 .or. limit < 1 .or. tolerance <= 0.0_dp) then
+         out%info = 1
+         return
+      end if
+      allocate(x(n), candidate(n), gradient(n), new_gradient(n), direction(n))
+      allocate(inverse_hessian(n, n), identity(n, n), s(n), y(n))
+      allocate(update_left(n, n))
+      identity = 0.0_dp
+      do i = 1, n
+         identity(i, i) = 1.0_dp
+      end do
+      inverse_hessian = identity
+      x = initial
+      value = objective(x)
+      gradient = gradient_function(x)
+      if (.not. ieee_is_finite(value) .or. &
+         .not. all(ieee_is_finite(gradient))) then
+         out%info = 2
+         out%parameters = x
+         return
+      end if
+      do iteration = 1, limit
+         out%iterations = iteration
+         if (norm2(gradient) <= tolerance) then
+            out%converged = .true.
+            exit
+         end if
+         direction = -matmul(inverse_hessian, gradient)
+         if (dot_product(gradient, direction) >= 0.0_dp) then
+            inverse_hessian = identity
+            direction = -gradient
+         end if
+         call armijo_search(objective, x, value, gradient, direction, &
+            candidate, new_value, accepted)
+         if (.not. accepted) then
+            out%info = 3
+            exit
+         end if
+         new_gradient = gradient_function(candidate)
+         if (.not. all(ieee_is_finite(new_gradient))) then
+            out%info = 2
+            exit
+         end if
+         s = candidate - x
+         y = new_gradient - gradient
+         sy = dot_product(s, y)
+         x = candidate
+         value = new_value
+         gradient = new_gradient
+         if (sy > 1.0e-10_dp*norm2(s)*norm2(y)) then
+            rho = 1.0_dp/sy
+            update_left = identity - rho*outer_product(s, y)
+            inverse_hessian = matmul(matmul(update_left, inverse_hessian), &
+               transpose(update_left)) + rho*outer_product(s, s)
+         end if
+      end do
+      if (.not. out%converged .and. out%info == 0) out%info = 4
+      out%parameters = x
+      out%objective = value
+   end function bfgs_minimize
+
    pure function nelder_mead_minimize(objective, initial, max_iterations, &
       tolerance, initial_step) result(out)
-      ! Minimize a pure scalar objective with the derivative-free Nelder-Mead simplex.
-      procedure(objective_function_t) :: objective
-      real(dp), intent(in) :: initial(:)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance, initial_step
+      !! Minimize a pure scalar objective with the derivative-free Nelder-Mead simplex.
+      procedure(objective_function_t) :: objective !! Objective callback procedure.
+      real(dp), intent(in) :: initial(:) !! Initial value.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: initial_step !! Initial step.
       type(optimization_result_t) :: out
       real(dp), allocatable :: simplex(:, :), values(:), centroid(:), trial(:)
       real(dp) :: tol, step, reflected_value, expanded_value, contracted_value
@@ -112,9 +204,11 @@ contains
    end function nelder_mead_minimize
 
    pure subroutine simplex_extrema(values, best, worst, second_worst)
-      ! Locate the best and two worst simplex vertices.
-      real(dp), intent(in) :: values(:)
-      integer, intent(out) :: best, worst, second_worst
+      !! Locate the best and two worst simplex vertices.
+      real(dp), intent(in) :: values(:) !! Input values.
+      integer, intent(out) :: best !! Best.
+      integer, intent(out) :: worst !! Worst.
+      integer, intent(out) :: second_worst !! Second worst.
       integer :: i
 
       best = minloc(values, dim=1)
@@ -128,11 +222,12 @@ contains
 
    pure function bfgs_minimize_fd(objective, initial, max_iterations, gradient_tolerance, &
       difference_step) result(out)
-      ! Minimize a pure scalar objective using finite-difference BFGS.
-      procedure(objective_function_t) :: objective
-      real(dp), intent(in) :: initial(:)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: gradient_tolerance, difference_step
+      !! Minimize a pure scalar objective using finite-difference BFGS.
+      procedure(objective_function_t) :: objective !! Objective callback procedure.
+      real(dp), intent(in) :: initial(:) !! Initial value.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: gradient_tolerance !! Gradient tolerance.
+      real(dp), intent(in), optional :: difference_step !! Difference step.
       type(optimization_result_t) :: out
       real(dp), allocatable :: x(:), candidate(:), gradient(:), new_gradient(:), direction(:)
       real(dp), allocatable :: inverse_hessian(:, :), identity(:, :), s(:), y(:), a(:, :)
@@ -195,9 +290,9 @@ contains
          gradient = new_gradient
          if (sy > 1.0e-10_dp*norm2(s)*norm2(y)) then
             rho = 1.0_dp/sy
-            a = identity - rho*outer_product_local(s, y)
+            a = identity - rho*outer_product(s, y)
             inverse_hessian = matmul(matmul(a, inverse_hessian), transpose(a)) + &
-               rho*outer_product_local(s, s)
+               rho*outer_product(s, s)
          end if
       end do
       if (.not. out%converged .and. out%info == 0) out%info = 4
@@ -206,9 +301,10 @@ contains
    end function bfgs_minimize_fd
 
    pure function central_gradient(objective, parameters, step) result(gradient)
-      ! Compute a scale-aware central finite-difference gradient.
-      procedure(objective_function_t) :: objective
-      real(dp), intent(in) :: parameters(:), step
+      !! Compute a scale-aware central finite-difference gradient.
+      procedure(objective_function_t) :: objective !! Objective callback procedure.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(in) :: step !! Step.
       real(dp) :: gradient(size(parameters)), shifted(size(parameters)), h, plus, minus
       integer :: i
 
@@ -228,10 +324,10 @@ contains
    end function central_gradient
 
    pure function finite_difference_hessian(objective, parameters, difference_step) result(hessian)
-      ! Compute a symmetric finite-difference Hessian of a scalar objective.
-      procedure(objective_function_t) :: objective
-      real(dp), intent(in) :: parameters(:)
-      real(dp), intent(in), optional :: difference_step
+      !! Compute a symmetric finite-difference Hessian of a scalar objective.
+      procedure(objective_function_t) :: objective !! Objective callback procedure.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(in), optional :: difference_step !! Difference step.
       real(dp) :: hessian(size(parameters), size(parameters))
       real(dp) :: shifted(size(parameters)), hi, hj, center, fpp, fpm, fmp, fmm, step
       integer :: i, j
@@ -269,11 +365,15 @@ contains
 
    pure subroutine armijo_search(objective, x, value, gradient, direction, candidate, &
       candidate_value, accepted)
-      ! Backtrack until the Armijo decrease condition is satisfied.
-      procedure(objective_function_t) :: objective
-      real(dp), intent(in) :: x(:), value, gradient(:), direction(:)
-      real(dp), intent(out) :: candidate(:), candidate_value
-      logical, intent(out) :: accepted
+      !! Backtrack until the Armijo decrease condition is satisfied.
+      procedure(objective_function_t) :: objective !! Objective callback procedure.
+      real(dp), intent(in) :: x(:) !! Input data or predictor values.
+      real(dp), intent(in) :: value !! Input value.
+      real(dp), intent(in) :: gradient(:) !! Gradient.
+      real(dp), intent(in) :: direction(:) !! Direction.
+      real(dp), intent(out) :: candidate(:) !! Candidate.
+      real(dp), intent(out) :: candidate_value !! Candidate value.
+      logical, intent(out) :: accepted !! Flag controlling accepted.
       real(dp) :: alpha, slope
       integer :: iteration
 
@@ -294,11 +394,4 @@ contains
       end do
    end subroutine armijo_search
 
-   pure function outer_product_local(first, second) result(product)
-      ! Return the outer product of two vectors.
-      real(dp), intent(in) :: first(:), second(:)
-      real(dp) :: product(size(first), size(second))
-
-      product = spread(first, 2, size(second))*spread(second, 1, size(first))
-   end function outer_product_local
-end module time_series_optimization_mod
+end module optimization_mod

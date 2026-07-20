@@ -1,0 +1,7 @@
+The algorithms in nlints.f90 are translated from version 1.4.7 of the R package
+NlinTS, authored by Youssef Hmamouche.
+
+The upstream source files permit redistribution under GPL version 2 or, at the
+user's option, any later version. The translation is therefore distributed
+under GPL-2.0-or-later. The GNU General Public License text is available at
+https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.

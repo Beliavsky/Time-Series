@@ -3,9 +3,9 @@
 ! Shared residual diagnostic tests for time-series models.
 module time_series_diagnostics_mod
    use kind_mod, only: dp
-   use forecast_mod, only: acf_values, pacf_values
-   use itsmr_mod, only: regularized_gamma_q
-   use time_series_linalg_mod, only: invert_matrix
+   use time_series_stats_mod, only: acf_values, pacf_values
+   use special_functions_mod, only: regularized_gamma_q
+   use linalg_mod, only: invert_matrix
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
    implicit none
    private
@@ -53,11 +53,13 @@ contains
 
    pure function weighted_box_test(residuals, lag, test_type, &
       fitted_parameter_count, weighted, transform) result(out)
-      ! Compute weighted or classical Box-Pierce, Ljung-Box, and Monti tests.
-      real(dp), intent(in) :: residuals(:)
-      integer, intent(in) :: lag
-      integer, intent(in), optional :: test_type, fitted_parameter_count, transform
-      logical, intent(in), optional :: weighted
+      !! Compute weighted or classical Box-Pierce, Ljung-Box, and Monti tests.
+      real(dp), intent(in) :: residuals(:) !! Model residuals.
+      integer, intent(in) :: lag !! Lag index or number of lags.
+      integer, intent(in), optional :: test_type !! Test type.
+      integer, intent(in), optional :: fitted_parameter_count !! Number of fitted parameter.
+      integer, intent(in), optional :: transform !! Transform.
+      logical, intent(in), optional :: weighted !! Flag controlling weighted.
       type(weighted_box_test_t) :: out
       real(dp), allocatable :: working(:), correlation(:), observed(:)
       real(dp) :: denominator, sample_mean, weight
@@ -159,9 +161,9 @@ contains
    end function weighted_box_test
 
    pure function multivariate_white_noise_test(residuals, lag) result(out)
-      ! Compute FCVAR-style Q and heteroskedasticity-robust LM tests.
-      real(dp), intent(in) :: residuals(:, :)
-      integer, intent(in) :: lag
+      !! Compute FCVAR-style Q and heteroskedasticity-robust LM tests.
+      real(dp), intent(in) :: residuals(:, :) !! Model residuals.
+      integer, intent(in) :: lag !! Lag index or number of lags.
       type(multivariate_white_noise_test_t) :: out
       real(dp) :: statistic, probability
       integer :: variable, status
@@ -209,11 +211,12 @@ contains
 
    pure subroutine multivariate_q_statistic(residuals, lag, statistic, &
       p_value, info)
-      ! Compute the multivariate Ljung-Box statistic of Luetkepohl.
-      real(dp), intent(in) :: residuals(:, :)
-      integer, intent(in) :: lag
-      real(dp), intent(out) :: statistic, p_value
-      integer, intent(out) :: info
+      !! Compute the multivariate Ljung-Box statistic of Luetkepohl.
+      real(dp), intent(in) :: residuals(:, :) !! Model residuals.
+      integer, intent(in) :: lag !! Lag index or number of lags.
+      real(dp), intent(out) :: statistic !! Statistic.
+      real(dp), intent(out) :: p_value !! P value.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: covariance(:, :), inverse(:, :), cross(:, :)
       real(dp), allocatable :: product(:, :)
       integer :: observations, variables, current, i
@@ -242,11 +245,12 @@ contains
    end subroutine multivariate_q_statistic
 
    pure subroutine robust_lm_statistic(residuals, lag, statistic, p_value, info)
-      ! Compute FCVAR's heteroskedasticity-consistent serial-correlation LM test.
-      real(dp), intent(in) :: residuals(:)
-      integer, intent(in) :: lag
-      real(dp), intent(out) :: statistic, p_value
-      integer, intent(out) :: info
+      !! Compute FCVAR's heteroskedasticity-consistent serial-correlation LM test.
+      real(dp), intent(in) :: residuals(:) !! Model residuals.
+      integer, intent(in) :: lag !! Lag index or number of lags.
+      real(dp), intent(out) :: statistic !! Statistic.
+      real(dp), intent(out) :: p_value !! P value.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: centered(:), scores(:, :), covariance(:, :)
       real(dp), allocatable :: inverse(:, :), score_mean(:)
       integer :: observations, rows, current

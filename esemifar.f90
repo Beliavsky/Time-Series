@@ -6,9 +6,10 @@ module esemifar_mod
    use arfima_mod, only: arfima_fractional_weights
    use fracdiff_mod, only: fracdiff_fit_t, fracdiff_simulation_t, fracdiff_fit, &
       fracdiff_simulate_from_innovations
-   use time_series_linalg_mod, only: invert_matrix
-   use time_series_random_mod, only: set_random_seed, random_uniform
-   use time_series_stats_mod, only: normal_quantile
+   use linalg_mod, only: invert_matrix
+   use random_mod, only: set_random_seed, random_uniform
+   use stats_mod, only: normal_quantile, sort, quantile
+   use polynomial_mod, only: polynomial_product => polynomial_product_truncated
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
    implicit none
    private
@@ -65,9 +66,10 @@ module esemifar_mod
 contains
 
    pure function esemifar_arma_to_ma(ar, ma, max_lag) result(coefficients)
-      ! Expand the positive-sign ARMA model into its infinite MA representation.
-      real(dp), intent(in) :: ar(:), ma(:)
-      integer, intent(in) :: max_lag
+      !! Expand the positive-sign ARMA model into its infinite MA representation.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: coefficients(:)
       integer :: lag, j
 
@@ -87,9 +89,10 @@ contains
    end function esemifar_arma_to_ma
 
    pure function esemifar_arma_to_ar(ar, ma, max_lag) result(coefficients)
-      ! Expand minus the ARMA innovation filter into its infinite AR representation.
-      real(dp), intent(in) :: ar(:), ma(:)
-      integer, intent(in) :: max_lag
+      !! Expand minus the ARMA innovation filter into its infinite AR representation.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: coefficients(:), inverse(:)
       integer :: lag, j
 
@@ -110,18 +113,20 @@ contains
    end function esemifar_arma_to_ar
 
    pure function esemifar_d_coefficients(d, max_lag) result(coefficients)
-      ! Expand the fractional differencing operator.
-      real(dp), intent(in) :: d
-      integer, intent(in) :: max_lag
+      !! Expand the fractional differencing operator.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: coefficients(:)
 
       coefficients = arfima_fractional_weights(d, max_lag)
    end function esemifar_d_coefficients
 
    pure function esemifar_farima_to_ar(ar, ma, d, max_lag) result(coefficients)
-      ! Expand minus the complete FARIMA innovation filter.
-      real(dp), intent(in) :: ar(:), ma(:), d
-      integer, intent(in) :: max_lag
+      !! Expand minus the complete FARIMA innovation filter.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: coefficients(:), short_filter(:), fractional(:)
 
       short_filter = -esemifar_arma_to_ar(ar, ma, max_lag)
@@ -130,9 +135,11 @@ contains
    end function esemifar_farima_to_ar
 
    pure function esemifar_farima_to_ma(ar, ma, d, max_lag) result(coefficients)
-      ! Expand the complete FARIMA impulse-response filter.
-      real(dp), intent(in) :: ar(:), ma(:), d
-      integer, intent(in) :: max_lag
+      !! Expand the complete FARIMA impulse-response filter.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: coefficients(:), short_memory(:), fractional(:)
 
       short_memory = esemifar_arma_to_ma(ar, ma, max_lag)
@@ -141,9 +148,10 @@ contains
    end function esemifar_farima_to_ma
 
    pure real(dp) function esemifar_kdf(l, m, d) result(value)
-      ! Evaluate esemifar's long-memory kernel double-integral constant.
-      integer, intent(in) :: l, m
-      real(dp), intent(in) :: d
+      !! Evaluate esemifar's long-memory kernel double-integral constant.
+      integer, intent(in) :: l !! L.
+      integer, intent(in) :: m !! M.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
       real(dp) :: inner
       integer :: i, j
 
@@ -161,11 +169,13 @@ contains
 
    pure function esemifar_smooth(series, derivative_order, polynomial_order, &
       kernel_smoothness, bandwidth, boundary_nearest) result(out)
-      ! Estimate a trend derivative by boundary-aware local polynomial regression.
-      real(dp), intent(in) :: series(:), bandwidth
-      integer, intent(in), optional :: derivative_order, polynomial_order
-      integer, intent(in), optional :: kernel_smoothness
-      logical, intent(in), optional :: boundary_nearest
+      !! Estimate a trend derivative by boundary-aware local polynomial regression.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: bandwidth !! Smoothing or spectral bandwidth.
+      integer, intent(in), optional :: derivative_order !! Derivative order.
+      integer, intent(in), optional :: polynomial_order !! Polynomial order.
+      integer, intent(in), optional :: kernel_smoothness !! Kernel smoothness.
+      logical, intent(in), optional :: boundary_nearest !! Flag controlling boundary nearest.
       type(esemifar_smooth_t) :: out
       real(dp), allocatable :: design(:, :), weighted_cross(:, :), inverse(:, :)
       real(dp), allocatable :: response(:), weight(:), offset(:)
@@ -239,12 +249,14 @@ contains
 
    pure function esemifar_order_selection(series, p_max, q_max, use_bic, &
       initial_d, truncation, max_iterations) result(out)
-      ! Select FARIMA orders by a grid of Haslett-Raftery fits.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: p_max, q_max
-      logical, intent(in), optional :: use_bic
-      real(dp), intent(in), optional :: initial_d
-      integer, intent(in), optional :: truncation, max_iterations
+      !! Select FARIMA orders by a grid of Haslett-Raftery fits.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: p_max !! P max.
+      integer, intent(in) :: q_max !! Q max.
+      logical, intent(in), optional :: use_bic !! Whether to use the bic.
+      real(dp), intent(in), optional :: initial_d !! Initial d.
+      integer, intent(in), optional :: truncation !! Truncation.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(esemifar_order_selection_t) :: out
       type(fracdiff_fit_t) :: candidate
       real(dp), allocatable :: ar(:), ma(:)
@@ -289,12 +301,16 @@ contains
    pure function esemifar_trend_fit(series, polynomial_order, kernel_smoothness, &
       initial_bandwidth, inflation, p_max, q_max, boundary_nearest, &
       max_iterations) result(out)
-      ! Select a trend bandwidth by the ESEMIFAR iterative plug-in algorithm.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in), optional :: polynomial_order, kernel_smoothness
-      integer, intent(in), optional :: inflation, p_max, q_max, max_iterations
-      real(dp), intent(in), optional :: initial_bandwidth
-      logical, intent(in), optional :: boundary_nearest
+      !! Select a trend bandwidth by the ESEMIFAR iterative plug-in algorithm.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in), optional :: polynomial_order !! Polynomial order.
+      integer, intent(in), optional :: kernel_smoothness !! Kernel smoothness.
+      integer, intent(in), optional :: inflation !! Inflation.
+      integer, intent(in), optional :: p_max !! P max.
+      integer, intent(in), optional :: q_max !! Q max.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: initial_bandwidth !! Initial bandwidth.
+      logical, intent(in), optional :: boundary_nearest !! Flag controlling boundary nearest.
       type(esemifar_model_t) :: out
       type(esemifar_smooth_t) :: smooth, derivative_smooth
       type(esemifar_order_selection_t) :: selection
@@ -393,11 +409,13 @@ contains
 
    pure function esemifar_derivative_fit(series, derivative_order, bandwidth, &
       polynomial_order, kernel_smoothness, boundary_nearest) result(out)
-      ! Estimate a requested trend derivative at a fixed bandwidth.
-      real(dp), intent(in) :: series(:), bandwidth
-      integer, intent(in) :: derivative_order
-      integer, intent(in), optional :: polynomial_order, kernel_smoothness
-      logical, intent(in), optional :: boundary_nearest
+      !! Estimate a requested trend derivative at a fixed bandwidth.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: bandwidth !! Smoothing or spectral bandwidth.
+      integer, intent(in) :: derivative_order !! Derivative order.
+      integer, intent(in), optional :: polynomial_order !! Polynomial order.
+      integer, intent(in), optional :: kernel_smoothness !! Kernel smoothness.
+      logical, intent(in), optional :: boundary_nearest !! Flag controlling boundary nearest.
       type(esemifar_smooth_t) :: out
       integer :: polynomial
 
@@ -410,13 +428,17 @@ contains
    pure function esemifar_derivative_ipi(series, derivative_order, pilot_order, &
       kernel_smoothness, pilot_kernel_smoothness, initial_bandwidth, inflation, &
       p_max, q_max, max_iterations) result(out)
-      ! Select a derivative bandwidth after an IPI pilot trend fit.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: derivative_order
-      integer, intent(in), optional :: pilot_order, kernel_smoothness
-      integer, intent(in), optional :: pilot_kernel_smoothness, inflation
-      integer, intent(in), optional :: p_max, q_max, max_iterations
-      real(dp), intent(in), optional :: initial_bandwidth
+      !! Select a derivative bandwidth after an IPI pilot trend fit.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: derivative_order !! Derivative order.
+      integer, intent(in), optional :: pilot_order !! Pilot order.
+      integer, intent(in), optional :: kernel_smoothness !! Kernel smoothness.
+      integer, intent(in), optional :: pilot_kernel_smoothness !! Pilot kernel smoothness.
+      integer, intent(in), optional :: inflation !! Inflation.
+      integer, intent(in), optional :: p_max !! P max.
+      integer, intent(in), optional :: q_max !! Q max.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: initial_bandwidth !! Initial bandwidth.
       type(esemifar_model_t) :: out
       type(esemifar_model_t) :: pilot
       type(esemifar_smooth_t) :: high_derivative
@@ -508,11 +530,12 @@ contains
 
    pure function esemifar_forecast_normal(model, horizon, levels, linear_trend, &
       exponentiate) result(out)
-      ! Forecast trend plus FARIMA errors with Gaussian analytic intervals.
-      type(esemifar_model_t), intent(in) :: model
-      integer, intent(in) :: horizon
-      real(dp), intent(in) :: levels(:)
-      logical, intent(in), optional :: linear_trend, exponentiate
+      !! Forecast trend plus FARIMA errors with Gaussian analytic intervals.
+      type(esemifar_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in) :: levels(:) !! Levels.
+      logical, intent(in), optional :: linear_trend !! Flag controlling linear trend.
+      logical, intent(in), optional :: exponentiate !! Flag controlling exponentiate.
       type(esemifar_forecast_t) :: out
       real(dp), allocatable :: trend(:), error_forecast(:), psi(:), sd(:)
       real(dp) :: residual_mean, step, quantile
@@ -563,12 +586,14 @@ contains
 
    function esemifar_forecast_bootstrap(model, horizon, levels, paths, seed, &
       linear_trend, exponentiate) result(out)
-      ! Forecast with residual-resampling intervals and fixed FARIMA parameters.
-      type(esemifar_model_t), intent(in) :: model
-      integer, intent(in) :: horizon, paths
-      real(dp), intent(in) :: levels(:)
-      integer, intent(in), optional :: seed
-      logical, intent(in), optional :: linear_trend, exponentiate
+      !! Forecast with residual-resampling intervals and fixed FARIMA parameters.
+      type(esemifar_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: paths !! Paths.
+      real(dp), intent(in) :: levels(:) !! Levels.
+      integer, intent(in), optional :: seed !! Random-number seed.
+      logical, intent(in), optional :: linear_trend !! Flag controlling linear trend.
+      logical, intent(in), optional :: exponentiate !! Flag controlling exponentiate.
       type(esemifar_forecast_t) :: out
       real(dp), allocatable :: simulations(:, :), innovations(:), trend(:), centered(:)
       real(dp) :: step
@@ -609,11 +634,11 @@ contains
          horizon, sum(model%smoother%residuals)/real(size(model%smoother%residuals), dp))
       allocate(out%lower(horizon, size(levels)), out%upper(horizon, size(levels)))
       do h = 1, horizon
-         call sort_real(simulations(h, :))
+         call sort(simulations(h, :))
          do level = 1, size(levels)
-            out%lower(h, level) = empirical_quantile(simulations(h, :), &
+            out%lower(h, level) = quantile(simulations(h, :), &
                0.5_dp - 0.5_dp*levels(level))
-            out%upper(h, level) = empirical_quantile(simulations(h, :), &
+            out%upper(h, level) = quantile(simulations(h, :), &
                0.5_dp + 0.5_dp*levels(level))
          end do
       end do
@@ -626,12 +651,16 @@ contains
 
    function esemifar_forecast_bootstrap_advanced(model, horizon, levels, paths, &
       seed, linear_trend, exponentiate, burn_in, max_iterations) result(out)
-      ! Forecast with FARIMA-refitted predictive-root bootstrap intervals.
-      type(esemifar_model_t), intent(in) :: model
-      integer, intent(in) :: horizon, paths
-      real(dp), intent(in) :: levels(:)
-      integer, intent(in), optional :: seed, burn_in, max_iterations
-      logical, intent(in), optional :: linear_trend, exponentiate
+      !! Forecast with FARIMA-refitted predictive-root bootstrap intervals.
+      type(esemifar_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: paths !! Paths.
+      real(dp), intent(in) :: levels(:) !! Levels.
+      integer, intent(in), optional :: seed !! Random-number seed.
+      integer, intent(in), optional :: burn_in !! Burn in.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: linear_trend !! Flag controlling linear trend.
+      logical, intent(in), optional :: exponentiate !! Flag controlling exponentiate.
       type(esemifar_forecast_t) :: out
       type(fracdiff_simulation_t) :: simulation
       type(fracdiff_fit_t) :: refit
@@ -703,12 +732,12 @@ contains
       out%mean = trend + base
       allocate(out%lower(horizon, size(levels)), out%upper(horizon, size(levels)))
       do h = 1, horizon
-         call sort_real(roots(h, :))
+         call sort(roots(h, :))
          do level = 1, size(levels)
             out%lower(h, level) = trend(h) + base(h) + &
-               empirical_quantile(roots(h, :), 0.5_dp - 0.5_dp*levels(level))
+               quantile(roots(h, :), 0.5_dp - 0.5_dp*levels(level))
             out%upper(h, level) = trend(h) + base(h) + &
-               empirical_quantile(roots(h, :), 0.5_dp + 0.5_dp*levels(level))
+               quantile(roots(h, :), 0.5_dp + 0.5_dp*levels(level))
          end do
       end do
       if (expo) then
@@ -719,9 +748,9 @@ contains
    end function esemifar_forecast_bootstrap_advanced
 
    subroutine resample_centered(sample, result)
-      ! Draw a replacement sample from a centered innovation vector.
-      real(dp), intent(in) :: sample(:)
-      real(dp), intent(out) :: result(:)
+      !! Draw a replacement sample from a centered innovation vector.
+      real(dp), intent(in) :: sample(:) !! Sample.
+      real(dp), intent(out) :: result(:) !! Result.
       integer :: i, index
 
       do i = 1, size(result)
@@ -731,10 +760,11 @@ contains
    end subroutine resample_centered
 
    pure function farima_point_forecast(observations, fit, horizon, mean_value) result(forecast)
-      ! Forecast from esemifar's truncated infinite-AR representation.
-      real(dp), intent(in) :: observations(:), mean_value
-      type(fracdiff_fit_t), intent(in) :: fit
-      integer, intent(in) :: horizon
+      !! Forecast from esemifar's truncated infinite-AR representation.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: mean_value !! Mean value.
+      type(fracdiff_fit_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       real(dp), allocatable :: forecast(:), history(:), ar_weights(:)
       integer :: n, h, lag
 
@@ -754,9 +784,10 @@ contains
    end function farima_point_forecast
 
    pure function farima_future_path(observations, fit, innovations) result(path)
-      ! Generate future observations from supplied FARIMA innovations.
-      real(dp), intent(in) :: observations(:), innovations(:)
-      type(fracdiff_fit_t), intent(in) :: fit
+      !! Generate future observations from supplied FARIMA innovations.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: innovations(:) !! Model innovations.
+      type(fracdiff_fit_t), intent(in) :: fit !! Previously fitted model.
       real(dp), allocatable :: path(:), history(:), ar_weights(:)
       real(dp) :: mean_value
       integer :: n, h, lag
@@ -778,8 +809,8 @@ contains
    end function farima_future_path
 
    pure real(dp) function farima_variance_factor(fit) result(value)
-      ! Compute the low-frequency FARIMA variance factor.
-      type(fracdiff_fit_t), intent(in) :: fit
+      !! Compute the low-frequency FARIMA variance factor.
+      type(fracdiff_fit_t), intent(in) :: fit !! Previously fitted model.
       real(dp) :: ar_sum, ma_sum
 
       ar_sum = sum(fit%model%ar)
@@ -789,9 +820,11 @@ contains
    end function farima_variance_factor
 
    pure real(dp) function inflated_bandwidth(bandwidth, d, polynomial, method) result(value)
-      ! Apply one of esemifar's optimal, naive, or stable inflation rates.
-      real(dp), intent(in) :: bandwidth, d
-      integer, intent(in) :: polynomial, method
+      !! Apply one of esemifar's optimal, naive, or stable inflation rates.
+      real(dp), intent(in) :: bandwidth !! Smoothing or spectral bandwidth.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      integer, intent(in) :: polynomial !! Polynomial.
+      integer, intent(in) :: method !! Algorithm or estimation method.
       real(dp) :: numerator, denominator
 
       if (method == esemifar_inflation_stable) then
@@ -806,9 +839,10 @@ contains
    end function inflated_bandwidth
 
    pure real(dp) function kernel_rp(polynomial, mu, d) result(value)
-      ! Evaluate the squared equivalent-kernel long-memory constant.
-      integer, intent(in) :: polynomial, mu
-      real(dp), intent(in) :: d
+      !! Evaluate the squared equivalent-kernel long-memory constant.
+      integer, intent(in) :: polynomial !! Polynomial.
+      integer, intent(in) :: mu !! Mu.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
       real(dp) :: coefficient(0:4)
       integer :: i, j, degree
 
@@ -843,8 +877,10 @@ contains
    end function kernel_rp
 
    pure real(dp) function kernel_moment(polynomial, mu, power) result(value)
-      ! Evaluate the equivalent kernel's requested even moment.
-      integer, intent(in) :: polynomial, mu, power
+      !! Evaluate the equivalent kernel's requested even moment.
+      integer, intent(in) :: polynomial !! Polynomial.
+      integer, intent(in) :: mu !! Mu.
+      integer, intent(in) :: power !! Power.
       real(dp) :: coefficient(0:4)
       integer :: i, degree
 
@@ -879,9 +915,11 @@ contains
 
    pure real(dp) function derivative_inflated_bandwidth(bandwidth, d, &
       derivative, method) result(value)
-      ! Apply esemifar's derivative pilot-bandwidth inflation rate.
-      real(dp), intent(in) :: bandwidth, d
-      integer, intent(in) :: derivative, method
+      !! Apply esemifar's derivative pilot-bandwidth inflation rate.
+      real(dp), intent(in) :: bandwidth !! Smoothing or spectral bandwidth.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      integer, intent(in) :: derivative !! Derivative.
+      integer, intent(in) :: method !! Algorithm or estimation method.
       real(dp) :: numerator, denominator
 
       if (method == esemifar_inflation_stable) then
@@ -896,9 +934,10 @@ contains
    end function derivative_inflated_bandwidth
 
    pure real(dp) function derivative_kernel_rp(derivative, mu, d) result(value)
-      ! Evaluate a derivative equivalent-kernel long-memory constant.
-      integer, intent(in) :: derivative, mu
-      real(dp), intent(in) :: d
+      !! Evaluate a derivative equivalent-kernel long-memory constant.
+      integer, intent(in) :: derivative !! Derivative.
+      integer, intent(in) :: mu !! Mu.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
       real(dp) :: coefficient(0:8)
       integer :: i, j, degree
 
@@ -912,8 +951,10 @@ contains
    end function derivative_kernel_rp
 
    pure real(dp) function derivative_kernel_moment(derivative, mu, power) result(value)
-      ! Evaluate a derivative equivalent kernel's requested moment.
-      integer, intent(in) :: derivative, mu, power
+      !! Evaluate a derivative equivalent kernel's requested moment.
+      integer, intent(in) :: derivative !! Derivative.
+      integer, intent(in) :: mu !! Mu.
+      integer, intent(in) :: power !! Power.
       real(dp) :: coefficient(0:8)
       integer :: i, degree
 
@@ -926,10 +967,11 @@ contains
    end function derivative_kernel_moment
 
    pure subroutine derivative_kernel_coefficients(derivative, mu, coefficient, degree)
-      ! Return esemifar's first- or second-derivative equivalent kernel.
-      integer, intent(in) :: derivative, mu
-      real(dp), intent(out) :: coefficient(0:8)
-      integer, intent(out) :: degree
+      !! Return esemifar's first- or second-derivative equivalent kernel.
+      integer, intent(in) :: derivative !! Derivative.
+      integer, intent(in) :: mu !! Mu.
+      real(dp), intent(out) :: coefficient(0:8) !! Coefficient.
+      integer, intent(out) :: degree !! Degree.
 
       coefficient = 0.0_dp
       if (derivative == 1) then
@@ -981,25 +1023,10 @@ contains
       end if
    end subroutine derivative_kernel_coefficients
 
-   pure function polynomial_product(first, second, max_lag) result(product)
-      ! Multiply two zero-origin coefficient vectors with truncation.
-      real(dp), intent(in) :: first(0:), second(0:)
-      integer, intent(in) :: max_lag
-      real(dp), allocatable :: product(:)
-      integer :: i, j
-
-      allocate(product(0:max_lag))
-      product = 0.0_dp
-      do i = 0, min(max_lag, ubound(first, 1))
-         do j = 0, min(max_lag - i, ubound(second, 1))
-            product(i + j) = product(i + j) + first(i)*second(j)
-         end do
-      end do
-   end function polynomial_product
-
    pure elemental real(dp) function binomial(n, k) result(value)
-      ! Return a binomial coefficient in double precision.
-      integer, intent(in) :: n, k
+      !! Return a binomial coefficient in double precision.
+      integer, intent(in) :: n !! Number of observations or elements.
+      integer, intent(in) :: k !! K.
       integer :: i
 
       if (k < 0 .or. k > n) then
@@ -1013,8 +1040,8 @@ contains
    end function binomial
 
    pure elemental real(dp) function factorial_real(n) result(value)
-      ! Return a factorial in double precision.
-      integer, intent(in) :: n
+      !! Return a factorial in double precision.
+      integer, intent(in) :: n !! Number of observations or elements.
       integer :: i
 
       value = 1.0_dp
@@ -1022,39 +1049,5 @@ contains
          value = value*real(i, dp)
       end do
    end function factorial_real
-
-   pure subroutine sort_real(values)
-      ! Sort values in ascending order.
-      real(dp), intent(inout) :: values(:)
-      real(dp) :: saved
-      integer :: i, j
-
-      do i = 2, size(values)
-         saved = values(i)
-         j = i - 1
-         do while (j >= 1)
-            if (values(j) <= saved) exit
-            values(j + 1) = values(j)
-            j = j - 1
-         end do
-         values(j + 1) = saved
-      end do
-   end subroutine sort_real
-
-   pure real(dp) function empirical_quantile(sorted, probability) result(value)
-      ! Interpolate a sorted sample quantile.
-      real(dp), intent(in) :: sorted(:), probability
-      real(dp) :: position, fraction
-      integer :: lower
-
-      position = 1.0_dp + probability*real(size(sorted) - 1, dp)
-      lower = floor(position)
-      fraction = position - real(lower, dp)
-      if (lower >= size(sorted)) then
-         value = sorted(size(sorted))
-      else
-         value = (1.0_dp - fraction)*sorted(lower) + fraction*sorted(lower + 1)
-      end if
-   end function empirical_quantile
 
 end module esemifar_mod

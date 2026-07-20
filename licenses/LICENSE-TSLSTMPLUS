@@ -1,0 +1,7 @@
+The algorithms in tslstmplus.f90 are translated from version 1.0.6 of the R
+package TSLSTMplus, authored by Jaime Pizarroso Gonzalo and Antonio Munoz San
+Roque.
+
+The upstream package declares its license as GPL-3. The translation is
+therefore distributed under GPL-3.0-only. The GNU General Public License text
+is available at https://www.gnu.org/licenses/gpl-3.0.txt.

@@ -4,14 +4,17 @@
 ! The SV filtering structure is adapted from GARCH-BFGS/sv.f90 under the MIT license.
 module astsa_mod
    use kind_mod, only: dp
-   use time_series_linalg_mod, only: symmetric_eigen, inverse_logdet, invert_matrix, symmetrize, identity_matrix
-   use time_series_stats_mod, only: ols_fit, yule_walker_result_t, yule_walker_fit
-   use time_series_utils_mod, only: inverse_standard_normal
-   use time_series_random_mod, only: random_standard_normal_matrix, random_uniform, random_gamma, &
+   use linalg_mod, only: symmetric_eigen, inverse_logdet, invert_matrix, &
+      symmetrize, identity_matrix, outer_product
+   use stats_mod, only: ols_fit, sorted_values_shared => sorted, quantile
+   use time_series_stats_mod, only: yule_walker_result_t, yule_walker_fit, &
+      acf_values, ccf_values
+   use special_functions_mod, only: regularized_gamma_q
+   use utils_mod, only: inverse_standard_normal
+   use random_mod, only: random_standard_normal_matrix, random_uniform, random_gamma, &
       multivariate_normal_from_standard, random_multivariate_normal
    use kfas_mod, only: ssm_model_t, kfs_filter_t, kfs_smoother_t, kfs_filter, kfs_filter_diffuse, kfs_smooth
-   use forecast_mod, only: acf_values, ccf_values
-   use time_series_optimization_mod, only: optimization_result_t, bfgs_minimize_fd, &
+   use optimization_mod, only: optimization_result_t, bfgs_minimize_fd, &
       finite_difference_hessian
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite, ieee_value, ieee_quiet_nan
    implicit none
@@ -298,9 +301,14 @@ module astsa_mod
 contains
 
    pure function astsa_kfilter(y, observation, mu0, sigma0, transition, sq, sr) result(out)
-      ! Run astsa Kfilter version 1 by adapting the model to kfas_mod.
-      real(dp), intent(in) :: y(:, :), observation(:, :, :)
-      real(dp), intent(in) :: mu0(:), sigma0(:, :), transition(:, :), sq(:, :), sr(:, :)
+      !! Run astsa Kfilter version 1 by adapting the model to kfas_mod.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: observation(:, :, :) !! Observed value or vector.
+      real(dp), intent(in) :: mu0(:) !! Mu0.
+      real(dp), intent(in) :: sigma0(:, :) !! Sigma0.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: sq(:, :) !! Sq.
+      real(dp), intent(in) :: sr(:, :) !! Sr.
       type(astsa_filter_t) :: out
       type(ssm_model_t) :: model
       type(kfs_filter_t) :: filtered
@@ -372,9 +380,14 @@ contains
    end function astsa_kfilter
 
    pure function astsa_ksmooth(y, observation, mu0, sigma0, transition, sq, sr) result(out)
-      ! Run astsa Ksmooth version 1 using the shared KFAS filter and smoother.
-      real(dp), intent(in) :: y(:, :), observation(:, :, :)
-      real(dp), intent(in) :: mu0(:), sigma0(:, :), transition(:, :), sq(:, :), sr(:, :)
+      !! Run astsa Ksmooth version 1 using the shared KFAS filter and smoother.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: observation(:, :, :) !! Observed value or vector.
+      real(dp), intent(in) :: mu0(:) !! Mu0.
+      real(dp), intent(in) :: sigma0(:, :) !! Sigma0.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: sq(:, :) !! Sq.
+      real(dp), intent(in) :: sr(:, :) !! Sr.
       type(astsa_smoother_t) :: out
       type(ssm_model_t) :: model
       type(kfs_filter_t) :: filtered
@@ -440,10 +453,15 @@ contains
    end function astsa_ksmooth
 
    pure function astsa_kfilter_correlated(y, observation, mu0, sigma0, transition, sq, sr, correlation) result(out)
-      ! Run astsa Kfilter version 2 with correlated state and observation errors.
-      real(dp), intent(in) :: y(:, :), observation(:, :, :)
-      real(dp), intent(in) :: mu0(:), sigma0(:, :), transition(:, :), sq(:, :), sr(:, :)
-      real(dp), intent(in) :: correlation(:, :)
+      !! Run astsa Kfilter version 2 with correlated state and observation errors.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: observation(:, :, :) !! Observed value or vector.
+      real(dp), intent(in) :: mu0(:) !! Mu0.
+      real(dp), intent(in) :: sigma0(:, :) !! Sigma0.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: sq(:, :) !! Sq.
+      real(dp), intent(in) :: sr(:, :) !! Sr.
+      real(dp), intent(in) :: correlation(:, :) !! Correlation.
       type(astsa_filter_t) :: out
       real(dp), allocatable :: process_cov(:, :), observation_cov(:, :), cross_cov(:, :)
       real(dp), allocatable :: inverse(:, :), gain(:, :), pz(:, :), innovation(:), z(:, :)
@@ -505,10 +523,15 @@ contains
    end function astsa_kfilter_correlated
 
    pure function astsa_ksmooth_correlated(y, observation, mu0, sigma0, transition, sq, sr, correlation) result(out)
-      ! Run astsa Ksmooth version 2 after correlated-error forward filtering.
-      real(dp), intent(in) :: y(:, :), observation(:, :, :)
-      real(dp), intent(in) :: mu0(:), sigma0(:, :), transition(:, :), sq(:, :), sr(:, :)
-      real(dp), intent(in) :: correlation(:, :)
+      !! Run astsa Ksmooth version 2 after correlated-error forward filtering.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: observation(:, :, :) !! Observed value or vector.
+      real(dp), intent(in) :: mu0(:) !! Mu0.
+      real(dp), intent(in) :: sigma0(:, :) !! Sigma0.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: sq(:, :) !! Sq.
+      real(dp), intent(in) :: sr(:, :) !! Sr.
+      real(dp), intent(in) :: correlation(:, :) !! Correlation.
       type(astsa_smoother_t) :: out
       real(dp), allocatable :: inverse(:, :), gain(:, :)
       real(dp) :: logdet
@@ -550,12 +573,16 @@ contains
 
    pure function astsa_em(y, observation, mu0, sigma0, transition, q_covariance, r_covariance, &
       max_iterations, tolerance) result(out)
-      ! Estimate a no-input Gaussian state-space model by astsa's EM recursions.
-      real(dp), intent(in) :: y(:, :), observation(:, :, :)
-      real(dp), intent(in) :: mu0(:), sigma0(:, :), transition(:, :)
-      real(dp), intent(in) :: q_covariance(:, :), r_covariance(:, :)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate a no-input Gaussian state-space model by astsa's EM recursions.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: observation(:, :, :) !! Observed value or vector.
+      real(dp), intent(in) :: mu0(:) !! Mu0.
+      real(dp), intent(in) :: sigma0(:, :) !! Sigma0.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: q_covariance(:, :) !! Q covariance matrix.
+      real(dp), intent(in) :: r_covariance(:, :) !! R covariance matrix.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(astsa_em_result_t) :: out
       type(astsa_smoother_t) :: smooth
       type(astsa_matrix_power_result_t) :: power_result
@@ -620,21 +647,21 @@ contains
             out%info = 40 + info
             return
          end if
-         s11 = vector_outer(smooth%xs(:, 1), smooth%xs(:, 1)) + smooth%ps(:, :, 1)
-         s10 = vector_outer(smooth%xs(:, 1), smooth%x0n) + pcs(:, :, 1)
-         s00 = vector_outer(smooth%x0n, smooth%x0n) + smooth%p0n
+         s11 = outer_product(smooth%xs(:, 1), smooth%xs(:, 1)) + smooth%ps(:, :, 1)
+         s10 = outer_product(smooth%xs(:, 1), smooth%x0n) + pcs(:, :, 1)
+         s00 = outer_product(smooth%x0n, smooth%x0n) + smooth%p0n
          slice = min(1, size(observation, 3))
          z = observation(:, :, slice)
          residual = y(1, :) - matmul(z, smooth%xs(:, 1))
-         rsum = vector_outer(residual, residual) + matmul(z, matmul(smooth%ps(:, :, 1), transpose(z)))
+         rsum = outer_product(residual, residual) + matmul(z, matmul(smooth%ps(:, :, 1), transpose(z)))
          do t = 2, n
-            s11 = s11 + vector_outer(smooth%xs(:, t), smooth%xs(:, t)) + smooth%ps(:, :, t)
-            s10 = s10 + vector_outer(smooth%xs(:, t), smooth%xs(:, t - 1)) + pcs(:, :, t)
-            s00 = s00 + vector_outer(smooth%xs(:, t - 1), smooth%xs(:, t - 1)) + smooth%ps(:, :, t - 1)
+            s11 = s11 + outer_product(smooth%xs(:, t), smooth%xs(:, t)) + smooth%ps(:, :, t)
+            s10 = s10 + outer_product(smooth%xs(:, t), smooth%xs(:, t - 1)) + pcs(:, :, t)
+            s00 = s00 + outer_product(smooth%xs(:, t - 1), smooth%xs(:, t - 1)) + smooth%ps(:, :, t - 1)
             slice = min(t, size(observation, 3))
             z = observation(:, :, slice)
             residual = y(t, :) - matmul(z, smooth%xs(:, t))
-            rsum = rsum + vector_outer(residual, residual) + &
+            rsum = rsum + outer_product(residual, residual) + &
                matmul(z, matmul(smooth%ps(:, :, t), transpose(z)))
          end do
          call invert_matrix(s00, inverse, info)
@@ -656,10 +683,15 @@ contains
    end function astsa_em
 
    pure function astsa_ffbs_draws(y, observation, mu0, sigma0, transition, sq, sr, normal_draws) result(out)
-      ! Draw an FFBS trajectory using caller-supplied independent standard normals.
-      real(dp), intent(in) :: y(:, :), observation(:, :, :)
-      real(dp), intent(in) :: mu0(:), sigma0(:, :), transition(:, :), sq(:, :), sr(:, :)
-      real(dp), intent(in) :: normal_draws(:, :)
+      !! Draw an FFBS trajectory using caller-supplied independent standard normals.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: observation(:, :, :) !! Observed value or vector.
+      real(dp), intent(in) :: mu0(:) !! Mu0.
+      real(dp), intent(in) :: sigma0(:, :) !! Sigma0.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: sq(:, :) !! Sq.
+      real(dp), intent(in) :: sr(:, :) !! Sr.
+      real(dp), intent(in) :: normal_draws(:, :) !! Independent standard-normal draws.
       type(astsa_ffbs_result_t) :: out
       type(astsa_filter_t) :: filtered
       real(dp), allocatable :: inverse(:, :), gain(:, :), mean(:), covariance(:, :)
@@ -715,9 +747,14 @@ contains
    end function astsa_ffbs_draws
 
    function astsa_ffbs(y, observation, mu0, sigma0, transition, sq, sr) result(out)
-      ! Draw an FFBS trajectory using the Fortran intrinsic random-number generator.
-      real(dp), intent(in) :: y(:, :), observation(:, :, :)
-      real(dp), intent(in) :: mu0(:), sigma0(:, :), transition(:, :), sq(:, :), sr(:, :)
+      !! Draw an FFBS trajectory using the Fortran intrinsic random-number generator.
+      real(dp), intent(in) :: y(:, :) !! Response or time-series observations.
+      real(dp), intent(in) :: observation(:, :, :) !! Observed value or vector.
+      real(dp), intent(in) :: mu0(:) !! Mu0.
+      real(dp), intent(in) :: sigma0(:, :) !! Sigma0.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: sq(:, :) !! Sq.
+      real(dp), intent(in) :: sr(:, :) !! Sr.
       type(astsa_ffbs_result_t) :: out
       real(dp), allocatable :: draws(:, :)
 
@@ -727,10 +764,12 @@ contains
    end function astsa_ffbs
 
    pure function arma_spectrum(ar, ma, noise_variance, n_frequency, sampling_frequency) result(out)
-      ! Compute astsa arma.spec's theoretical ARMA spectrum without plotting.
-      real(dp), intent(in) :: ar(:), ma(:)
-      real(dp), intent(in), optional :: noise_variance, sampling_frequency
-      integer, intent(in), optional :: n_frequency
+      !! Compute astsa arma.spec's theoretical ARMA spectrum without plotting.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in), optional :: noise_variance !! Noise variance.
+      real(dp), intent(in), optional :: sampling_frequency !! Sampling frequency.
+      integer, intent(in), optional :: n_frequency !! Number of frequency.
       type(astsa_spectrum_t) :: out
       real(dp) :: variance, sample_rate, angle
       complex(dp) :: ar_polynomial, ma_polynomial
@@ -767,11 +806,14 @@ contains
    end function arma_spectrum
 
    pure function mv_periodogram(x, sampling_frequency, demean, detrend, taper, pad, span) result(out)
-      ! Compute an mvspec-style spectral matrix, coherence, and phase estimate.
-      real(dp), intent(in) :: x(:, :)
-      real(dp), intent(in), optional :: sampling_frequency, taper
-      logical, intent(in), optional :: demean, detrend
-      integer, intent(in), optional :: pad, span
+      !! Compute an mvspec-style spectral matrix, coherence, and phase estimate.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in), optional :: sampling_frequency !! Sampling frequency.
+      real(dp), intent(in), optional :: taper !! Taper.
+      logical, intent(in), optional :: demean !! Flag controlling demean.
+      logical, intent(in), optional :: detrend !! Flag controlling detrend.
+      integer, intent(in), optional :: pad !! Pad.
+      integer, intent(in), optional :: span !! Span.
       type(astsa_spectrum_t) :: out
       real(dp), allocatable :: work(:, :), weights(:), beta(:), se(:), residuals(:), design(:, :)
       complex(dp), allocatable :: transform(:, :), full_spectrum(:, :, :), smoothed(:, :, :)
@@ -893,9 +935,9 @@ contains
    end function mv_periodogram
 
    pure subroutine apply_split_taper(x, fraction)
-      ! Apply R's split cosine-bell taper to both ends of a series matrix.
-      real(dp), intent(inout) :: x(:, :)
-      real(dp), intent(in) :: fraction
+      !! Apply R's split cosine-bell taper to both ends of a series matrix.
+      real(dp), intent(inout) :: x(:, :) !! Input data or predictor values, updated in place.
+      real(dp), intent(in) :: fraction !! Fraction.
       real(dp) :: weight
       integer :: i, m, n
       n = size(x, 1)
@@ -910,9 +952,9 @@ contains
    end subroutine apply_split_taper
 
    pure subroutine modified_daniell_weights(m, weights)
-      ! Construct the normalized modified-Daniell kernel used by mvspec.
-      integer, intent(in) :: m
-      real(dp), allocatable, intent(out) :: weights(:)
+      !! Construct the normalized modified-Daniell kernel used by mvspec.
+      integer, intent(in) :: m !! M.
+      real(dp), allocatable, intent(out) :: weights(:) !! Observation or objective weights.
       allocate(weights(2*m + 1))
       weights = 1.0_dp/real(2*m, dp)
       weights(1) = 0.5_dp/real(2*m, dp)
@@ -920,11 +962,12 @@ contains
    end subroutine modified_daniell_weights
 
    pure subroutine lag_one_covariances(smooth, observation, transition, pcs, info)
-      ! Compute astsa's lag-one smoothed state covariance recursion.
-      type(astsa_smoother_t), intent(in) :: smooth
-      real(dp), intent(in) :: observation(:, :, :), transition(:, :)
-      real(dp), intent(out) :: pcs(:, :, :)
-      integer, intent(out) :: info
+      !! Compute astsa's lag-one smoothed state covariance recursion.
+      type(astsa_smoother_t), intent(in) :: smooth !! Smooth.
+      real(dp), intent(in) :: observation(:, :, :) !! Observed value or vector.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(out) :: pcs(:, :, :) !! Pcs.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: inverse(:, :), measurement_gain(:, :), z(:, :)
       real(dp) :: logdet
       integer :: n, p, t, slice
@@ -951,16 +994,10 @@ contains
       info = 0
    end subroutine lag_one_covariances
 
-   pure function vector_outer(a, b) result(product)
-      ! Form an outer product for EM sufficient statistics.
-      real(dp), intent(in) :: a(:), b(:)
-      real(dp) :: product(size(a), size(b))
-      product = spread(a, 2, size(b))*spread(b, 1, size(a))
-   end function vector_outer
-
    pure function poly_mul(p, q) result(product)
-      ! Multiply two coefficient vectors by polynomial convolution.
-      real(dp), intent(in) :: p(:), q(:)
+      !! Multiply two coefficient vectors by polynomial convolution.
+      real(dp), intent(in) :: p(:) !! Autoregressive order or model dimension.
+      real(dp), intent(in) :: q(:) !! Model order, dimension, or parameter.
       real(dp), allocatable :: product(:)
       integer :: i, j
       allocate(product(size(p) + size(q) - 1))
@@ -973,9 +1010,10 @@ contains
    end function poly_mul
 
    pure function arma_to_ar(ar, ma, lag_max) result(coefficients)
-      ! Convert an ARMA model to the astsa infinite-AR truncation.
-      real(dp), intent(in) :: ar(:), ma(:)
-      integer, intent(in) :: lag_max
+      !! Convert an ARMA model to the astsa infinite-AR truncation.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      integer, intent(in) :: lag_max !! Lag max.
       real(dp), allocatable :: coefficients(:), psi(:)
       integer :: i, j
       allocate(coefficients(lag_max), psi(0:lag_max))
@@ -991,8 +1029,9 @@ contains
    end function arma_to_ar
 
    pure function symmetric_matrix_power(a, power) result(out)
-      ! Return a real symmetric matrix power and decomposition status.
-      real(dp), intent(in) :: a(:, :), power
+      !! Return a real symmetric matrix power and decomposition status.
+      real(dp), intent(in) :: a(:, :) !! A.
+      real(dp), intent(in) :: power !! Power.
       type(astsa_matrix_power_result_t) :: out
       real(dp), allocatable :: eigenvalues(:), eigenvectors(:, :)
       integer :: status, i, n
@@ -1018,9 +1057,9 @@ contains
    end function symmetric_matrix_power
 
    pure integer function fdr_cutoff(p_values, q_level) result(index)
-      ! Return astsa FDR's original index of the largest rejected p-value.
-      real(dp), intent(in) :: p_values(:)
-      real(dp), intent(in), optional :: q_level
+      !! Return astsa FDR's original index of the largest rejected p-value.
+      real(dp), intent(in) :: p_values(:) !! P values.
+      real(dp), intent(in), optional :: q_level !! Q level.
       real(dp), allocatable :: sorted(:)
       integer, allocatable :: order(:)
       real(dp) :: level, temporary_value
@@ -1054,10 +1093,13 @@ contains
    end function fdr_cutoff
 
    pure function arma_check(ar, ma, sar, sma, season, redundancy_tolerance) result(out)
-      ! Check ARMA causality, invertibility, and approximate common factors.
-      real(dp), intent(in), optional :: ar(:), ma(:), sar(:), sma(:)
-      integer, intent(in), optional :: season
-      real(dp), intent(in), optional :: redundancy_tolerance
+      !! Check ARMA causality, invertibility, and approximate common factors.
+      real(dp), intent(in), optional :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in), optional :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in), optional :: sar(:) !! Sar.
+      real(dp), intent(in), optional :: sma(:) !! Sma.
+      integer, intent(in), optional :: season !! Season.
+      real(dp), intent(in), optional :: redundancy_tolerance !! Redundancy tolerance.
       type(astsa_arma_diagnostic_t) :: out
       type(astsa_polynomial_roots_t) :: roots
       real(dp), allocatable :: polynomial(:)
@@ -1146,9 +1188,12 @@ contains
    end function arma_check
 
    pure function pre_white(series1, series2, differences, max_lag, order_max) result(out)
-      ! Select an AR prewhitener and return aligned filtered series and CCF values.
-      real(dp), intent(in) :: series1(:), series2(:)
-      integer, intent(in), optional :: differences, max_lag, order_max
+      !! Select an AR prewhitener and return aligned filtered series and CCF values.
+      real(dp), intent(in) :: series1(:) !! Series1.
+      real(dp), intent(in) :: series2(:) !! Series2.
+      integer, intent(in), optional :: differences !! Differences.
+      integer, intent(in), optional :: max_lag !! Maximum lag to consider.
+      integer, intent(in), optional :: order_max !! Order max.
       type(astsa_prewhite_result_t) :: out
       type(yule_walker_result_t) :: fit, candidate
       real(dp), allocatable :: first(:), second(:), ccf(:)
@@ -1208,11 +1253,11 @@ contains
    end function pre_white
 
    pure function ar_boot_draws(series, order, residual_indices, probabilities) result(out)
-      ! Bootstrap a fixed-order Yule-Walker AR model from supplied residual indices.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: order
-      integer, intent(in) :: residual_indices(:, :)
-      real(dp), intent(in), optional :: probabilities(:)
+      !! Bootstrap a fixed-order Yule-Walker AR model from supplied residual indices.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
+      integer, intent(in) :: residual_indices(:, :) !! Residual indices.
+      real(dp), intent(in), optional :: probabilities(:) !! Probability values.
       type(astsa_ar_bootstrap_t) :: out
       type(yule_walker_result_t) :: original, fitted
       real(dp), allocatable :: centered(:), residuals(:), simulated_centered(:), sorted(:)
@@ -1279,19 +1324,20 @@ contains
       end if
       allocate(out%quantiles(size(out%probabilities), order))
       do coefficient = 1, order
-         sorted = sorted_values(out%coefficient_draws(:, coefficient))
+         sorted = sorted_values_shared(out%coefficient_draws(:, coefficient))
          do probability_index = 1, size(out%probabilities)
             out%quantiles(probability_index, coefficient) = &
-               sample_quantile(sorted, out%probabilities(probability_index))
+               quantile(sorted, out%probabilities(probability_index))
          end do
       end do
    end function ar_boot_draws
 
    function ar_boot(series, order, bootstrap_count, probabilities) result(out)
-      ! Bootstrap a fixed-order AR model using shared random residual indices.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: order, bootstrap_count
-      real(dp), intent(in), optional :: probabilities(:)
+      !! Bootstrap a fixed-order AR model using shared random residual indices.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
+      integer, intent(in) :: bootstrap_count !! Number of bootstrap.
+      real(dp), intent(in), optional :: probabilities(:) !! Probability values.
       type(astsa_ar_bootstrap_t) :: out
       integer, allocatable :: indices(:, :)
       integer :: i, j, residual_count
@@ -1310,33 +1356,19 @@ contains
       out = ar_boot_draws(series, order, indices, probabilities)
    end function ar_boot
 
-   pure real(dp) function sample_quantile(sorted, probability) result(value)
-      ! Return an R type-7 sample quantile from ascending values.
-      real(dp), intent(in) :: sorted(:), probability
-      real(dp) :: position, fraction
-      integer :: lower
-
-      if (size(sorted) == 1) then
-         value = sorted(1)
-         return
-      end if
-      position = 1.0_dp + real(size(sorted) - 1, dp)*probability
-      lower = floor(position)
-      if (lower >= size(sorted)) then
-         value = sorted(size(sorted))
-      else
-         fraction = position - real(lower, dp)
-         value = (1.0_dp - fraction)*sorted(lower) + fraction*sorted(lower + 1)
-      end if
-   end function sample_quantile
-
    pure function ar_mcmc_draws(series, order, retained_draws, warmup, normal_draws, gamma_draws, &
       prior_variance, prior_shape, prior_rate, probabilities) result(out)
-      ! Sample a conjugate Bayesian AR posterior from supplied Gaussian and gamma draws.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: order, retained_draws, warmup
-      real(dp), intent(in) :: normal_draws(:, :), gamma_draws(:)
-      real(dp), intent(in), optional :: prior_variance, prior_shape, prior_rate, probabilities(:)
+      !! Sample a conjugate Bayesian AR posterior from supplied Gaussian and gamma draws.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
+      integer, intent(in) :: retained_draws !! Retained simulation draws.
+      integer, intent(in) :: warmup !! Warmup.
+      real(dp), intent(in) :: normal_draws(:, :) !! Independent standard-normal draws.
+      real(dp), intent(in) :: gamma_draws(:) !! Gamma simulation draws.
+      real(dp), intent(in), optional :: prior_variance !! Prior variance.
+      real(dp), intent(in), optional :: prior_shape !! Prior shape.
+      real(dp), intent(in), optional :: prior_rate !! Prior rate.
+      real(dp), intent(in), optional :: probabilities(:) !! Probability values.
       type(astsa_ar_mcmc_t) :: out
       real(dp), allocatable :: design(:, :), response(:), xtx(:, :), inverse(:, :), covariance(:, :)
       real(dp), allocatable :: mean(:), draw(:), residuals(:), coefficients(:, :), variance_draws(:)
@@ -1424,19 +1456,24 @@ contains
       end if
       allocate(out%quantiles(size(out%probabilities), parameter_count + 1))
       do column = 1, parameter_count + 1
-         sorted = sorted_values(combined(:, column))
+         sorted = sorted_values_shared(combined(:, column))
          do probability_index = 1, size(out%probabilities)
-            out%quantiles(probability_index, column) = sample_quantile(sorted, out%probabilities(probability_index))
+            out%quantiles(probability_index, column) = quantile(sorted, out%probabilities(probability_index))
          end do
       end do
    end function ar_mcmc_draws
 
    function ar_mcmc(series, order, retained_draws, warmup, prior_variance, prior_shape, &
       prior_rate, probabilities) result(out)
-      ! Sample a Bayesian AR posterior using centralized Gaussian and gamma generation.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: order, retained_draws, warmup
-      real(dp), intent(in), optional :: prior_variance, prior_shape, prior_rate, probabilities(:)
+      !! Sample a Bayesian AR posterior using centralized Gaussian and gamma generation.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
+      integer, intent(in) :: retained_draws !! Retained simulation draws.
+      integer, intent(in) :: warmup !! Warmup.
+      real(dp), intent(in), optional :: prior_variance !! Prior variance.
+      real(dp), intent(in), optional :: prior_shape !! Prior shape.
+      real(dp), intent(in), optional :: prior_rate !! Prior rate.
+      real(dp), intent(in), optional :: probabilities(:) !! Probability values.
       type(astsa_ar_mcmc_t) :: out
       real(dp), allocatable :: normal_draws(:, :), gamma_draws(:)
       real(dp) :: shape
@@ -1456,10 +1493,12 @@ contains
    end function ar_mcmc
 
    pure function spectrum_ic(series, order_max, use_bic, detrend, frequency_count) result(out)
-      ! Select a Yule-Walker AR spectrum using relative AIC or BIC.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in), optional :: order_max, frequency_count
-      logical, intent(in), optional :: use_bic, detrend
+      !! Select a Yule-Walker AR spectrum using relative AIC or BIC.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in), optional :: order_max !! Order max.
+      integer, intent(in), optional :: frequency_count !! Number of frequency.
+      logical, intent(in), optional :: use_bic !! Whether to use the bic.
+      logical, intent(in), optional :: detrend !! Flag controlling detrend.
       type(astsa_spectrum_ic_t) :: out
       type(yule_walker_result_t) :: fit, selected_fit
       type(astsa_spectrum_t) :: selected_spectrum
@@ -1533,9 +1572,9 @@ contains
    end function spectrum_ic
 
    pure function test_linearity(series, detrend) result(out)
-      ! Compute astsa test.linear's normalized block bispectrum and p-values.
-      real(dp), intent(in) :: series(:)
-      logical, intent(in), optional :: detrend
+      !! Compute astsa test.linear's normalized block bispectrum and p-values.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      logical, intent(in), optional :: detrend !! Flag controlling detrend.
       type(astsa_linearity_test_t) :: out
       real(dp), allocatable :: work(:), design(:, :), beta(:), standard_errors(:), residuals(:), power(:)
       complex(dp), allocatable :: transform(:, :)
@@ -1611,8 +1650,9 @@ contains
    end function test_linearity
 
    pure real(dp) function noncentral_chisq2_q(value, noncentrality) result(probability)
-      ! Return a two-degree noncentral chi-squared upper-tail probability.
-      real(dp), intent(in) :: value, noncentrality
+      !! Return a two-degree noncentral chi-squared upper-tail probability.
+      real(dp), intent(in) :: value !! Input value.
+      real(dp), intent(in) :: noncentrality !! Noncentrality.
       real(dp) :: weight, term, half_lambda
       integer :: index
 
@@ -1629,9 +1669,9 @@ contains
    end function noncentral_chisq2_q
 
    pure function difference_series(series, differences) result(value)
-      ! Apply repeated first differences to a univariate series.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: differences
+      !! Apply repeated first differences to a univariate series.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: differences !! Differences.
       real(dp), allocatable :: value(:), work(:)
       integer :: i
 
@@ -1644,12 +1684,19 @@ contains
 
    pure function sarima_likelihood(series, ar, d, ma, sar, seasonal_difference, sma, season, &
       intercept, drift, regressors, regression_coefficients) result(out)
-      ! Evaluate a conditional Gaussian SARIMA likelihood for supplied parameters.
-      real(dp), intent(in) :: series(:)
-      real(dp), intent(in), optional :: ar(:), ma(:), sar(:), sma(:)
-      integer, intent(in), optional :: d, seasonal_difference, season
-      real(dp), intent(in), optional :: intercept, drift
-      real(dp), intent(in), optional :: regressors(:, :), regression_coefficients(:)
+      !! Evaluate a conditional Gaussian SARIMA likelihood for supplied parameters.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in), optional :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in), optional :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in), optional :: sar(:) !! Sar.
+      real(dp), intent(in), optional :: sma(:) !! Sma.
+      integer, intent(in), optional :: d !! Fractional-differencing parameter or differencing order.
+      integer, intent(in), optional :: seasonal_difference !! Seasonal difference.
+      integer, intent(in), optional :: season !! Season.
+      real(dp), intent(in), optional :: intercept !! Model intercept.
+      real(dp), intent(in), optional :: drift !! Drift.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: regression_coefficients(:) !! Regression coefficients.
       type(astsa_sarima_likelihood_t) :: out
       type(astsa_arma_diagnostic_t) :: diagnostic
       real(dp), allocatable :: adjusted(:), ar_base(:), ma_base(:), ar_seasonal(:), ma_seasonal(:)
@@ -1782,13 +1829,19 @@ contains
 
    pure function sarima_exact_likelihood(series, ar, ma, sar, sma, season, intercept, drift, &
       regressors, regression_coefficients, d, seasonal_difference) result(out)
-      ! Evaluate an exact stationary Gaussian SARIMA likelihood by Kalman filtering.
-      real(dp), intent(in) :: series(:)
-      real(dp), intent(in), optional :: ar(:), ma(:), sar(:), sma(:)
-      integer, intent(in), optional :: season
-      real(dp), intent(in), optional :: intercept, drift
-      real(dp), intent(in), optional :: regressors(:, :), regression_coefficients(:)
-      integer, intent(in), optional :: d, seasonal_difference
+      !! Evaluate an exact stationary Gaussian SARIMA likelihood by Kalman filtering.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in), optional :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in), optional :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in), optional :: sar(:) !! Sar.
+      real(dp), intent(in), optional :: sma(:) !! Sma.
+      integer, intent(in), optional :: season !! Season.
+      real(dp), intent(in), optional :: intercept !! Model intercept.
+      real(dp), intent(in), optional :: drift !! Drift.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: regression_coefficients(:) !! Regression coefficients.
+      integer, intent(in), optional :: d !! Fractional-differencing parameter or differencing order.
+      integer, intent(in), optional :: seasonal_difference !! Seasonal difference.
       type(astsa_sarima_likelihood_t) :: out
       type(ssm_model_t) :: model
       type(kfs_filter_t) :: filtered
@@ -1960,15 +2013,24 @@ contains
    pure function sarima_fit(series, p, d, q, seasonal_p, seasonal_difference, seasonal_q, &
       season, initial, include_intercept, max_iterations, tolerance, include_drift, &
       regressors, estimated, transform_parameters, exact_likelihood) result(out)
-      ! Estimate a conditional Gaussian SARIMA model with finite-difference BFGS.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: p, d, q, seasonal_p, seasonal_difference, seasonal_q, season
-      real(dp), intent(in), optional :: initial(:)
-      logical, intent(in), optional :: include_intercept, include_drift, estimated(:), transform_parameters
-      logical, intent(in), optional :: exact_likelihood
-      real(dp), intent(in), optional :: regressors(:, :)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate a conditional Gaussian SARIMA model with finite-difference BFGS.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: p !! Autoregressive order or model dimension.
+      integer, intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      integer, intent(in) :: q !! Model order, dimension, or parameter.
+      integer, intent(in) :: seasonal_p !! Seasonal p.
+      integer, intent(in) :: seasonal_difference !! Seasonal difference.
+      integer, intent(in) :: seasonal_q !! Seasonal q.
+      integer, intent(in) :: season !! Season.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
+      logical, intent(in), optional :: include_drift !! Whether to include the drift.
+      logical, intent(in), optional :: estimated(:) !! Flag controlling estimated.
+      logical, intent(in), optional :: transform_parameters !! Flag controlling transform parameters.
+      logical, intent(in), optional :: exact_likelihood !! Flag controlling exact likelihood.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(astsa_sarima_fit_t) :: out
       type(optimization_result_t) :: optimization
       logical :: use_intercept, use_drift, use_transform, use_exact
@@ -2088,8 +2150,8 @@ contains
    contains
 
       pure function objective(parameters) result(value)
-         ! Return the penalized negative profile log likelihood.
-         real(dp), intent(in) :: parameters(:)
+         !! Return the penalized negative profile log likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: value
          type(astsa_sarima_likelihood_t) :: evaluated
 
@@ -2102,8 +2164,8 @@ contains
       end function objective
 
       pure function expand_parameters(free_parameters) result(parameters)
-         ! Insert estimated parameters into the full parameter vector.
-         real(dp), intent(in) :: free_parameters(:)
+         !! Insert estimated parameters into the full parameter vector.
+         real(dp), intent(in) :: free_parameters(:) !! Free parameters.
          real(dp) :: parameters(count)
 
          parameters = optimizer_parameters
@@ -2111,8 +2173,8 @@ contains
       end function expand_parameters
 
       pure function reported_parameters(parameters) result(reported)
-         ! Map optimizer parameters to reported causal and invertible coefficients.
-         real(dp), intent(in) :: parameters(:)
+         !! Map optimizer parameters to reported causal and invertible coefficients.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: reported(size(parameters))
 
          reported = parameters
@@ -2126,8 +2188,8 @@ contains
       end function reported_parameters
 
       pure function inverse_sarima_transform(parameters) result(unconstrained)
-         ! Map reported causal and invertible coefficients to optimizer coordinates.
-         real(dp), intent(in) :: parameters(:)
+         !! Map reported causal and invertible coefficients to optimizer coordinates.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: unconstrained(size(parameters))
 
          unconstrained = parameters
@@ -2140,8 +2202,8 @@ contains
       end function inverse_sarima_transform
 
       pure function coefficient_jacobian(free_parameters) result(jacobian_value)
-         ! Numerically map optimizer covariance to the reported coefficient scale.
-         real(dp), intent(in) :: free_parameters(:)
+         !! Numerically map optimizer covariance to the reported coefficient scale.
+         real(dp), intent(in) :: free_parameters(:) !! Free parameters.
          real(dp) :: jacobian_value(count, size(free_parameters))
          real(dp) :: plus(size(free_parameters)), minus(size(free_parameters)), step
          integer :: column
@@ -2158,8 +2220,8 @@ contains
       end function coefficient_jacobian
 
       pure function evaluate_parameters(parameters) result(evaluated)
-         ! Unpack an optimizer vector and evaluate its SARIMA likelihood.
-         real(dp), intent(in) :: parameters(:)
+         !! Unpack an optimizer vector and evaluate its SARIMA likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          type(astsa_sarima_likelihood_t) :: evaluated
          real(dp), allocatable :: ar_values(:), ma_values(:), sar_values(:), sma_values(:), beta(:), xreg(:, :)
          real(dp) :: intercept_value, drift_value
@@ -2212,8 +2274,8 @@ contains
    end function sarima_fit
 
    pure function pacf_to_ar(unconstrained) result(coefficients)
-      ! Map unconstrained partial autocorrelations to stationary AR coefficients.
-      real(dp), intent(in) :: unconstrained(:)
+      !! Map unconstrained partial autocorrelations to stationary AR coefficients.
+      real(dp), intent(in) :: unconstrained(:) !! Unconstrained.
       real(dp) :: coefficients(size(unconstrained)), previous(size(unconstrained)), reflection
       integer :: order, j
 
@@ -2229,8 +2291,8 @@ contains
    end function pacf_to_ar
 
    pure function ar_to_unconstrained(coefficients) result(unconstrained)
-      ! Map stationary AR coefficients to unconstrained partial correlations.
-      real(dp), intent(in) :: coefficients(:)
+      !! Map stationary AR coefficients to unconstrained partial correlations.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
       real(dp) :: unconstrained(size(coefficients)), work(size(coefficients)), previous(size(coefficients))
       real(dp) :: reflection, denominator
       integer :: order, j
@@ -2254,12 +2316,13 @@ contains
 
    pure function sarima_forecast(fit, series, horizon, regressors, new_regressors, &
       interval_multiplier) result(out)
-      ! Forecast a fitted SARIMA model and return Gaussian prediction intervals.
-      type(astsa_sarima_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: horizon
-      real(dp), intent(in), optional :: regressors(:, :), new_regressors(:, :)
-      real(dp), intent(in), optional :: interval_multiplier
+      !! Forecast a fitted SARIMA model and return Gaussian prediction intervals.
+      type(astsa_sarima_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: new_regressors(:, :) !! New regressors.
+      real(dp), intent(in), optional :: interval_multiplier !! Interval multiplier.
       type(astsa_sarima_forecast_t) :: out
       real(dp), allocatable :: ar(:), ma(:), sar(:), sma(:), beta(:)
       real(dp), allocatable :: ar_base(:), ma_base(:), ar_seasonal(:), ma_seasonal(:)
@@ -2380,9 +2443,9 @@ contains
    end function sarima_forecast
 
    pure function sarima_diagnostics(fit, max_lag) result(out)
-      ! Compute numerical residual diagnostics for a fitted SARIMA model.
-      type(astsa_sarima_fit_t), intent(in) :: fit
-      integer, intent(in), optional :: max_lag
+      !! Compute numerical residual diagnostics for a fitted SARIMA model.
+      type(astsa_sarima_fit_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in), optional :: max_lag !! Maximum lag to consider.
       type(astsa_sarima_diagnostics_t) :: out
       real(dp), allocatable :: residuals(:), correlations(:)
       real(dp) :: statistic, probability
@@ -2429,7 +2492,7 @@ contains
             out%p_values(i) = max(0.0_dp, min(1.0_dp, probability))
          end if
       end do
-      out%qq_sample = sorted_values(out%standardized_residuals)
+      out%qq_sample = sorted_values_shared(out%standardized_residuals)
       allocate(out%qq_theoretical(n))
       do i = 1, n
          if (n <= 10) then
@@ -2442,11 +2505,13 @@ contains
    end function sarima_diagnostics
 
    pure function lag_reg(input, output, m, span, threshold, inverse) result(out)
-      ! Estimate astsa LagReg's two-sided transfer coefficients and aligned fit.
-      real(dp), intent(in) :: input(:), output(:)
-      integer, intent(in), optional :: m, span
-      real(dp), intent(in), optional :: threshold
-      logical, intent(in), optional :: inverse
+      !! Estimate astsa LagReg's two-sided transfer coefficients and aligned fit.
+      real(dp), intent(in) :: input(:) !! Input.
+      real(dp), intent(in) :: output(:) !! Output.
+      integer, intent(in), optional :: m !! M.
+      integer, intent(in), optional :: span !! Span.
+      real(dp), intent(in), optional :: threshold !! Decision or truncation threshold.
+      logical, intent(in), optional :: inverse !! Flag controlling inverse.
       type(astsa_lag_regression_t) :: out
       type(astsa_spectrum_t) :: spectrum
       real(dp), allocatable :: data(:, :)
@@ -2543,10 +2608,11 @@ contains
    end function lag_reg
 
    pure function signal_extract(series, m, max_frequency, min_frequency) result(out)
-      ! Apply astsa SigExtract's tapered ideal low-frequency band-pass filter.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in), optional :: m
-      real(dp), intent(in), optional :: max_frequency, min_frequency
+      !! Apply astsa SigExtract's tapered ideal low-frequency band-pass filter.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in), optional :: m !! M.
+      real(dp), intent(in), optional :: max_frequency !! Maximum frequency.
+      real(dp), intent(in), optional :: min_frequency !! Minimum frequency.
       type(astsa_signal_extraction_t) :: out
       real(dp) :: upper, lower, angle, desired, taper
       complex(dp) :: response
@@ -2610,11 +2676,14 @@ contains
 
    pure function stochastic_regression(data, full_columns, reduced_columns, response_column, &
       span, m, alpha) result(out)
-      ! Compute astsa stoch.reg's full and reduced spectral regressions.
-      real(dp), intent(in) :: data(:, :)
-      integer, intent(in) :: full_columns(:), reduced_columns(:), response_column
-      integer, intent(in) :: span, m
-      real(dp), intent(in), optional :: alpha
+      !! Compute astsa stoch.reg's full and reduced spectral regressions.
+      real(dp), intent(in) :: data(:, :) !! Data.
+      integer, intent(in) :: full_columns(:) !! Full columns.
+      integer, intent(in) :: reduced_columns(:) !! Reduced columns.
+      integer, intent(in) :: response_column !! Response column.
+      integer, intent(in) :: span !! Span.
+      integer, intent(in) :: m !! M.
+      real(dp), intent(in), optional :: alpha !! Significance, smoothing, or model coefficient.
       type(astsa_stochastic_regression_t) :: out
       type(astsa_spectrum_t) :: spectrum
       complex(dp), allocatable :: xx(:, :), inverse(:, :), xy(:), yx(:), transfer(:, :)
@@ -2711,9 +2780,16 @@ contains
 
    pure function sv_filter(returns, gamma, phi, state_sd, level, component_zero_sd, &
       component_one_mean, component_one_sd, rho) result(out)
-      ! Run astsa SV.mle's two-component Gaussian-mixture volatility filter.
-      real(dp), intent(in) :: returns(:), gamma, phi, state_sd, level
-      real(dp), intent(in) :: component_zero_sd, component_one_mean, component_one_sd, rho
+      !! Run astsa SV.mle's two-component Gaussian-mixture volatility filter.
+      real(dp), intent(in) :: returns(:) !! Returns.
+      real(dp), intent(in) :: gamma !! Model coefficient or scale parameter.
+      real(dp), intent(in) :: phi !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: state_sd !! State standard deviation.
+      real(dp), intent(in) :: level !! Model level or confidence level.
+      real(dp), intent(in) :: component_zero_sd !! Component zero standard deviation.
+      real(dp), intent(in) :: component_one_mean !! Component one mean.
+      real(dp), intent(in) :: component_one_sd !! Component one standard deviation.
+      real(dp), intent(in) :: rho !! Rho.
       type(astsa_sv_filter_t) :: out
       real(dp) :: state_variance, variance_zero, variance_one, phi_squared
       real(dp) :: covariance_zero, covariance_one, innovation_zero, innovation_one
@@ -2769,12 +2845,13 @@ contains
    end function sv_filter
 
    pure function sv_mle(returns, initial, feedback, leverage, max_iterations, tolerance) result(out)
-      ! Estimate astsa's mixture stochastic-volatility model with BFGS.
-      real(dp), intent(in) :: returns(:)
-      real(dp), intent(in), optional :: initial(:)
-      logical, intent(in), optional :: feedback, leverage
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate astsa's mixture stochastic-volatility model with BFGS.
+      real(dp), intent(in) :: returns(:) !! Returns.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      logical, intent(in), optional :: feedback !! Flag controlling feedback.
+      logical, intent(in), optional :: leverage !! Flag controlling leverage.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(astsa_sv_fit_t) :: out
       type(optimization_result_t) :: optimization
       real(dp), allocatable :: optimizer_initial(:), hessian(:, :), inverse(:, :), jacobian(:, :)
@@ -2841,8 +2918,8 @@ contains
    contains
 
       pure function objective(parameters) result(value)
-         ! Return the mixture-filter negative log likelihood.
-         real(dp), intent(in) :: parameters(:)
+         !! Return the mixture-filter negative log likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: value
          type(astsa_sv_filter_t) :: filtered
 
@@ -2855,8 +2932,8 @@ contains
       end function objective
 
       pure function evaluate(parameters) result(filtered)
-         ! Unpack reported parameters into the mixture filter.
-         real(dp), intent(in) :: parameters(:)
+         !! Unpack reported parameters into the mixture filter.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          type(astsa_sv_filter_t) :: filtered
 
          if (out%feedback) then
@@ -2874,8 +2951,8 @@ contains
       end function evaluate
 
       pure function sv_inverse_transform(parameters) result(unconstrained)
-         ! Map reported volatility parameters to optimizer coordinates.
-         real(dp), intent(in) :: parameters(:)
+         !! Map reported volatility parameters to optimizer coordinates.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: unconstrained(size(parameters))
          integer :: phi_index, state_index, zero_index, one_index
 
@@ -2892,8 +2969,8 @@ contains
       end function sv_inverse_transform
 
       pure function sv_reported_parameters(unconstrained) result(parameters)
-         ! Map optimizer coordinates to constrained volatility parameters.
-         real(dp), intent(in) :: unconstrained(:)
+         !! Map optimizer coordinates to constrained volatility parameters.
+         real(dp), intent(in) :: unconstrained(:) !! Unconstrained.
          real(dp) :: parameters(size(unconstrained))
          integer :: phi_index, state_index, zero_index, one_index
 
@@ -2910,8 +2987,8 @@ contains
       end function sv_reported_parameters
 
       pure function sv_parameter_jacobian(parameters) result(jacobian_value)
-         ! Compute the optimizer-to-reported parameter Jacobian numerically.
-         real(dp), intent(in) :: parameters(:)
+         !! Compute the optimizer-to-reported parameter Jacobian numerically.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: jacobian_value(size(parameters), size(parameters))
          real(dp) :: plus(size(parameters)), minus(size(parameters)), step
          integer :: column
@@ -2931,10 +3008,16 @@ contains
    pure function sv_particle_filter_draws(observations, phi, state_variance, observation_scale, &
       conditioned_trajectory, normal_draws, resampling_uniforms, ancestor_uniforms, &
       terminal_uniform) result(out)
-      ! Run a conditional particle filter with ancestor sampling from supplied draws.
-      real(dp), intent(in) :: observations(:), phi, state_variance, observation_scale
-      real(dp), intent(in) :: conditioned_trajectory(:), normal_draws(:, :)
-      real(dp), intent(in) :: resampling_uniforms(:, :), ancestor_uniforms(:), terminal_uniform
+      !! Run a conditional particle filter with ancestor sampling from supplied draws.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: phi !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: state_variance !! State variance.
+      real(dp), intent(in) :: observation_scale !! Observation scale.
+      real(dp), intent(in) :: conditioned_trajectory(:) !! Conditioned trajectory.
+      real(dp), intent(in) :: normal_draws(:, :) !! Independent standard-normal draws.
+      real(dp), intent(in) :: resampling_uniforms(:, :) !! Resampling uniforms.
+      real(dp), intent(in) :: ancestor_uniforms(:) !! Ancestor uniforms.
+      real(dp), intent(in) :: terminal_uniform !! Terminal uniform.
       type(astsa_sv_particle_filter_t) :: out
       real(dp), allocatable :: log_weights(:), ancestor_weights(:), predicted(:)
       real(dp) :: maximum_log, total_weight, cumulative, uniform_value
@@ -3001,10 +3084,13 @@ contains
 
    function sv_particle_filter(observations, phi, state_variance, observation_scale, &
       conditioned_trajectory, particle_count) result(out)
-      ! Run conditional particle filtering with shared-library random draws.
-      real(dp), intent(in) :: observations(:), phi, state_variance, observation_scale
-      real(dp), intent(in) :: conditioned_trajectory(:)
-      integer, intent(in) :: particle_count
+      !! Run conditional particle filtering with shared-library random draws.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: phi !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: state_variance !! State variance.
+      real(dp), intent(in) :: observation_scale !! Observation scale.
+      real(dp), intent(in) :: conditioned_trajectory(:) !! Conditioned trajectory.
+      integer, intent(in) :: particle_count !! Number of particle.
       type(astsa_sv_particle_filter_t) :: out
       real(dp), allocatable :: normal_draws(:, :), resampling_uniforms(:, :), ancestor_uniforms(:)
       real(dp) :: terminal_uniform
@@ -3030,8 +3116,9 @@ contains
    end function sv_particle_filter
 
    pure integer function categorical_index(weights, uniform_value) result(index)
-      ! Select one categorical outcome from normalized weights and a uniform draw.
-      real(dp), intent(in) :: weights(:), uniform_value
+      !! Select one categorical outcome from normalized weights and a uniform draw.
+      real(dp), intent(in) :: weights(:) !! Observation or objective weights.
+      real(dp), intent(in) :: uniform_value !! Uniform value.
       real(dp) :: cumulative
       integer :: i
 
@@ -3048,10 +3135,14 @@ contains
 
    function sv_mcmc(observations, retained_draws, burnin, particle_count, initial, tuning, &
       proposal_covariance) result(out)
-      ! Run particle Gibbs with Metropolis updates for astsa's stochastic-volatility model.
-      real(dp), intent(in) :: observations(:)
-      integer, intent(in) :: retained_draws, burnin, particle_count
-      real(dp), intent(in), optional :: initial(3), tuning, proposal_covariance(2, 2)
+      !! Run particle Gibbs with Metropolis updates for astsa's stochastic-volatility model.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      integer, intent(in) :: retained_draws !! Retained simulation draws.
+      integer, intent(in) :: burnin !! Number of initial simulation draws to discard.
+      integer, intent(in) :: particle_count !! Number of particle.
+      real(dp), intent(in), optional :: initial(3) !! Initial value.
+      real(dp), intent(in), optional :: tuning !! Tuning.
+      real(dp), intent(in), optional :: proposal_covariance(2, 2) !! Proposal covariance.
       type(astsa_sv_mcmc_t) :: out
       type(astsa_sv_particle_filter_t) :: filtered
       real(dp), allocatable :: phi_all(:), state_sd_all(:), scale_all(:), latent_all(:, :)
@@ -3137,8 +3228,9 @@ contains
    end function sv_mcmc
 
    pure real(dp) function sv_parameter_log_density(parameters, latent) result(value)
-      ! Return the latent-state likelihood plus astsa-style correlated Gaussian priors.
-      real(dp), intent(in) :: parameters(2), latent(:)
+      !! Return the latent-state likelihood plus astsa-style correlated Gaussian priors.
+      real(dp), intent(in) :: parameters(2) !! Model parameter values.
+      real(dp), intent(in) :: latent(:) !! Latent.
       real(dp), parameter :: mean_phi = 0.9_dp, mean_sd = 0.5_dp
       real(dp), parameter :: sd_phi = 0.075_dp, sd_sd = 0.3_dp, correlation = -0.25_dp
       real(dp) :: phi, state_sd, prior, transition_sum
@@ -3158,8 +3250,8 @@ contains
    end function sv_parameter_log_density
 
    pure real(dp) function effective_sample_size(draws) result(value)
-      ! Estimate effective sample size by the initial positive autocorrelation sequence.
-      real(dp), intent(in) :: draws(:)
+      !! Estimate effective sample size by the initial positive autocorrelation sequence.
+      real(dp), intent(in) :: draws(:) !! Draws.
       real(dp) :: centered(size(draws)), variance, correlation_sum, correlation
       integer :: lag, n
 
@@ -3185,11 +3277,16 @@ contains
 
    pure function ssm_fit(observations, measurement, phi, alpha, state_sd, observation_sd, &
       fix_phi, max_iterations, tolerance) result(out)
-      ! Estimate astsa's scalar linear Gaussian state-space model.
-      real(dp), intent(in) :: observations(:), measurement, phi, alpha, state_sd, observation_sd
-      logical, intent(in), optional :: fix_phi
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate astsa's scalar linear Gaussian state-space model.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: measurement !! Measurement.
+      real(dp), intent(in) :: phi !! Autoregressive or model coefficient.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in) :: state_sd !! State standard deviation.
+      real(dp), intent(in) :: observation_sd !! Observation standard deviation.
+      logical, intent(in), optional :: fix_phi !! Flag controlling fix phi.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(astsa_ssm_result_t) :: out
       type(optimization_result_t) :: optimization
       real(dp), allocatable :: initial(:), hessian(:, :), inverse(:, :), jacobian(:, :)
@@ -3238,8 +3335,8 @@ contains
    contains
 
       pure function objective(parameters) result(value)
-         ! Return the scalar state-space negative log likelihood.
-         real(dp), intent(in) :: parameters(:)
+         !! Return the scalar state-space negative log likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: value
          type(astsa_ssm_result_t) :: evaluated
 
@@ -3252,8 +3349,8 @@ contains
       end function objective
 
       pure function reported_parameters(parameters) result(reported)
-         ! Map optimizer coordinates to state-space parameters.
-         real(dp), intent(in) :: parameters(:)
+         !! Map optimizer coordinates to state-space parameters.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: reported(size(parameters))
 
          reported = parameters
@@ -3266,8 +3363,8 @@ contains
       end function reported_parameters
 
       pure function evaluate(parameters) result(evaluated)
-         ! Filter and smooth the scalar model for reported parameters.
-         real(dp), intent(in) :: parameters(:)
+         !! Filter and smooth the scalar model for reported parameters.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          type(astsa_ssm_result_t) :: evaluated
          real(dp) :: transition, state_intercept, process_sd, noise_sd
          real(dp) :: initial_mean, initial_variance, innovation, innovation_variance, gain, smoother_gain
@@ -3323,8 +3420,8 @@ contains
       end function evaluate
 
       pure function parameter_jacobian(parameters) result(jacobian_value)
-         ! Compute the optimizer-to-reported state-space Jacobian.
-         real(dp), intent(in) :: parameters(:)
+         !! Compute the optimizer-to-reported state-space Jacobian.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: jacobian_value(size(parameters), size(parameters))
          real(dp) :: plus(size(parameters)), minus(size(parameters)), step
          integer :: column
@@ -3341,18 +3438,18 @@ contains
    end function ssm_fit
 
    pure logical function present_and_true(value) result(answer)
-      ! Return true only when an optional logical is present and true.
-      logical, intent(in), optional :: value
+      !! Return true only when an optional logical is present and true.
+      logical, intent(in), optional :: value !! Input value.
 
       answer = .false.
       if (present(value)) answer = value
    end function present_and_true
 
    pure subroutine invert_complex_matrix(matrix, inverse, info)
-      ! Invert a small complex matrix by pivoted Gauss-Jordan elimination.
-      complex(dp), intent(in) :: matrix(:, :)
-      complex(dp), allocatable, intent(out) :: inverse(:, :)
-      integer, intent(out) :: info
+      !! Invert a small complex matrix by pivoted Gauss-Jordan elimination.
+      complex(dp), intent(in) :: matrix(:, :) !! Input matrix.
+      complex(dp), allocatable, intent(out) :: inverse(:, :) !! Inverse.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       complex(dp), allocatable :: work(:, :), row(:)
       integer :: n, i, j, pivot
 
@@ -3383,75 +3480,11 @@ contains
       inverse = work(:, n + 1:)
    end subroutine invert_complex_matrix
 
-   pure function sorted_values(values) result(sorted)
-      ! Return values sorted in ascending order.
-      real(dp), intent(in) :: values(:)
-      real(dp), allocatable :: sorted(:)
-      real(dp) :: temporary
-      integer :: i, j
-
-      sorted = values
-      do i = 2, size(sorted)
-         temporary = sorted(i)
-         j = i - 1
-         do while (j >= 1)
-            if (sorted(j) <= temporary) exit
-            sorted(j + 1) = sorted(j)
-            j = j - 1
-         end do
-         sorted(j + 1) = temporary
-      end do
-   end function sorted_values
-
-   pure real(dp) function regularized_gamma_q(shape, value) result(probability)
-      ! Return the upper regularized incomplete gamma function.
-      real(dp), intent(in) :: shape, value
-      real(dp) :: term, sum_value, b, c, d, delta, log_factor
-      integer :: i
-
-      if (shape <= 0.0_dp .or. value < 0.0_dp) then
-         probability = 0.0_dp
-         return
-      end if
-      if (value == 0.0_dp) then
-         probability = 1.0_dp
-         return
-      end if
-      log_factor = shape*log(value) - value - log_gamma(shape)
-      if (value < shape + 1.0_dp) then
-         term = 1.0_dp/shape
-         sum_value = term
-         do i = 1, 10000
-            term = term*value/(shape + real(i, dp))
-            sum_value = sum_value + term
-            if (abs(term) <= epsilon(1.0_dp)*abs(sum_value)) exit
-         end do
-         probability = 1.0_dp - exp(log_factor)*sum_value
-      else
-         b = value + 1.0_dp - shape
-         c = 1.0_dp/tiny(1.0_dp)
-         d = 1.0_dp/b
-         probability = d
-         do i = 1, 10000
-            term = -real(i, dp)*(real(i, dp) - shape)
-            b = b + 2.0_dp
-            d = term*d + b
-            if (abs(d) < tiny(1.0_dp)) d = tiny(1.0_dp)
-            c = b + term/c
-            if (abs(c) < tiny(1.0_dp)) c = tiny(1.0_dp)
-            d = 1.0_dp/d
-            delta = d*c
-            probability = probability*delta
-            if (abs(delta - 1.0_dp) <= epsilon(1.0_dp)) exit
-         end do
-         probability = exp(log_factor)*probability
-      end if
-   end function regularized_gamma_q
-
    pure real(dp) function f_distribution_quantile(probability, numerator_df, denominator_df) result(value)
-      ! Return an F-distribution quantile by bisection of its beta-form CDF.
-      real(dp), intent(in) :: probability
-      integer, intent(in) :: numerator_df, denominator_df
+      !! Return an F-distribution quantile by bisection of its beta-form CDF.
+      real(dp), intent(in) :: probability !! Probability value.
+      integer, intent(in) :: numerator_df !! Numerator degrees of freedom.
+      integer, intent(in) :: denominator_df !! Denominator degrees of freedom.
       real(dp) :: lower, upper, middle, cdf
       integer :: iteration
 
@@ -3480,8 +3513,10 @@ contains
    end function f_distribution_quantile
 
    pure real(dp) function regularized_beta(value, first_shape, second_shape) result(probability)
-      ! Return the regularized incomplete beta function.
-      real(dp), intent(in) :: value, first_shape, second_shape
+      !! Return the regularized incomplete beta function.
+      real(dp), intent(in) :: value !! Input value.
+      real(dp), intent(in) :: first_shape !! First shape.
+      real(dp), intent(in) :: second_shape !! Second shape.
       real(dp) :: factor
 
       if (value <= 0.0_dp) then
@@ -3503,8 +3538,10 @@ contains
    end function regularized_beta
 
    pure real(dp) function beta_continued_fraction(value, first_shape, second_shape) result(fraction)
-      ! Evaluate the incomplete-beta continued fraction.
-      real(dp), intent(in) :: value, first_shape, second_shape
+      !! Evaluate the incomplete-beta continued fraction.
+      real(dp), intent(in) :: value !! Input value.
+      real(dp), intent(in) :: first_shape !! First shape.
+      real(dp), intent(in) :: second_shape !! Second shape.
       real(dp) :: qab, qap, qam, c, d, h, aa, delta
       integer :: iteration, twice
 
@@ -3541,10 +3578,14 @@ contains
    end function beta_continued_fraction
 
    pure subroutine build_sarima_polynomials(ar, ma, sar, sma, season, ar_polynomial, ma_polynomial)
-      ! Combine ordinary and seasonal AR and MA polynomials.
-      real(dp), intent(in) :: ar(:), ma(:), sar(:), sma(:)
-      integer, intent(in) :: season
-      real(dp), allocatable, intent(out) :: ar_polynomial(:), ma_polynomial(:)
+      !! Combine ordinary and seasonal AR and MA polynomials.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: sar(:) !! Sar.
+      real(dp), intent(in) :: sma(:) !! Sma.
+      integer, intent(in) :: season !! Season.
+      real(dp), allocatable, intent(out) :: ar_polynomial(:) !! Autoregressive polynomial coefficients.
+      real(dp), allocatable, intent(out) :: ma_polynomial(:) !! Moving-average polynomial coefficients.
       real(dp), allocatable :: base(:), seasonal(:)
       integer :: i
 
@@ -3572,10 +3613,16 @@ contains
    end subroutine build_sarima_polynomials
 
    function sarima_sim(ar, d, ma, sar, seasonal_difference, sma, season, n, burnin) result(out)
-      ! Simulate a SARIMA series using standard-normal innovations.
-      real(dp), intent(in), optional :: ar(:), ma(:), sar(:), sma(:)
-      integer, intent(in), optional :: d, seasonal_difference, season, burnin
-      integer, intent(in) :: n
+      !! Simulate a SARIMA series using standard-normal innovations.
+      real(dp), intent(in), optional :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in), optional :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in), optional :: sar(:) !! Sar.
+      real(dp), intent(in), optional :: sma(:) !! Sma.
+      integer, intent(in), optional :: d !! Fractional-differencing parameter or differencing order.
+      integer, intent(in), optional :: seasonal_difference !! Seasonal difference.
+      integer, intent(in), optional :: season !! Season.
+      integer, intent(in), optional :: burnin !! Number of initial simulation draws to discard.
+      integer, intent(in) :: n !! Number of observations or elements.
       type(astsa_simulation_t) :: out
       real(dp), allocatable :: draws(:, :)
       integer :: total, warmup
@@ -3594,11 +3641,17 @@ contains
 
    pure function sarima_sim_from_innovations(ar, d, ma, sar, seasonal_difference, sma, season, &
       n, burnin, innovations) result(out)
-      ! Simulate a SARIMA series from caller-supplied innovations.
-      real(dp), intent(in), optional :: ar(:), ma(:), sar(:), sma(:)
-      integer, intent(in), optional :: d, seasonal_difference, season, burnin
-      integer, intent(in) :: n
-      real(dp), intent(in) :: innovations(:)
+      !! Simulate a SARIMA series from caller-supplied innovations.
+      real(dp), intent(in), optional :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in), optional :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in), optional :: sar(:) !! Sar.
+      real(dp), intent(in), optional :: sma(:) !! Sma.
+      integer, intent(in), optional :: d !! Fractional-differencing parameter or differencing order.
+      integer, intent(in), optional :: seasonal_difference !! Seasonal difference.
+      integer, intent(in), optional :: season !! Season.
+      integer, intent(in), optional :: burnin !! Number of initial simulation draws to discard.
+      integer, intent(in) :: n !! Number of observations or elements.
+      real(dp), intent(in) :: innovations(:) !! Model innovations.
       type(astsa_simulation_t) :: out
       real(dp), allocatable :: ar_base(:), ma_base(:), ar_seasonal(:), ma_seasonal(:)
       real(dp), allocatable :: ar_polynomial(:), ma_polynomial(:), ar_coefficient(:), ma_coefficient(:), work(:)
@@ -3709,9 +3762,14 @@ contains
    end function sarima_sim_from_innovations
 
    pure integer function sarima_default_burnin(ar, d, ma, sar, seasonal_difference, sma, season) result(value)
-      ! Return astsa's default SARIMA simulation burn-in length.
-      real(dp), intent(in), optional :: ar(:), ma(:), sar(:), sma(:)
-      integer, intent(in), optional :: d, seasonal_difference, season
+      !! Return astsa's default SARIMA simulation burn-in length.
+      real(dp), intent(in), optional :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in), optional :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in), optional :: sar(:) !! Sar.
+      real(dp), intent(in), optional :: sma(:) !! Sma.
+      integer, intent(in), optional :: d !! Fractional-differencing parameter or differencing order.
+      integer, intent(in), optional :: seasonal_difference !! Seasonal difference.
+      integer, intent(in), optional :: season !! Season.
       integer :: ordinary_d, seasonal_d, period, p, q, ps, qs
 
       ordinary_d = 0
@@ -3733,8 +3791,8 @@ contains
    end function sarima_default_burnin
 
    pure function polynomial_root_check(coefficients) result(out)
-      ! Test whether every polynomial root lies outside the unit circle.
-      real(dp), intent(in) :: coefficients(:)
+      !! Test whether every polynomial root lies outside the unit circle.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
       type(astsa_root_check_t) :: out
       type(astsa_polynomial_roots_t) :: roots
 
@@ -3746,8 +3804,8 @@ contains
    end function polynomial_root_check
 
    pure function polynomial_roots(coefficients) result(out)
-      ! Compute complex roots of a real polynomial in ascending coefficient order.
-      real(dp), intent(in) :: coefficients(:)
+      !! Compute complex roots of a real polynomial in ascending coefficient order.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
       type(astsa_polynomial_roots_t) :: out
       complex(dp), allocatable :: previous(:)
       complex(dp) :: numerator, denominator
@@ -3789,9 +3847,10 @@ contains
    end function polynomial_roots
 
    pure logical function inverse_roots_overlap(first, second, tolerance) result(overlap)
-      ! Test whether two root sets have inverse roots within a tolerance.
-      complex(dp), intent(in) :: first(:), second(:)
-      real(dp), intent(in) :: tolerance
+      !! Test whether two root sets have inverse roots within a tolerance.
+      complex(dp), intent(in) :: first(:) !! First operand.
+      complex(dp), intent(in) :: second(:) !! Second operand.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
       integer :: i, j
 
       overlap = .false.
@@ -3806,11 +3865,12 @@ contains
    end function inverse_roots_overlap
 
    pure subroutine local_inverse_logdet(a, inverse, logdet, info)
-      ! Call the shared inverse/log-determinant routine with library tolerance.
-      use time_series_linalg_mod, only: inverse_logdet
-      real(dp), intent(in) :: a(:, :)
-      real(dp), intent(out) :: inverse(:, :), logdet
-      integer, intent(out) :: info
+      !! Call the shared inverse/log-determinant routine with library tolerance.
+      use linalg_mod, only: inverse_logdet
+      real(dp), intent(in) :: a(:, :) !! A.
+      real(dp), intent(out) :: inverse(:, :) !! Inverse.
+      real(dp), intent(out) :: logdet !! Logdet.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       call inverse_logdet(a, inverse, logdet, info, 100.0_dp*epsilon(1.0_dp))
    end subroutine local_inverse_logdet
 end module astsa_mod

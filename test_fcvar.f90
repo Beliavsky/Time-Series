@@ -3,7 +3,7 @@
 program test_fcvar
    use kind_mod, only: dp
    use fcvar_mod
-   use time_series_random_mod, only: set_random_seed
+   use random_mod, only: set_random_seed
    use time_series_diagnostics_mod, only: multivariate_white_noise_test_t, &
       multivariate_white_noise_test
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
@@ -603,9 +603,9 @@ program test_fcvar
 contains
 
    subroutine check(condition, message)
-      ! Stop the test program when a condition fails.
-      logical, intent(in) :: condition
-      character(len=*), intent(in) :: message
+      !! Stop the test program when a condition fails.
+      logical, intent(in) :: condition !! Flag controlling condition.
+      character(len=*), intent(in) :: message !! Message.
 
       if (.not. condition) then
          print '(a)', 'FAILED: '//trim(message)

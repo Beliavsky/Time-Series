@@ -781,9 +781,9 @@ program test_tsissm
 contains
 
    subroutine check(ok, name)
-      ! Stop the test program when a named assertion fails.
-      logical, intent(in) :: ok
-      character(len=*), intent(in) :: name
+      !! Stop the test program when a named assertion fails.
+      logical, intent(in) :: ok !! Flag controlling ok.
+      character(len=*), intent(in) :: name !! Name.
 
       if (.not. ok) then
          print '(a)', 'FAILED: '//name

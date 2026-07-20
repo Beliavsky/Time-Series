@@ -3,11 +3,13 @@
 ! Multivariate autoregressive analysis translated from the CRAN mAr package.
 module mar_mod
    use kind_mod, only: dp
-   use time_series_linalg_mod, only: cholesky_lower, identity_matrix, &
-      invert_matrix, symmetric_eigen, general_eigenvalues
-   use time_series_random_mod, only: random_standard_normal_matrix
+   use linalg_mod, only: cholesky_lower, identity_matrix, &
+      invert_matrix, symmetric_eigen, general_eigenvalues, solve_upper_matrix, &
+      solve_complex_system
+   use random_mod, only: random_standard_normal_matrix
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite, ieee_value
    use, intrinsic :: ieee_arithmetic, only: ieee_positive_inf
+   use, intrinsic :: iso_fortran_env, only: output_unit
    implicit none
    private
 
@@ -40,20 +42,90 @@ module mar_mod
    end type mar_pca_fit_t
 
    type, public :: mar_simulation_t
-      ! Simulated VAR observations and the innovations used after burn-in.
+      ! Simulated VAR observations, innovations, and generating specification.
       real(dp), allocatable :: series(:, :), innovations(:, :)
+      real(dp), allocatable :: intercept(:), ar(:, :, :)
+      real(dp), allocatable :: innovation_covariance(:, :)
+      integer :: burnin = 0
+      logical :: random_innovations = .false.
       integer :: info = 0
    end type mar_simulation_t
 
+   interface display
+      module procedure display_mar_simulation
+   end interface display
+
+   public :: display, display_mar_simulation
    public :: mar_estimate, mar_eigenmodes, mar_pca
    public :: mar_simulate_from_innovations, mar_simulate
 
 contains
 
+   subroutine display_mar_simulation(simulation, unit, print_obs)
+      !! Display a VAR simulation specification and optionally its observations.
+      type(mar_simulation_t), intent(in) :: simulation !! VAR simulation to display.
+      integer, intent(in), optional :: unit !! Output unit; defaults to standard output.
+      logical, intent(in), optional :: print_obs !! Whether to print simulated observations.
+      integer :: destination, lag, row
+      logical :: show_observations
+
+      destination = output_unit
+      if (present(unit)) destination = unit
+      show_observations = .false.
+      if (present(print_obs)) show_observations = print_obs
+
+      write(destination, '(a)') 'VAR simulation'
+      write(destination, '(a, i0)') 'Status: ', simulation%info
+      if (simulation%info /= 0) return
+      if (.not. allocated(simulation%series) .or. &
+         .not. allocated(simulation%intercept) .or. &
+         .not. allocated(simulation%ar)) then
+         write(destination, '(a)') 'Simulation specification is not allocated.'
+         return
+      end if
+
+      write(destination, '(a, i0)') 'Variables: ', size(simulation%series, 2)
+      write(destination, '(a, i0)') 'Observations: ', size(simulation%series, 1)
+      write(destination, '(a, i0)') 'Lag order: ', size(simulation%ar, 3)
+      write(destination, '(a, i0)') 'Burn-in observations: ', simulation%burnin
+      if (simulation%random_innovations) then
+         write(destination, '(a)') 'Innovation source: Gaussian random generator'
+      else
+         write(destination, '(a)') 'Innovation source: supplied innovations'
+      end if
+
+      write(destination, '(a)') 'Intercept:'
+      write(destination, '(*(es14.6, 1x))') simulation%intercept
+      do lag = 1, size(simulation%ar, 3)
+         write(destination, '(a, i0, a)') 'AR(', lag, ') coefficients:'
+         do row = 1, size(simulation%ar, 1)
+            write(destination, '(*(es14.6, 1x))') simulation%ar(row, :, lag)
+         end do
+      end do
+
+      if (allocated(simulation%innovation_covariance)) then
+         write(destination, '(a)') 'Innovation covariance:'
+         do row = 1, size(simulation%innovation_covariance, 1)
+            write(destination, '(*(es14.6, 1x))') &
+               simulation%innovation_covariance(row, :)
+         end do
+      else
+         write(destination, '(a)') 'Innovation covariance: not supplied'
+      end if
+
+      if (show_observations) then
+         write(destination, '(a)') 'Simulated observations:'
+         do row = 1, size(simulation%series, 1)
+            write(destination, '(i8, 1x, *(es14.6, 1x))') row, &
+               simulation%series(row, :)
+         end do
+      end if
+   end subroutine display_mar_simulation
+
    pure function mar_estimate(x, order) result(out)
-      ! Estimate a VAR by mAr's augmented, column-scaled QR algorithm.
-      real(dp), intent(in) :: x(:, :)
-      integer, intent(in) :: order
+      !! Estimate a VAR by mAr's augmented, column-scaled QR algorithm.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      integer, intent(in) :: order !! Model or polynomial order.
       type(mar_fit_t) :: out
       real(dp), allocatable :: augmented(:, :), design_response(:, :)
       real(dp), allocatable :: q_factor(:, :), r_factor(:, :), scale(:)
@@ -139,8 +211,8 @@ contains
    end function mar_estimate
 
    pure function mar_eigenmodes(coefficients) result(out)
-      ! Compute phase-normalized companion eigenmodes and decay diagnostics.
-      real(dp), intent(in) :: coefficients(:, :)
+      !! Compute phase-normalized companion eigenmodes and decay diagnostics.
+      real(dp), intent(in) :: coefficients(:, :) !! Model coefficients.
       type(mar_modes_t) :: out
       real(dp), allocatable :: companion(:, :), real_part(:), imaginary_part(:)
       complex(dp), allocatable :: vector(:)
@@ -226,9 +298,10 @@ contains
    end function mar_eigenmodes
 
    pure function mar_pca(x, order, components) result(out)
-      ! Fit the stabilized mAr model in a standardized PCA subspace.
-      real(dp), intent(in) :: x(:, :)
-      integer, intent(in) :: order, components
+      !! Fit the stabilized mAr model in a standardized PCA subspace.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      integer, intent(in) :: order !! Model or polynomial order.
+      integer, intent(in) :: components !! Model components.
       type(mar_pca_fit_t) :: out
       real(dp), allocatable :: centered(:, :), standardized(:, :)
       real(dp), allocatable :: covariance(:, :), values(:), vectors(:, :)
@@ -290,9 +363,11 @@ contains
 
    pure function mar_simulate_from_innovations(intercept, ar, innovations, &
       burnin) result(out)
-      ! Simulate a VAR from supplied innovations after a fixed burn-in.
-      real(dp), intent(in) :: intercept(:), ar(:, :, :), innovations(:, :)
-      integer, intent(in) :: burnin
+      !! Simulate a VAR from supplied innovations after a fixed burn-in.
+      real(dp), intent(in) :: intercept(:) !! Model intercept.
+      real(dp), intent(in) :: ar(:, :, :) !! Autoregressive coefficients.
+      real(dp), intent(in) :: innovations(:, :) !! Model innovations.
+      integer, intent(in) :: burnin !! Number of initial simulation draws to discard.
       type(mar_simulation_t) :: out
       real(dp), allocatable :: work(:, :), mean_state(:), inverse(:, :)
       real(dp), allocatable :: equilibrium_matrix(:, :)
@@ -332,14 +407,20 @@ contains
       allocate(out%innovations(observations, dimension))
       out%series = work(order + burnin + 1:order + total, :)
       out%innovations = innovations(burnin + 1:total, :)
+      out%intercept = intercept
+      out%ar = ar
+      out%burnin = burnin
+      out%random_innovations = .false.
    end function mar_simulate_from_innovations
 
    function mar_simulate(intercept, ar, covariance, observations, burnin) &
       result(out)
-      ! Simulate a Gaussian VAR using the shared random stream.
-      real(dp), intent(in) :: intercept(:), ar(:, :, :), covariance(:, :)
-      integer, intent(in) :: observations
-      integer, intent(in), optional :: burnin
+      !! Simulate a Gaussian VAR using the shared random stream.
+      real(dp), intent(in) :: intercept(:) !! Model intercept.
+      real(dp), intent(in) :: ar(:, :, :) !! Autoregressive coefficients.
+      real(dp), intent(in) :: covariance(:, :) !! Covariance matrix.
+      integer, intent(in) :: observations !! Observed time-series values.
+      integer, intent(in), optional :: burnin !! Number of initial simulation draws to discard.
       type(mar_simulation_t) :: out
       real(dp), allocatable :: lower(:, :), standard(:, :), innovations(:, :)
       integer :: dimension, discard, status
@@ -362,13 +443,18 @@ contains
       call random_standard_normal_matrix(standard)
       innovations = transpose(matmul(lower, standard))
       out = mar_simulate_from_innovations(intercept, ar, innovations, discard)
+      if (out%info == 0) then
+         out%innovation_covariance = covariance
+         out%random_innovations = .true.
+      end if
    end function mar_simulate
 
    pure subroutine thin_qr(a, q, r, info)
-      ! Compute a reorthogonalized thin QR factorization.
-      real(dp), intent(in) :: a(:, :)
-      real(dp), allocatable, intent(out) :: q(:, :), r(:, :)
-      integer, intent(out) :: info
+      !! Compute a reorthogonalized thin QR factorization.
+      real(dp), intent(in) :: a(:, :) !! A.
+      real(dp), allocatable, intent(out) :: q(:, :) !! Model order, dimension, or parameter.
+      real(dp), allocatable, intent(out) :: r(:, :) !! R.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: vector(:)
       real(dp) :: correction, norm_value
       integer :: rows, columns, column, previous
@@ -400,34 +486,12 @@ contains
       end do
    end subroutine thin_qr
 
-   pure subroutine solve_upper_matrix(upper, right, solution, info)
-      ! Solve an upper-triangular system with multiple right-hand sides.
-      real(dp), intent(in) :: upper(:, :), right(:, :)
-      real(dp), allocatable, intent(out) :: solution(:, :)
-      integer, intent(out) :: info
-      integer :: n, row
-
-      n = size(upper, 1)
-      allocate(solution(n, size(right, 2)))
-      solution = right
-      info = 0
-      do row = n, 1, -1
-         if (abs(upper(row, row)) <= tiny(1.0_dp)) then
-            info = row
-            return
-         end if
-         if (row < n) solution(row, :) = solution(row, :) - &
-            matmul(upper(row, row + 1:n), solution(row + 1:n, :))
-         solution(row, :) = solution(row, :)/upper(row, row)
-      end do
-   end subroutine solve_upper_matrix
-
    pure subroutine inverse_eigenvector(a, eigenvalue, vector, info)
-      ! Recover one right eigenvector by regularized inverse iteration.
-      real(dp), intent(in) :: a(:, :)
-      complex(dp), intent(in) :: eigenvalue
-      complex(dp), intent(out) :: vector(:)
-      integer, intent(out) :: info
+      !! Recover one right eigenvector by regularized inverse iteration.
+      real(dp), intent(in) :: a(:, :) !! A.
+      complex(dp), intent(in) :: eigenvalue !! Eigenvalue.
+      complex(dp), intent(out) :: vector(:) !! Vector.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       complex(dp), allocatable :: matrix(:, :), next(:)
       complex(dp) :: shifted_value
       real(dp) :: norm_value, delta
@@ -462,49 +526,10 @@ contains
       info = 0
    end subroutine inverse_eigenvector
 
-   pure subroutine solve_complex_system(a, b, x, info)
-      ! Solve a dense complex system by partial-pivot elimination.
-      complex(dp), intent(in) :: a(:, :), b(:)
-      complex(dp), intent(out) :: x(:)
-      integer, intent(out) :: info
-      complex(dp), allocatable :: work(:, :), row(:)
-      complex(dp) :: factor
-      integer :: n, column, pivot, target
-
-      n = size(b)
-      allocate(work(n, n + 1), row(n + 1))
-      work(:, :n) = a
-      work(:, n + 1) = b
-      info = 0
-      do column = 1, n
-         pivot = column - 1 + maxloc(abs(work(column:, column)), dim=1)
-         if (abs(work(pivot, column)) <= tiny(1.0_dp)) then
-            info = column
-            return
-         end if
-         if (pivot /= column) then
-            row = work(column, :)
-            work(column, :) = work(pivot, :)
-            work(pivot, :) = row
-         end if
-         do target = column + 1, n
-            factor = work(target, column)/work(column, column)
-            work(target, column:n + 1) = work(target, column:n + 1) - &
-               factor*work(column, column:n + 1)
-         end do
-      end do
-      x = cmplx(0.0_dp, 0.0_dp, dp)
-      do column = n, 1, -1
-         x(column) = work(column, n + 1)
-         if (column < n) x(column) = x(column) - &
-            sum(work(column, column + 1:n)*x(column + 1:n))
-         x(column) = x(column)/work(column, column)
-      end do
-   end subroutine solve_complex_system
-
    pure subroutine sort_mode_diagnostics(periods, damping_times)
-      ! Sort period/damping rows by decreasing damping time.
-      real(dp), intent(inout) :: periods(:), damping_times(:)
+      !! Sort period/damping rows by decreasing damping time.
+      real(dp), intent(inout) :: periods(:) !! Periods, updated in place.
+      real(dp), intent(inout) :: damping_times(:) !! Damping times, updated in place.
       real(dp) :: period_value, damping_value
       integer :: index, position
 

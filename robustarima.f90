@@ -7,8 +7,9 @@ module robustarima_mod
       tfarima_polynomial_multiply, tfarima_polynomial_power, &
       tfarima_polynomial_ratio, tfarima_difference, &
       tfarima_outlier_response
-   use time_series_linalg_mod, only: invert_matrix
-   use time_series_optimization_mod, only: optimization_result_t, &
+   use linalg_mod, only: invert_matrix
+   use stats_mod, only: median
+   use optimization_mod, only: optimization_result_t, &
       bfgs_minimize_fd, finite_difference_hessian
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
    implicit none
@@ -103,8 +104,8 @@ module robustarima_mod
 contains
 
    pure elemental real(dp) function robustarima_rho(value) result(rho)
-      ! Evaluate robustarima's bounded, redescending rho function.
-      real(dp), intent(in) :: value
+      !! Evaluate robustarima's bounded, redescending rho function.
+      real(dp), intent(in) :: value !! Input value.
       real(dp) :: absolute_value, squared
 
       absolute_value = abs(value)
@@ -120,8 +121,8 @@ contains
    end function robustarima_rho
 
    pure elemental real(dp) function robustarima_psi(value) result(psi)
-      ! Evaluate the derivative of the bounded rho function.
-      real(dp), intent(in) :: value
+      !! Evaluate the derivative of the bounded rho function.
+      real(dp), intent(in) :: value !! Input value.
       real(dp) :: squared
 
       if (abs(value) > 3.0_dp) then
@@ -137,8 +138,8 @@ contains
 
    pure elemental real(dp) function robustarima_psi_derivative(value) &
       result(derivative)
-      ! Evaluate the derivative of robustarima's psi function.
-      real(dp), intent(in) :: value
+      !! Evaluate the derivative of robustarima's psi function.
+      real(dp), intent(in) :: value !! Input value.
       real(dp) :: squared
 
       if (abs(value) > 3.0_dp) then
@@ -153,9 +154,9 @@ contains
    end function robustarima_psi_derivative
 
    pure real(dp) function robustarima_m_scale(residuals, first) result(scale)
-      ! Compute the package's bisquare M-scale initialized by the MAD.
-      real(dp), intent(in) :: residuals(:)
-      integer, intent(in), optional :: first
+      !! Compute the package's bisquare M-scale initialized by the MAD.
+      real(dp), intent(in) :: residuals(:) !! Model residuals.
+      integer, intent(in), optional :: first !! First operand.
       real(dp), allocatable :: absolute_residual(:)
       real(dp) :: mad, old_scale, new_scale, rho_sum
       integer :: start, iteration, observations
@@ -169,7 +170,7 @@ contains
       end if
       absolute_residual = abs(residuals(start:))
       observations = size(absolute_residual)
-      mad = median_value(absolute_residual)/0.6745_dp
+      mad = median(absolute_residual)/0.6745_dp
       mad = max(mad, 1.0e-20_dp)
       old_scale = 1.0_dp
       do iteration = 1, 10000
@@ -188,9 +189,9 @@ contains
    end function robustarima_m_scale
 
    pure real(dp) function robustarima_tau_scale(residuals, first) result(scale)
-      ! Compute the tau-scale associated with the filtered residuals.
-      real(dp), intent(in) :: residuals(:)
-      integer, intent(in), optional :: first
+      !! Compute the tau-scale associated with the filtered residuals.
+      real(dp), intent(in) :: residuals(:) !! Model residuals.
+      integer, intent(in), optional :: first !! First operand.
       real(dp) :: mscale
       integer :: start, observations
 
@@ -212,10 +213,10 @@ contains
 
    pure function robustarima_correlation_series(residuals, scales, first) &
       result(pseudo_observations)
-      ! Form the clipped pseudo-series used for robust ACF and PACF estimates.
-      real(dp), intent(in) :: residuals(:)
-      real(dp), intent(in), optional :: scales(:)
-      integer, intent(in), optional :: first
+      !! Form the clipped pseudo-series used for robust ACF and PACF estimates.
+      real(dp), intent(in) :: residuals(:) !! Model residuals.
+      real(dp), intent(in), optional :: scales(:) !! Scales.
+      integer, intent(in), optional :: first !! First operand.
       real(dp), allocatable :: pseudo_observations(:), standardized(:)
       real(dp) :: scale
       integer :: start
@@ -247,11 +248,14 @@ contains
 
    pure function robustarima_bounded_filter(series, ar, ma, &
       tuning_constant, scale, seasonal_period, seasonal_ma) result(out)
-      ! Filter an ARMA series with bounded propagation of large innovations.
-      real(dp), intent(in) :: series(:), ar(:), ma(:)
-      real(dp), intent(in), optional :: tuning_constant, scale
-      integer, intent(in), optional :: seasonal_period
-      real(dp), intent(in), optional :: seasonal_ma
+      !! Filter an ARMA series with bounded propagation of large innovations.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      real(dp), intent(in), optional :: tuning_constant !! Tuning constant.
+      real(dp), intent(in), optional :: scale !! Scale.
+      integer, intent(in), optional :: seasonal_period !! Seasonal period.
+      real(dp), intent(in), optional :: seasonal_ma !! Seasonal moving-average.
       type(robustarima_filter_t) :: out
       real(dp), allocatable :: combined_ma(:)
       real(dp), allocatable :: transition(:, :), disturbance(:)
@@ -415,15 +419,18 @@ contains
       difference_order, regressors, seasonal_period, &
       seasonal_difference_order, include_seasonal_ma, tuning_constant, &
       max_iterations, tolerance) result(out)
-      ! Fit regression with ARIMA errors by filtered tau minimization.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: ar_order, ma_order
-      integer, intent(in), optional :: difference_order, seasonal_period
-      integer, intent(in), optional :: seasonal_difference_order
-      real(dp), intent(in), optional :: regressors(:, :), tuning_constant
-      logical, intent(in), optional :: include_seasonal_ma
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Fit regression with ARIMA errors by filtered tau minimization.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      integer, intent(in), optional :: difference_order !! Difference order.
+      integer, intent(in), optional :: seasonal_period !! Seasonal period.
+      integer, intent(in), optional :: seasonal_difference_order !! Seasonal difference order.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: tuning_constant !! Tuning constant.
+      logical, intent(in), optional :: include_seasonal_ma !! Whether to include the seasonal moving-average.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(robustarima_fit_t) :: out
       type(optimization_result_t) :: optimized, candidate
       type(robustarima_tau_inference_t) :: inference
@@ -568,20 +575,21 @@ contains
    contains
 
       pure real(dp) function local_objective(trial) result(value)
-         ! Evaluate one bandwidth candidate during optimization.
-         real(dp), intent(in) :: trial(:)
+         !! Evaluate one bandwidth candidate during optimization.
+         real(dp), intent(in) :: trial(:) !! Trial.
          value = objective(trial, tuning_values(tuning_index))
       end function local_objective
 
       pure real(dp) function final_objective(trial) result(value)
-         ! Evaluate the selected-bandwidth objective for inference.
-         real(dp), intent(in) :: trial(:)
+         !! Evaluate the selected-bandwidth objective for inference.
+         real(dp), intent(in) :: trial(:) !! Trial.
          value = objective(trial, out%tuning_constant)
       end function final_objective
 
       pure real(dp) function objective(trial, tuning) result(value)
-         ! Return the filtered tau objective at transformed parameters.
-         real(dp), intent(in) :: trial(:), tuning
+         !! Return the filtered tau objective at transformed parameters.
+         real(dp), intent(in) :: trial(:) !! Trial.
+         real(dp), intent(in) :: tuning !! Tuning.
          real(dp), allocatable :: ar(:), ma(:), beta(:), residual(:), work(:)
          real(dp) :: seasonal_coefficient
          type(robustarima_filter_t) :: filtered
@@ -605,10 +613,10 @@ contains
 
    pure function robustarima_tau_inference(fit, regressors, rho1_constant) &
       result(out)
-      ! Compute robustarima's tau sandwich covariance for regression terms.
-      type(robustarima_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: regressors(:, :)
-      real(dp), intent(in), optional :: rho1_constant
+      !! Compute robustarima's tau sandwich covariance for regression terms.
+      type(robustarima_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: rho1_constant !! Rho1 constant.
       type(robustarima_tau_inference_t) :: out
       real(dp), allocatable :: standardized(:), working(:), information(:, :)
       real(dp), allocatable :: inverse(:, :)
@@ -698,9 +706,9 @@ contains
    end function robustarima_tau_inference
 
    pure function filtered_regression_design(fit, regressors) result(design)
-      ! Filter differenced regressors with the fitted robust gains and weights.
-      type(robustarima_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: regressors(:, :)
+      !! Filter differenced regressors with the fitted robust gains and weights.
+      type(robustarima_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
       real(dp), allocatable :: design(:, :)
       real(dp), allocatable :: combined_ma(:), transition(:, :)
       real(dp), allocatable :: disturbance(:), state(:), predicted_state(:)
@@ -779,15 +787,17 @@ contains
       difference_order, regressors, seasonal_period, &
       seasonal_difference_order, include_seasonal_ma, tuning_constant, &
       max_iterations, tolerance) result(out)
-      ! Select an AR order by the package-style robust Akaike criterion.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: maximum_order
-      integer, intent(in), optional :: difference_order, seasonal_period
-      integer, intent(in), optional :: seasonal_difference_order
-      real(dp), intent(in), optional :: regressors(:, :), tuning_constant
-      logical, intent(in), optional :: include_seasonal_ma
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Select an AR order by the package-style robust Akaike criterion.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: maximum_order !! Maximum order.
+      integer, intent(in), optional :: difference_order !! Difference order.
+      integer, intent(in), optional :: seasonal_period !! Seasonal period.
+      integer, intent(in), optional :: seasonal_difference_order !! Seasonal difference order.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: tuning_constant !! Tuning constant.
+      logical, intent(in), optional :: include_seasonal_ma !! Whether to include the seasonal moving-average.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(robustarima_order_selection_t) :: out
       type(robustarima_fit_t) :: candidate
       integer :: order
@@ -817,12 +827,13 @@ contains
 
    pure function robustarima_forecast(fit, series, horizon, regressors, &
       future_regressors, levels) result(out)
-      ! Forecast from a robust fit using its cleaned innovation history.
-      type(robustarima_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: horizon
-      real(dp), intent(in), optional :: regressors(:, :), future_regressors(:, :)
-      real(dp), intent(in), optional :: levels(:)
+      !! Forecast from a robust fit using its cleaned innovation history.
+      type(robustarima_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in), optional :: future_regressors(:, :) !! Future regressors.
+      real(dp), intent(in), optional :: levels(:) !! Levels.
       type(robustarima_forecast_t) :: out
       type(tfarima_forecast_t) :: base
       real(dp), allocatable :: residual(:), ar_polynomial(:), ma_polynomial(:)
@@ -881,11 +892,11 @@ contains
 
    pure function robustarima_detect_outliers(fit, series, critical_value, &
       include_innovation_outliers) result(out)
-      ! Detect IO, AO, and LS effects from robust filtered innovations.
-      type(robustarima_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: series(:)
-      real(dp), intent(in), optional :: critical_value
-      logical, intent(in), optional :: include_innovation_outliers
+      !! Detect IO, AO, and LS effects from robust filtered innovations.
+      type(robustarima_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in), optional :: critical_value !! Critical value.
+      logical, intent(in), optional :: include_innovation_outliers !! Whether to include the innovation outliers.
       type(robustarima_outliers_t) :: out
       real(dp), allocatable :: aligned(:), aligned_scale(:)
       real(dp), allocatable :: response(:, :), candidate(:)
@@ -1000,8 +1011,10 @@ contains
 
    pure function arima_difference_polynomial(order, seasonal_period, &
       seasonal_order) result(polynomial)
-      ! Construct regular and seasonal differencing operators.
-      integer, intent(in) :: order, seasonal_period, seasonal_order
+      !! Construct regular and seasonal differencing operators.
+      integer, intent(in) :: order !! Model or polynomial order.
+      integer, intent(in) :: seasonal_period !! Seasonal period.
+      integer, intent(in) :: seasonal_order !! Seasonal order.
       real(dp), allocatable :: polynomial(:), seasonal(:)
 
       polynomial = tfarima_polynomial_power([1.0_dp, -1.0_dp], order)
@@ -1015,10 +1028,10 @@ contains
 
    pure function seasonal_ma_coefficients(ma, seasonal_period, seasonal_ma) &
       result(combined)
-      ! Expand regular and single seasonal MA factors without the leading one.
-      real(dp), intent(in) :: ma(:)
-      integer, intent(in), optional :: seasonal_period
-      real(dp), intent(in), optional :: seasonal_ma
+      !! Expand regular and single seasonal MA factors without the leading one.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      integer, intent(in), optional :: seasonal_period !! Seasonal period.
+      real(dp), intent(in), optional :: seasonal_ma !! Seasonal moving-average.
       real(dp), allocatable :: combined(:), regular(:), seasonal(:), product(:)
       integer :: period
 
@@ -1045,9 +1058,10 @@ contains
 
    pure function integrate_filtered_series(original, stationary, &
       difference_polynomial) result(cleaned)
-      ! Reconstruct a cleaned original-scale path from filtered differences.
-      real(dp), intent(in) :: original(:), stationary(:)
-      real(dp), intent(in) :: difference_polynomial(:)
+      !! Reconstruct a cleaned original-scale path from filtered differences.
+      real(dp), intent(in) :: original(:) !! Original.
+      real(dp), intent(in) :: stationary(:) !! Stationary.
+      real(dp), intent(in) :: difference_polynomial(:) !! Difference polynomial coefficients.
       real(dp), allocatable :: cleaned(:)
       real(dp) :: value
       integer :: degree, time, lag
@@ -1069,12 +1083,16 @@ contains
 
    pure subroutine unpack_parameters(parameters, ar_order, ma_order, &
       regression_count, seasonal, ar, ma, seasonal_ma, beta)
-      ! Transform unconstrained coordinates into model coefficients.
-      real(dp), intent(in) :: parameters(:)
-      integer, intent(in) :: ar_order, ma_order, regression_count
-      logical, intent(in) :: seasonal
-      real(dp), allocatable, intent(out) :: ar(:), ma(:), beta(:)
-      real(dp), intent(out) :: seasonal_ma
+      !! Transform unconstrained coordinates into model coefficients.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      integer, intent(in) :: regression_count !! Number of regression.
+      logical, intent(in) :: seasonal !! Flag controlling seasonal.
+      real(dp), allocatable, intent(out) :: ar(:) !! Autoregressive coefficients.
+      real(dp), allocatable, intent(out) :: ma(:) !! Moving-average coefficients.
+      real(dp), allocatable, intent(out) :: beta(:) !! Regression or model coefficients.
+      real(dp), intent(out) :: seasonal_ma !! Seasonal moving-average.
       real(dp), allocatable :: partial(:)
       integer :: first
 
@@ -1098,8 +1116,8 @@ contains
    end subroutine unpack_parameters
 
    pure function partial_to_coefficients(partial) result(coefficients)
-      ! Apply the inverse Durbin transform to partial autocorrelations.
-      real(dp), intent(in) :: partial(:)
+      !! Apply the inverse Durbin transform to partial autocorrelations.
+      real(dp), intent(in) :: partial(:) !! Partial.
       real(dp), allocatable :: coefficients(:), previous(:)
       integer :: order, lag
 
@@ -1119,10 +1137,11 @@ contains
 
    pure subroutine initial_regression_estimate(series, regressors, &
       difference_polynomial, beta)
-      ! Initialize regression coefficients by differenced least squares.
-      real(dp), intent(in) :: series(:), regressors(:, :)
-      real(dp), intent(in) :: difference_polynomial(:)
-      real(dp), intent(out) :: beta(:)
+      !! Initialize regression coefficients by differenced least squares.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: difference_polynomial(:) !! Difference polynomial coefficients.
+      real(dp), intent(out) :: beta(:) !! Regression or model coefficients.
       real(dp), allocatable :: y(:), x(:, :), inverse(:, :)
       integer :: column, status
 
@@ -1139,35 +1158,5 @@ contains
          beta = 0.0_dp
       end if
    end subroutine initial_regression_estimate
-
-   pure real(dp) function median_value(values) result(median)
-      ! Compute a finite-sample median by insertion sorting.
-      real(dp), intent(in) :: values(:)
-      real(dp), allocatable :: sorted(:)
-      real(dp) :: value
-      integer :: i, j, n
-
-      n = size(values)
-      if (n < 1) then
-         median = 0.0_dp
-         return
-      end if
-      sorted = values
-      do i = 2, n
-         value = sorted(i)
-         j = i - 1
-         do while (j >= 1)
-            if (sorted(j) <= value) exit
-            sorted(j + 1) = sorted(j)
-            j = j - 1
-         end do
-         sorted(j + 1) = value
-      end do
-      if (mod(n, 2) == 1) then
-         median = sorted((n + 1)/2)
-      else
-         median = 0.5_dp*(sorted(n/2) + sorted(n/2 + 1))
-      end if
-   end function median_value
 
 end module robustarima_mod

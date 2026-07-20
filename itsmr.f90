@@ -3,13 +3,16 @@
 ! Numerical translations of distinct algorithms from the FreeBSD-licensed ITSMR package.
 module itsmr_mod
    use kind_mod, only: dp
-   use time_series_fourier_mod, only: real_dft, inverse_real_dft
-   use time_series_linalg_mod, only: invert_matrix
-   use time_series_optimization_mod, only: optimization_result_t, bfgs_minimize_fd, &
+   use special_functions_mod, only: regularized_gamma_q
+   use fourier_mod, only: real_dft, inverse_real_dft
+   use polynomial_mod, only: polynomial_product
+   use linalg_mod, only: invert_matrix
+   use optimization_mod, only: optimization_result_t, bfgs_minimize_fd, &
       finite_difference_hessian
    use time_series_stats_mod, only: burg_result_t, burg_fit, harmonic_regression_result_t, &
-      harmonic_regression, ols_fit, yule_walker_result_t, yule_walker_fit
-   use time_series_utils_mod, only: inverse_standard_normal
+      harmonic_regression, yule_walker_result_t, yule_walker_fit
+   use stats_mod, only: ols_fit
+   use utils_mod, only: inverse_standard_normal
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
    implicit none
    private
@@ -128,9 +131,9 @@ module itsmr_mod
 contains
 
    pure function arma_acvf(model, max_lag) result(covariance)
-      ! Return theoretical autocovariances of a causal ARMA model.
-      type(itsmr_arma_model_t), intent(in) :: model
-      integer, intent(in) :: max_lag
+      !! Return theoretical autocovariances of a causal ARMA model.
+      type(itsmr_arma_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: covariance(:)
       real(dp), allocatable :: transition(:, :), loading(:), state_covariance(:, :), next_covariance(:, :), vector(:)
       real(dp) :: convergence
@@ -178,9 +181,9 @@ contains
    end function arma_acvf
 
    pure function innovations_algorithm(covariance, observations) result(out)
-      ! Run the innovations recursion for a stationary covariance sequence.
-      real(dp), intent(in) :: covariance(0:)
-      real(dp), intent(in), optional :: observations(:)
+      !! Run the innovations recursion for a stationary covariance sequence.
+      real(dp), intent(in) :: covariance(0:) !! Covariance matrix.
+      real(dp), intent(in), optional :: observations(:) !! Observed time-series values.
       type(itsmr_innovations_t) :: out
       integer :: levels, n, k, j
       real(dp) :: accumulated
@@ -230,10 +233,10 @@ contains
    end function innovations_algorithm
 
    pure function innovations_ma_fit(series, order, recursion_level) result(model)
-      ! Estimate an MA model using ITSMR's innovations algorithm.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: order
-      integer, intent(in), optional :: recursion_level
+      !! Estimate an MA model using ITSMR's innovations algorithm.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
+      integer, intent(in), optional :: recursion_level !! Recursion level.
       type(itsmr_arma_model_t) :: model
       type(itsmr_innovations_t) :: recursion, fitted
       real(dp), allocatable :: centered(:), sample_covariance(:), model_covariance(:)
@@ -280,9 +283,10 @@ contains
    end function innovations_ma_fit
 
    pure function hannan_rissanen_fit(series, ar_order, ma_order) result(model)
-      ! Estimate an ARMA model by ITSMR's Hannan-Rissanen regression.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: ar_order, ma_order
+      !! Estimate an ARMA model by ITSMR's Hannan-Rissanen regression.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
       type(itsmr_arma_model_t) :: model
       type(yule_walker_result_t) :: preliminary
       real(dp), allocatable :: centered(:), proxy(:), design(:, :), response(:)
@@ -344,11 +348,12 @@ contains
    end function hannan_rissanen_fit
 
    pure function arma_mle_fit(series, ar_order, ma_order, max_iterations, tolerance) result(model)
-      ! Fit a causal and invertible ARMA model by exact innovations likelihood.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: ar_order, ma_order
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Fit a causal and invertible ARMA model by exact innovations likelihood.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(itsmr_arma_model_t) :: model
       type(itsmr_arma_model_t) :: initial_model
       type(yule_walker_result_t) :: ar_initial
@@ -414,8 +419,8 @@ contains
    contains
 
       pure function objective(coordinates) result(value)
-         ! Return the profiled negative innovations log likelihood.
-         real(dp), intent(in) :: coordinates(:)
+         !! Return the profiled negative innovations log likelihood.
+         real(dp), intent(in) :: coordinates(:) !! Coordinates.
          real(dp) :: value
          type(itsmr_arma_model_t) :: candidate
 
@@ -431,8 +436,8 @@ contains
       end function objective
 
       pure function model_from_coordinates(coordinates) result(candidate)
-         ! Map unconstrained coordinates to causal AR and invertible MA coefficients.
-         real(dp), intent(in) :: coordinates(:)
+         !! Map unconstrained coordinates to causal AR and invertible MA coefficients.
+         real(dp), intent(in) :: coordinates(:) !! Coordinates.
          type(itsmr_arma_model_t) :: candidate
 
          allocate(candidate%ar(ar_order), candidate%ma(ma_order))
@@ -444,9 +449,10 @@ contains
       end function model_from_coordinates
 
       pure function transformed_difference(coordinates, column, difference_step) result(derivative)
-         ! Differentiate reported coefficients with respect to optimizer coordinates.
-         real(dp), intent(in) :: coordinates(:), difference_step
-         integer, intent(in) :: column
+         !! Differentiate reported coefficients with respect to optimizer coordinates.
+         real(dp), intent(in) :: coordinates(:) !! Coordinates.
+         real(dp), intent(in) :: difference_step !! Difference step.
+         integer, intent(in) :: column !! Column.
          real(dp) :: derivative(size(coordinates)), plus(size(coordinates)), minus(size(coordinates)), h
          type(itsmr_arma_model_t) :: plus_model, minus_model
 
@@ -462,11 +468,12 @@ contains
    end function arma_mle_fit
 
    pure function arma_autofit(series, ar_orders, ma_orders, max_iterations, tolerance) result(best)
-      ! Select the requested ARMA order pair by minimum corrected AIC.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: ar_orders(:), ma_orders(:)
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Select the requested ARMA order pair by minimum corrected AIC.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: ar_orders(:) !! Autoregressive orders.
+      integer, intent(in) :: ma_orders(:) !! Moving-average orders.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(itsmr_arma_model_t) :: best
       type(itsmr_arma_model_t) :: candidate
       integer :: i, j
@@ -482,8 +489,8 @@ contains
    end function arma_autofit
 
    pure function partial_to_ar(partial) result(coefficients)
-      ! Convert partial autocorrelations to stable AR coefficients.
-      real(dp), intent(in) :: partial(:)
+      !! Convert partial autocorrelations to stable AR coefficients.
+      real(dp), intent(in) :: partial(:) !! Partial.
       real(dp) :: coefficients(size(partial)), previous(size(partial))
       integer :: order, j
 
@@ -498,8 +505,8 @@ contains
    end function partial_to_ar
 
    pure function ar_to_unconstrained(coefficients) result(coordinates)
-      ! Convert stable AR coefficients to unconstrained optimizer coordinates.
-      real(dp), intent(in) :: coefficients(:)
+      !! Convert stable AR coefficients to unconstrained optimizer coordinates.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
       real(dp) :: coordinates(size(coefficients)), current(size(coefficients)), previous(size(coefficients)), reflection
       integer :: order, j
 
@@ -515,9 +522,9 @@ contains
    end function ar_to_unconstrained
 
    pure function arma_infinite_ma(model, max_lag) result(psi)
-      ! Return MA-infinity coefficients from lag zero through max_lag.
-      type(itsmr_arma_model_t), intent(in) :: model
-      integer, intent(in) :: max_lag
+      !! Return MA-infinity coefficients from lag zero through max_lag.
+      type(itsmr_arma_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: psi(:)
       real(dp) :: ma_coefficient
       integer :: p, q, lag, ar_lag
@@ -542,9 +549,9 @@ contains
    end function arma_infinite_ma
 
    pure function arma_infinite_ar(model, max_lag) result(pi_coefficients)
-      ! Return AR-infinity coefficients from lag zero through max_lag.
-      type(itsmr_arma_model_t), intent(in) :: model
-      integer, intent(in) :: max_lag
+      !! Return AR-infinity coefficients from lag zero through max_lag.
+      type(itsmr_arma_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: pi_coefficients(:)
       real(dp) :: ar_coefficient
       integer :: p, q, lag, ma_lag
@@ -570,9 +577,9 @@ contains
    end function arma_infinite_ar
 
    pure function arma_residuals(series, model) result(out)
-      ! Return exact stationary innovations and their standardized values.
-      real(dp), intent(in) :: series(:)
-      type(itsmr_arma_model_t), intent(in) :: model
+      !! Return exact stationary innovations and their standardized values.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(itsmr_arma_model_t), intent(in) :: model !! Model specification.
       type(itsmr_residuals_t) :: out
       type(itsmr_innovations_t) :: recursion
       real(dp), allocatable :: covariance(:), centered(:)
@@ -604,11 +611,11 @@ contains
    end function arma_residuals
 
    pure function arma_forecast(series, model, horizon, confidence_level) result(out)
-      ! Forecast a fitted ARMA model with normal prediction intervals.
-      real(dp), intent(in) :: series(:)
-      type(itsmr_arma_model_t), intent(in) :: model
-      integer, intent(in) :: horizon
-      real(dp), intent(in), optional :: confidence_level
+      !! Forecast a fitted ARMA model with normal prediction intervals.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(itsmr_arma_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in), optional :: confidence_level !! Confidence level.
       type(itsmr_forecast_t) :: out
       type(itsmr_innovations_t) :: history
       real(dp), allocatable :: covariance(:), extended(:), extended_innovations(:)
@@ -671,10 +678,10 @@ contains
    end function arma_forecast
 
    pure function arar_forecast(series, horizon, confidence_level) result(out)
-      ! Forecast by ITSMR's automatic memory-shortened sparse AR algorithm.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: horizon
-      real(dp), intent(in), optional :: confidence_level
+      !! Forecast by ITSMR's automatic memory-shortened sparse AR algorithm.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in), optional :: confidence_level !! Confidence level.
       type(itsmr_arar_t) :: out
       real(dp), allocatable :: shortened(:), next_shortened(:), memory(:), next_memory(:)
       real(dp), allocatable :: centered(:), covariance(:), matrix(:, :), inverse(:, :), right(:)
@@ -839,9 +846,9 @@ contains
    end function arar_forecast
 
    pure function burg_ar_fit(series, order) result(model)
-      ! Estimate an ITSMR AR model using the shared Burg recursion.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: order
+      !! Estimate an ITSMR AR model using the shared Burg recursion.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: order !! Model or polynomial order.
       type(itsmr_arma_model_t) :: model
       type(burg_result_t) :: fitted
       real(dp), allocatable :: centered(:)
@@ -864,12 +871,12 @@ contains
 
    pure function transformed_arma_forecast(series, model, transforms, horizon, &
       confidence_level) result(out)
-      ! Forecast an ARMA residual model through a typed reversible transform pipeline.
-      real(dp), intent(in) :: series(:)
-      type(itsmr_arma_model_t), intent(in) :: model
-      type(itsmr_transform_t), intent(in) :: transforms(:)
-      integer, intent(in) :: horizon
-      real(dp), intent(in), optional :: confidence_level
+      !! Forecast an ARMA residual model through a typed reversible transform pipeline.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(itsmr_arma_model_t), intent(in) :: model !! Model specification.
+      type(itsmr_transform_t), intent(in) :: transforms(:) !! Transformation specifications.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in), optional :: confidence_level !! Confidence level.
       type(itsmr_transformed_forecast_t) :: out
       type(itsmr_transform_state_t), allocatable :: states(:)
       type(harmonic_regression_result_t) :: regression
@@ -1011,24 +1018,11 @@ contains
       end if
    end function transformed_arma_forecast
 
-   pure function polynomial_product(first, second) result(product)
-      ! Multiply two lag polynomials by convolution.
-      real(dp), intent(in) :: first(:), second(:)
-      real(dp) :: product(size(first) + size(second) - 1)
-      integer :: i, j
-
-      product = 0.0_dp
-      do i = 1, size(first)
-         do j = 1, size(second)
-            product(i + j - 1) = product(i + j - 1) + first(i)*second(j)
-         end do
-      end do
-   end function polynomial_product
-
    pure function arma_weights(ar, ma, max_lag) result(weights)
-      ! Return zero-based MA-infinity weights for supplied ARMA coefficients.
-      real(dp), intent(in) :: ar(:), ma(:)
-      integer, intent(in) :: max_lag
+      !! Return zero-based MA-infinity weights for supplied ARMA coefficients.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp) :: weights(0:max_lag), ma_coefficient
       integer :: lag, ar_lag
 
@@ -1045,9 +1039,10 @@ contains
    end function arma_weights
 
    pure function seasonal_component(series, period, horizon) result(component)
-      ! Estimate and extend ITSMR's classical seasonal component.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: period, horizon
+      !! Estimate and extend ITSMR's classical seasonal component.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: period !! Seasonal period.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       real(dp), allocatable :: component(:)
       real(dp), allocatable :: moving_average(:), deviations(:), seasonal_means(:)
       real(dp) :: total
@@ -1101,9 +1096,9 @@ contains
    end function seasonal_component
 
    pure function spectral_rank_filter(series, retained_count) result(out)
-      ! Reconstruct a series from its strongest positive-frequency DFT bins.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: retained_count
+      !! Reconstruct a series from its strongest positive-frequency DFT bins.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: retained_count !! Number of retained.
       type(itsmr_rank_filter_t) :: out
       complex(dp), allocatable :: coefficients(:)
       real(dp), allocatable :: magnitude(:)
@@ -1165,9 +1160,9 @@ contains
    end function spectral_rank_filter
 
    pure function itsmr_moving_average(series, half_window) result(smoothed)
-      ! Apply ITSMR's endpoint-replicated centered moving average.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: half_window
+      !! Apply ITSMR's endpoint-replicated centered moving average.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: half_window !! Half window.
       real(dp), allocatable :: smoothed(:)
       real(dp) :: total
       integer :: n, t, offset
@@ -1188,8 +1183,9 @@ contains
    end function itsmr_moving_average
 
    pure function itsmr_exponential_smooth(series, alpha) result(smoothed)
-      ! Apply ITSMR's recursively initialized exponential smoother.
-      real(dp), intent(in) :: series(:), alpha
+      !! Apply ITSMR's recursively initialized exponential smoother.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
       real(dp), allocatable :: smoothed(:)
       integer :: n, t
 
@@ -1206,8 +1202,9 @@ contains
    end function itsmr_exponential_smooth
 
    pure function itsmr_fft_smooth(series, pass_fraction) result(smoothed)
-      ! Apply ITSMR's symmetric-index low-pass Fourier filter.
-      real(dp), intent(in) :: series(:), pass_fraction
+      !! Apply ITSMR's symmetric-index low-pass Fourier filter.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: pass_fraction !! Pass fraction.
       real(dp), allocatable :: smoothed(:)
       complex(dp), allocatable :: coefficients(:)
       complex(dp) :: value
@@ -1243,17 +1240,17 @@ contains
    end function itsmr_fft_smooth
 
    pure function itsmr_seasonal_component(series, period) result(component)
-      ! Return ITSMR's classical seasonal component over the observed sample.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: period
+      !! Return ITSMR's classical seasonal component over the observed sample.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: period !! Seasonal period.
       real(dp), allocatable :: component(:)
       component = seasonal_component(series, period, 0)
    end function itsmr_seasonal_component
 
    pure function residual_randomness_tests(residuals, max_lag) result(out)
-      ! Compute ITSMR's five numerical residual randomness tests.
-      real(dp), intent(in) :: residuals(:)
-      integer, intent(in), optional :: max_lag
+      !! Compute ITSMR's five numerical residual randomness tests.
+      real(dp), intent(in) :: residuals(:) !! Model residuals.
+      integer, intent(in), optional :: max_lag !! Maximum lag to consider.
       type(itsmr_randomness_tests_t) :: out
       real(dp), allocatable :: correlation(:), squared(:)
       real(dp) :: mean_value, expected, standard_deviation
@@ -1314,9 +1311,9 @@ contains
    end function residual_randomness_tests
 
    pure function biased_correlations(series, max_lag) result(correlation)
-      ! Return biased sample correlations from lag zero through max_lag.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: max_lag
+      !! Return biased sample correlations from lag zero through max_lag.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp) :: correlation(0:max_lag), covariance, mean_value
       integer :: n, lag
 
@@ -1336,63 +1333,16 @@ contains
    end function biased_correlations
 
    pure elemental real(dp) function two_sided_normal_p(value) result(probability)
-      ! Return a two-sided standard-normal p-value.
-      real(dp), intent(in) :: value
+      !! Return a two-sided standard-normal p-value.
+      real(dp), intent(in) :: value !! Input value.
       probability = erfc(abs(value)/sqrt(2.0_dp))
    end function two_sided_normal_p
 
-   pure real(dp) function regularized_gamma_q(shape, value) result(probability)
-      ! Return the complemented regularized incomplete gamma ratio.
-      real(dp), intent(in) :: shape, value
-      real(dp) :: term, total, ap, b, c, d, delta, h, log_scale
-      integer :: iteration
-
-      if (shape <= 0.0_dp .or. value < 0.0_dp) then
-         probability = 0.0_dp
-         return
-      end if
-      if (value == 0.0_dp) then
-         probability = 1.0_dp
-         return
-      end if
-      log_scale = -value + shape*log(value) - log_gamma(shape)
-      if (value < shape + 1.0_dp) then
-         ap = shape
-         term = 1.0_dp/shape
-         total = term
-         do iteration = 1, 10000
-            ap = ap + 1.0_dp
-            term = term*value/ap
-            total = total + term
-            if (abs(term) <= epsilon(1.0_dp)*abs(total)) exit
-         end do
-         probability = 1.0_dp - total*exp(log_scale)
-      else
-         b = value + 1.0_dp - shape
-         c = 1.0_dp/tiny(1.0_dp)
-         d = 1.0_dp/b
-         h = d
-         do iteration = 1, 10000
-            term = -real(iteration, dp)*(real(iteration, dp) - shape)
-            b = b + 2.0_dp
-            d = term*d + b
-            if (abs(d) < tiny(1.0_dp)) d = tiny(1.0_dp)
-            c = b + term/c
-            if (abs(c) < tiny(1.0_dp)) c = tiny(1.0_dp)
-            d = 1.0_dp/d
-            delta = d*c
-            h = h*delta
-            if (abs(delta - 1.0_dp) <= 10.0_dp*epsilon(1.0_dp)) exit
-         end do
-         probability = h*exp(log_scale)
-      end if
-      probability = max(0.0_dp, min(1.0_dp, probability))
-   end function regularized_gamma_q
 
    pure subroutine update_innovation_statistics(centered, model)
-      ! Update an ARMA model's innovation variance and corrected AIC.
-      real(dp), intent(in) :: centered(:)
-      type(itsmr_arma_model_t), intent(inout) :: model
+      !! Update an ARMA model's innovation variance and corrected AIC.
+      real(dp), intent(in) :: centered(:) !! Centered.
+      type(itsmr_arma_model_t), intent(inout) :: model !! Model specification, updated in place.
       type(itsmr_innovations_t) :: fitted
       real(dp), allocatable :: covariance(:)
       real(dp) :: log_likelihood

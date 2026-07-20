@@ -1,0 +1,15 @@
+bsts Fortran translation license notice
+
+The algorithms in bsts.f90 are translated from the bsts R package, version
+0.9.11, by Steven L. Scott. Upstream source files are Copyright 2011-2022
+Google LLC and other stated copyright holders.
+
+The upstream DESCRIPTION licenses bsts under either the GNU Lesser General
+Public License version 2.1 or the MIT License, with the upstream LICENSE file
+identifying Steven L. Scott as the copyright holder for the MIT option.
+
+GNU LGPL 2.1:
+https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+
+MIT License:
+https://opensource.org/license/mit

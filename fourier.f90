@@ -1,7 +1,7 @@
 ! SPDX-License-Identifier: MIT
 ! SPDX-FileComment: Original Fourier infrastructure for this Fortran library.
 ! Shared direct Fourier transforms for real time-series algorithms.
-module time_series_fourier_mod
+module fourier_mod
    use kind_mod, only: dp
    implicit none
    private
@@ -10,9 +10,9 @@ module time_series_fourier_mod
 contains
 
    pure function fft_transform(values, inverse) result(transformed)
-      ! Compute a radix-2 complex FFT, optionally with inverse normalization.
-      complex(dp), intent(in) :: values(:)
-      logical, intent(in), optional :: inverse
+      !! Compute a radix-2 complex FFT, optionally with inverse normalization.
+      complex(dp), intent(in) :: values(:) !! Input values.
+      logical, intent(in), optional :: inverse !! Flag controlling inverse.
       complex(dp), allocatable :: transformed(:)
       complex(dp) :: temporary, factor, step
       real(dp) :: angle
@@ -63,8 +63,8 @@ contains
    end function fft_transform
 
    pure function real_dft(series) result(coefficients)
-      ! Return normalized DFT coefficients with array index equal to bin plus one.
-      real(dp), intent(in) :: series(:)
+      !! Return normalized DFT coefficients with array index equal to bin plus one.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
       complex(dp), allocatable :: coefficients(:)
       real(dp) :: angle
       integer :: n, bin, t
@@ -84,8 +84,8 @@ contains
    end function real_dft
 
    pure function inverse_real_dft(coefficients) result(series)
-      ! Reconstruct a real series from normalized conjugate-symmetric coefficients.
-      complex(dp), intent(in) :: coefficients(:)
+      !! Reconstruct a real series from normalized conjugate-symmetric coefficients.
+      complex(dp), intent(in) :: coefficients(:) !! Model coefficients.
       real(dp), allocatable :: series(:)
       complex(dp) :: value
       real(dp) :: angle
@@ -102,4 +102,4 @@ contains
          series(t + 1) = real(value, dp)
       end do
    end function inverse_real_dft
-end module time_series_fourier_mod
+end module fourier_mod

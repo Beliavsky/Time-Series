@@ -3,14 +3,17 @@
 ! Distinct innovations state-space algorithms translated from the tsissm package.
 module tsissm_mod
    use kind_mod, only: dp
-   use forecast_mod, only: box_cox, acf_values, pacf_values, accuracy_result_t, &
+   use forecast_mod, only: box_cox, accuracy_result_t, &
       forecast_accuracy
-   use itsmr_mod, only: itsmr_randomness_tests_t, residual_randomness_tests, regularized_gamma_q
+   use itsmr_mod, only: itsmr_randomness_tests_t, residual_randomness_tests
+   use special_functions_mod, only: regularized_gamma_q
    use mts_mod, only: mts_arch_test_t, mts_arch_test, regularized_beta_mts
-   use time_series_optimization_mod, only: optimization_result_t, bfgs_minimize_fd, &
+   use optimization_mod, only: optimization_result_t, bfgs_minimize_fd, &
       finite_difference_hessian
-   use time_series_linalg_mod, only: invert_matrix, symmetric_eigen
-   use time_series_random_mod, only: set_random_seed, random_uniform, random_standard_normal, &
+   use linalg_mod, only: invert_matrix, symmetric_eigen, outer_product
+   use stats_mod, only: sort, quantile
+   use time_series_stats_mod, only: acf_values, pacf_values
+   use random_mod, only: set_random_seed, random_uniform, random_standard_normal, &
       random_standard_student, random_standard_johnson_su
    use time_series_diagnostics_mod, only: &
       tsissm_box_test_box_pierce => box_test_box_pierce, &
@@ -373,10 +376,11 @@ module tsissm_mod
 contains
 
    pure function tsissm_initialize_variance(innovations, observed, method, sample_size) result(out)
-      ! Initialize GARCH variance from all or the first selected valid innovations.
-      real(dp), intent(in) :: innovations(:)
-      logical, intent(in), optional :: observed(:)
-      integer, intent(in), optional :: method, sample_size
+      !! Initialize GARCH variance from all or the first selected valid innovations.
+      real(dp), intent(in) :: innovations(:) !! Model innovations.
+      logical, intent(in), optional :: observed(:) !! Flag controlling observed.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      integer, intent(in), optional :: sample_size !! Sample size.
       type(tsissm_variance_initialization_t) :: out
       logical, allocatable :: use_observation(:)
       real(dp), allocatable :: selected(:)
@@ -422,8 +426,10 @@ contains
    end function tsissm_initialize_variance
 
    pure function tsissm_fd_scores(contribution_minus, contribution_plus, step) result(scores)
-      ! Differentiate per-observation negative log-likelihood contributions.
-      real(dp), intent(in) :: contribution_minus(:, :), contribution_plus(:, :), step(:)
+      !! Differentiate per-observation negative log-likelihood contributions.
+      real(dp), intent(in) :: contribution_minus(:, :) !! Contribution minus.
+      real(dp), intent(in) :: contribution_plus(:, :) !! Contribution plus.
+      real(dp), intent(in) :: step(:) !! Step.
       real(dp), allocatable :: scores(:, :)
       integer :: i
 
@@ -440,13 +446,15 @@ contains
 
    pure function tsissm_parameter_covariance(scores, hessian, covariance_type, adjust, &
       newey_west_lag, hac_kernel, prewhite_order, hac_bandwidth) result(out)
-      ! Estimate Hessian, OPG, QMLE, or Bartlett Newey-West parameter covariance.
-      real(dp), intent(in) :: scores(:, :), hessian(:, :)
-      integer, intent(in) :: covariance_type
-      logical, intent(in), optional :: adjust
-      integer, intent(in), optional :: newey_west_lag
-      integer, intent(in), optional :: hac_kernel, prewhite_order
-      real(dp), intent(in), optional :: hac_bandwidth
+      !! Estimate Hessian, OPG, QMLE, or Bartlett Newey-West parameter covariance.
+      real(dp), intent(in) :: scores(:, :) !! Scores.
+      real(dp), intent(in) :: hessian(:, :) !! Hessian.
+      integer, intent(in) :: covariance_type !! Covariance type.
+      logical, intent(in), optional :: adjust !! Flag controlling adjust.
+      integer, intent(in), optional :: newey_west_lag !! Newey west lag.
+      integer, intent(in), optional :: hac_kernel !! Hac kernel.
+      integer, intent(in), optional :: prewhite_order !! Prewhite order.
+      real(dp), intent(in), optional :: hac_bandwidth !! Hac bandwidth.
       type(tsissm_covariance_t) :: out
       real(dp), allocatable :: inverse_meat(:, :)
       real(dp) :: correction
@@ -520,14 +528,18 @@ contains
 
    pure subroutine hac_score_meat(scores, kernel, prewhite_order, requested_lag, &
       requested_bandwidth, meat, lag, bandwidth, bias_correction, effective_degrees, info)
-      ! Form a kernel HAC score covariance with optional VAR prewhitening.
-      real(dp), intent(in) :: scores(:, :)
-      integer, intent(in) :: kernel, prewhite_order
-      integer, intent(in), optional :: requested_lag
-      real(dp), intent(in), optional :: requested_bandwidth
-      real(dp), allocatable, intent(out) :: meat(:, :)
-      integer, intent(out) :: lag, info
-      real(dp), intent(out) :: bandwidth, bias_correction, effective_degrees
+      !! Form a kernel HAC score covariance with optional VAR prewhitening.
+      real(dp), intent(in) :: scores(:, :) !! Scores.
+      integer, intent(in) :: kernel !! Kernel.
+      integer, intent(in) :: prewhite_order !! Prewhite order.
+      integer, intent(in), optional :: requested_lag !! Requested lag.
+      real(dp), intent(in), optional :: requested_bandwidth !! Requested bandwidth.
+      real(dp), allocatable, intent(out) :: meat(:, :) !! Meat.
+      integer, intent(out) :: lag !! Lag index or number of lags.
+      integer, intent(out) :: info !! Status code; zero indicates success.
+      real(dp), intent(out) :: bandwidth !! Smoothing or spectral bandwidth.
+      real(dp), intent(out) :: bias_correction !! Bias correction.
+      real(dp), intent(out) :: effective_degrees !! Effective degrees.
       real(dp), allocatable :: coefficients(:, :), design(:, :), inverse(:, :)
       real(dp), allocatable :: recolor(:, :), response(:, :), working(:, :), xtx(:, :)
       real(dp), allocatable :: ar_sum(:, :), identity(:, :)
@@ -618,9 +630,9 @@ contains
    end subroutine hac_score_meat
 
    pure real(dp) function automatic_hac_bandwidth(scores, kernel) result(bandwidth)
-      ! Estimate a plug-in HAC bandwidth from aggregate score autocovariances.
-      real(dp), intent(in) :: scores(:, :)
-      integer, intent(in) :: kernel
+      !! Estimate a plug-in HAC bandwidth from aggregate score autocovariances.
+      real(dp), intent(in) :: scores(:, :) !! Scores.
+      integer, intent(in) :: kernel !! Kernel.
       real(dp), allocatable :: series(:)
       real(dp) :: gamma, long_run, moment, ratio
       integer :: i, pilot
@@ -654,9 +666,9 @@ contains
    end function automatic_hac_bandwidth
 
    pure elemental real(dp) function hac_kernel_weight(argument, kernel) result(weight)
-      ! Evaluate a supported HAC kernel at a nonnegative scaled lag.
-      real(dp), intent(in) :: argument
-      integer, intent(in) :: kernel
+      !! Evaluate a supported HAC kernel at a nonnegative scaled lag.
+      real(dp), intent(in) :: argument !! Argument.
+      integer, intent(in) :: kernel !! Kernel.
       real(dp) :: scaled
 
       select case (kernel)
@@ -691,16 +703,24 @@ contains
    pure function tsissm_covariance_constant(observations, filtered, regressors, persistence, &
       coefficients, lambda, distribution, skew, shape, covariance_type, observed, adjust, &
       newey_west_lag, difference_step, hac_kernel, prewhite_order, hac_bandwidth) result(out)
-      ! Estimate parameter covariance for a fitted constant-variance ISSM.
-      real(dp), intent(in) :: observations(:), regressors(:, :), persistence(:), coefficients(:)
-      type(tsissm_filter_t), intent(in) :: filtered
-      real(dp), intent(in) :: lambda, skew, shape
-      integer, intent(in) :: distribution, covariance_type
-      logical, intent(in), optional :: observed(:), adjust
-      integer, intent(in), optional :: newey_west_lag
-      real(dp), intent(in), optional :: difference_step
-      integer, intent(in), optional :: hac_kernel, prewhite_order
-      real(dp), intent(in), optional :: hac_bandwidth
+      !! Estimate parameter covariance for a fitted constant-variance ISSM.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: persistence(:) !! Persistence.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      type(tsissm_filter_t), intent(in) :: filtered !! Filtered.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: skew !! Skew.
+      real(dp), intent(in) :: shape !! Shape.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: covariance_type !! Covariance type.
+      logical, intent(in), optional :: observed(:) !! Flag controlling observed.
+      logical, intent(in), optional :: adjust !! Flag controlling adjust.
+      integer, intent(in), optional :: newey_west_lag !! Newey west lag.
+      real(dp), intent(in), optional :: difference_step !! Difference step.
+      integer, intent(in), optional :: hac_kernel !! Hac kernel.
+      integer, intent(in), optional :: prewhite_order !! Prewhite order.
+      real(dp), intent(in), optional :: hac_bandwidth !! Hac bandwidth.
       type(tsissm_covariance_t) :: out
       logical, allocatable :: use_observation(:)
       real(dp), allocatable :: all_scores(:, :), minus(:, :), parameters(:), plus(:, :), steps(:)
@@ -760,8 +780,8 @@ contains
    contains
 
       pure function contributions(trial_parameters) result(value)
-         ! Return negative log-likelihood contributions at trial parameters.
-         real(dp), intent(in) :: trial_parameters(:)
+         !! Return negative log-likelihood contributions at trial parameters.
+         real(dp), intent(in) :: trial_parameters(:) !! Trial parameters.
          real(dp) :: value(size(observations))
          type(tsissm_filter_t) :: trial_filter
          type(tsissm_likelihood_t) :: trial_likelihood
@@ -783,8 +803,8 @@ contains
       end function contributions
 
       pure real(dp) function objective(trial_parameters) result(value)
-         ! Sum negative log-likelihood contributions at trial parameters.
-         real(dp), intent(in) :: trial_parameters(:)
+         !! Sum negative log-likelihood contributions at trial parameters.
+         real(dp), intent(in) :: trial_parameters(:) !! Trial parameters.
 
          value = sum(contributions(trial_parameters))
       end function objective
@@ -794,17 +814,28 @@ contains
       coefficients, arch, garch, lambda, distribution, skew, shape, covariance_type, &
       observed, adjust, newey_west_lag, difference_step, variance_initialization, &
       variance_sample_size, hac_kernel, prewhite_order, hac_bandwidth) result(out)
-      ! Estimate parameter covariance for a fitted variance-targeted GARCH ISSM.
-      real(dp), intent(in) :: observations(:), regressors(:, :), persistence(:), coefficients(:)
-      real(dp), intent(in) :: arch(:), garch(:), lambda, skew, shape
-      type(tsissm_filter_t), intent(in) :: filtered
-      integer, intent(in) :: distribution, covariance_type
-      logical, intent(in), optional :: observed(:), adjust
-      integer, intent(in), optional :: newey_west_lag
-      real(dp), intent(in), optional :: difference_step
-      integer, intent(in), optional :: variance_initialization, variance_sample_size
-      integer, intent(in), optional :: hac_kernel, prewhite_order
-      real(dp), intent(in), optional :: hac_bandwidth
+      !! Estimate parameter covariance for a fitted variance-targeted GARCH ISSM.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: persistence(:) !! Persistence.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: arch(:) !! Arch.
+      real(dp), intent(in) :: garch(:) !! Garch.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: skew !! Skew.
+      real(dp), intent(in) :: shape !! Shape.
+      type(tsissm_filter_t), intent(in) :: filtered !! Filtered.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: covariance_type !! Covariance type.
+      logical, intent(in), optional :: observed(:) !! Flag controlling observed.
+      logical, intent(in), optional :: adjust !! Flag controlling adjust.
+      integer, intent(in), optional :: newey_west_lag !! Newey west lag.
+      real(dp), intent(in), optional :: difference_step !! Difference step.
+      integer, intent(in), optional :: variance_initialization !! Variance initialization.
+      integer, intent(in), optional :: variance_sample_size !! Variance sample size.
+      integer, intent(in), optional :: hac_kernel !! Hac kernel.
+      integer, intent(in), optional :: prewhite_order !! Prewhite order.
+      real(dp), intent(in), optional :: hac_bandwidth !! Hac bandwidth.
       type(tsissm_covariance_t) :: out
       logical, allocatable :: use_observation(:)
       real(dp), allocatable :: all_scores(:, :), minus(:, :), parameters(:), plus(:, :), steps(:)
@@ -865,8 +896,8 @@ contains
    contains
 
       pure function contributions(trial_parameters) result(value)
-         ! Return dynamic negative log-likelihood contributions at trial parameters.
-         real(dp), intent(in) :: trial_parameters(:)
+         !! Return dynamic negative log-likelihood contributions at trial parameters.
+         real(dp), intent(in) :: trial_parameters(:) !! Trial parameters.
          real(dp) :: value(size(observations))
          type(tsissm_filter_t) :: constant_filter, trial_filter
          type(tsissm_likelihood_t) :: trial_likelihood
@@ -916,8 +947,8 @@ contains
       end function contributions
 
       pure real(dp) function objective(trial_parameters) result(value)
-         ! Sum dynamic negative log-likelihood contributions at trial parameters.
-         real(dp), intent(in) :: trial_parameters(:)
+         !! Sum dynamic negative log-likelihood contributions at trial parameters.
+         real(dp), intent(in) :: trial_parameters(:) !! Trial parameters.
 
          value = sum(contributions(trial_parameters))
       end function objective
@@ -928,17 +959,27 @@ contains
       regressors, initial_state, parameters, distribution, covariance_type, observed, &
       adjust, newey_west_lag, difference_step, hac_kernel, prewhite_order, &
       hac_bandwidth) result(out)
-      ! Estimate joint structural ISSM parameter covariance from likelihood scores.
-      real(dp), intent(in) :: observations(:), seasonal_frequency(:), regressors(:, :)
-      real(dp), intent(in) :: initial_state(:), parameters(:)
-      logical, intent(in) :: slope, damped_slope, regular_seasonal
-      integer, intent(in) :: seasonal_harmonics(:), ar_order, ma_order
-      integer, intent(in) :: distribution, covariance_type
-      logical, intent(in), optional :: observed(:), adjust
-      integer, intent(in), optional :: newey_west_lag
-      real(dp), intent(in), optional :: difference_step
-      integer, intent(in), optional :: hac_kernel, prewhite_order
-      real(dp), intent(in), optional :: hac_bandwidth
+      !! Estimate joint structural ISSM parameter covariance from likelihood scores.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: seasonal_frequency(:) !! Seasonal frequency.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      logical, intent(in) :: slope !! Flag controlling slope.
+      logical, intent(in) :: damped_slope !! Flag controlling damped slope.
+      logical, intent(in) :: regular_seasonal !! Flag controlling regular seasonal.
+      integer, intent(in) :: seasonal_harmonics(:) !! Seasonal harmonics.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: covariance_type !! Covariance type.
+      logical, intent(in), optional :: observed(:) !! Flag controlling observed.
+      logical, intent(in), optional :: adjust !! Flag controlling adjust.
+      integer, intent(in), optional :: newey_west_lag !! Newey west lag.
+      real(dp), intent(in), optional :: difference_step !! Difference step.
+      integer, intent(in), optional :: hac_kernel !! Hac kernel.
+      integer, intent(in), optional :: prewhite_order !! Prewhite order.
+      real(dp), intent(in), optional :: hac_bandwidth !! Hac bandwidth.
       type(tsissm_covariance_t) :: out
       logical, allocatable :: use_observation(:)
       real(dp), allocatable :: all_scores(:, :), minus(:, :), plus(:, :), steps(:)
@@ -1014,8 +1055,8 @@ contains
    contains
 
       pure function contributions(trial) result(value)
-         ! Decode structural parameters and return likelihood contributions.
-         real(dp), intent(in) :: trial(:)
+         !! Decode structural parameters and return likelihood contributions.
+         real(dp), intent(in) :: trial(:) !! Trial.
          real(dp) :: value(size(observations))
          type(tsissm_filter_t) :: filtered
          type(tsissm_likelihood_t) :: likelihood
@@ -1082,8 +1123,8 @@ contains
       end function contributions
 
       pure real(dp) function objective(trial) result(value)
-         ! Sum joint structural negative log-likelihood contributions.
-         real(dp), intent(in) :: trial(:)
+         !! Sum joint structural negative log-likelihood contributions.
+         real(dp), intent(in) :: trial(:) !! Trial.
 
          value = sum(contributions(trial))
       end function objective
@@ -1095,18 +1136,31 @@ contains
       covariance_type, observed, adjust, newey_west_lag, difference_step, &
       variance_initialization, variance_sample_size, hac_kernel, prewhite_order, &
       hac_bandwidth) result(out)
-      ! Estimate full joint structural and GARCH parameter covariance.
-      real(dp), intent(in) :: observations(:), seasonal_frequency(:), regressors(:, :)
-      real(dp), intent(in) :: initial_state(:), parameters(:)
-      logical, intent(in) :: slope, damped_slope, regular_seasonal
-      integer, intent(in) :: seasonal_harmonics(:), ar_order, ma_order, arch_order, garch_order
-      integer, intent(in) :: distribution, covariance_type
-      logical, intent(in), optional :: observed(:), adjust
-      integer, intent(in), optional :: newey_west_lag
-      real(dp), intent(in), optional :: difference_step
-      integer, intent(in), optional :: variance_initialization, variance_sample_size
-      integer, intent(in), optional :: hac_kernel, prewhite_order
-      real(dp), intent(in), optional :: hac_bandwidth
+      !! Estimate full joint structural and GARCH parameter covariance.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: seasonal_frequency(:) !! Seasonal frequency.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      logical, intent(in) :: slope !! Flag controlling slope.
+      logical, intent(in) :: damped_slope !! Flag controlling damped slope.
+      logical, intent(in) :: regular_seasonal !! Flag controlling regular seasonal.
+      integer, intent(in) :: seasonal_harmonics(:) !! Seasonal harmonics.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      integer, intent(in) :: arch_order !! Arch order.
+      integer, intent(in) :: garch_order !! Garch order.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: covariance_type !! Covariance type.
+      logical, intent(in), optional :: observed(:) !! Flag controlling observed.
+      logical, intent(in), optional :: adjust !! Flag controlling adjust.
+      integer, intent(in), optional :: newey_west_lag !! Newey west lag.
+      real(dp), intent(in), optional :: difference_step !! Difference step.
+      integer, intent(in), optional :: variance_initialization !! Variance initialization.
+      integer, intent(in), optional :: variance_sample_size !! Variance sample size.
+      integer, intent(in), optional :: hac_kernel !! Hac kernel.
+      integer, intent(in), optional :: prewhite_order !! Prewhite order.
+      real(dp), intent(in), optional :: hac_bandwidth !! Hac bandwidth.
       type(tsissm_covariance_t) :: out
       logical, allocatable :: use_observation(:)
       real(dp), allocatable :: all_scores(:, :), minus(:, :), plus(:, :), steps(:)
@@ -1184,8 +1238,8 @@ contains
    contains
 
       pure function contributions(trial_parameters) result(value)
-         ! Return joint dynamic negative log-likelihood contributions.
-         real(dp), intent(in) :: trial_parameters(:)
+         !! Return joint dynamic negative log-likelihood contributions.
+         real(dp), intent(in) :: trial_parameters(:) !! Trial parameters.
          real(dp) :: value(size(observations))
          type(tsissm_filter_t) :: constant_filter, filtered
          type(tsissm_likelihood_t) :: likelihood
@@ -1279,17 +1333,17 @@ contains
       end function contributions
 
       pure real(dp) function objective(trial_parameters) result(value)
-         ! Sum joint dynamic negative log-likelihood contributions.
-         real(dp), intent(in) :: trial_parameters(:)
+         !! Sum joint dynamic negative log-likelihood contributions.
+         real(dp), intent(in) :: trial_parameters(:) !! Trial parameters.
 
          value = sum(contributions(trial_parameters))
       end function objective
    end function tsissm_covariance_structural_dynamic
 
    pure real(dp) function structural_shape(parameters, distribution) result(value)
-      ! Extract the structural parameter vector's distribution shape.
-      real(dp), intent(in) :: parameters(:)
-      integer, intent(in) :: distribution
+      !! Extract the structural parameter vector's distribution shape.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
 
       value = 0.0_dp
       if (distribution == tsissm_distribution_student) then
@@ -1300,8 +1354,9 @@ contains
    end function structural_shape
 
    pure logical function score_perturbations_valid(minus, plus) result(valid)
-      ! Check finite-difference likelihood contributions before forming curvature.
-      real(dp), intent(in) :: minus(:, :), plus(:, :)
+      !! Check finite-difference likelihood contributions before forming curvature.
+      real(dp), intent(in) :: minus(:, :) !! Minus.
+      real(dp), intent(in) :: plus(:, :) !! Plus.
 
       valid = all(ieee_is_finite(minus)) .and. all(ieee_is_finite(plus)) .and. &
          all(abs(minus) < sqrt(huge(1.0_dp))) .and. &
@@ -1310,9 +1365,11 @@ contains
 
    pure logical function covariance_fit_inputs_valid(observations, filtered, regressors, &
       coefficients) result(valid)
-      ! Validate data and stored filter dimensions used by covariance wrappers.
-      real(dp), intent(in) :: observations(:), regressors(:, :), coefficients(:)
-      type(tsissm_filter_t), intent(in) :: filtered
+      !! Validate data and stored filter dimensions used by covariance wrappers.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      type(tsissm_filter_t), intent(in) :: filtered !! Filtered.
 
       valid = .false.
       if (.not. allocated(filtered%state) .or. .not. allocated(filtered%transition) .or. &
@@ -1330,14 +1387,30 @@ contains
       ar_orders, ma_orders, include_constant, include_dynamic, garch_order, distribution, &
       initial_lambda, initial_skew, initial_shape, top_n, criterion, max_iterations, &
       tolerance, variance_initialization, variance_sample_size) result(out)
-      ! Enumerate, fit, screen, and rank a configurable tsissm structural grid.
-      real(dp), intent(in) :: observations(:), regressors(:, :), seasonal_frequency(:)
-      logical, intent(in) :: slope_options(:), damped_options(:), include_nonseasonal
-      integer, intent(in) :: seasonal_harmonic_grid(:, :), ar_orders(:), ma_orders(:)
-      logical, intent(in) :: regular_seasonal, include_constant, include_dynamic
-      integer, intent(in) :: garch_order(2), distribution, top_n, criterion, max_iterations
-      real(dp), intent(in) :: initial_lambda, initial_skew, initial_shape, tolerance
-      integer, intent(in), optional :: variance_initialization, variance_sample_size
+      !! Enumerate, fit, screen, and rank a configurable tsissm structural grid.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: seasonal_frequency(:) !! Seasonal frequency.
+      logical, intent(in) :: slope_options(:) !! Flag controlling slope options.
+      logical, intent(in) :: damped_options(:) !! Flag controlling damped options.
+      logical, intent(in) :: include_nonseasonal !! Whether to include the nonseasonal.
+      integer, intent(in) :: seasonal_harmonic_grid(:, :) !! Seasonal harmonic grid.
+      integer, intent(in) :: ar_orders(:) !! Autoregressive orders.
+      integer, intent(in) :: ma_orders(:) !! Moving-average orders.
+      logical, intent(in) :: regular_seasonal !! Flag controlling regular seasonal.
+      logical, intent(in) :: include_constant !! Whether to include the constant.
+      logical, intent(in) :: include_dynamic !! Whether to include the dynamic.
+      integer, intent(in) :: garch_order(2) !! Garch order.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: top_n !! Top n.
+      integer, intent(in) :: criterion !! Criterion.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in) :: initial_lambda !! Initial lambda.
+      real(dp), intent(in) :: initial_skew !! Initial skew.
+      real(dp), intent(in) :: initial_shape !! Initial shape.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: variance_initialization !! Variance initialization.
+      integer, intent(in), optional :: variance_sample_size !! Variance sample size.
       type(tsissm_selection_t) :: out
       type(tsissm_model_t) :: initial_model
       type(tsissm_structural_fit_t) :: dynamic_structural_fit, structural_fit
@@ -1484,10 +1557,10 @@ contains
    end function tsissm_select_models
 
    pure function tsissm_rerank_models(selection, scores, top_n) result(out)
-      ! Re-rank fitted candidates using supplied backtest or validation losses.
-      type(tsissm_selection_t), intent(in) :: selection
-      real(dp), intent(in) :: scores(:)
-      integer, intent(in) :: top_n
+      !! Re-rank fitted candidates using supplied backtest or validation losses.
+      type(tsissm_selection_t), intent(in) :: selection !! Selection.
+      real(dp), intent(in) :: scores(:) !! Scores.
+      integer, intent(in) :: top_n !! Top n.
       type(tsissm_selection_t) :: out
       integer :: i
 
@@ -1518,8 +1591,8 @@ contains
    end function tsissm_rerank_models
 
    pure function tsissm_selection_correlation(selection) result(correlation)
-      ! Estimate the selected models' Gaussian-copula correlation from Kendall tau.
-      type(tsissm_selection_t), intent(in) :: selection
+      !! Estimate the selected models' Gaussian-copula correlation from Kendall tau.
+      type(tsissm_selection_t), intent(in) :: selection !! Selection.
       real(dp), allocatable :: correlation(:, :)
       real(dp), allocatable :: residual(:, :)
       real(dp) :: concordance, denominator, difference_first, difference_second, tau
@@ -1573,12 +1646,14 @@ contains
 
    function tsissm_ensemble_forecast(selection, regressors, simulations, probabilities, seed, &
       weights, correlation_matrix) result(out)
-      ! Forecast selected models with Gaussian-copula innovations and combine paths.
-      type(tsissm_selection_t), intent(in) :: selection
-      real(dp), intent(in) :: regressors(:, :)
-      integer, intent(in) :: simulations
-      real(dp), intent(in), optional :: probabilities(:), weights(:), correlation_matrix(:, :)
-      integer, intent(in), optional :: seed
+      !! Forecast selected models with Gaussian-copula innovations and combine paths.
+      type(tsissm_selection_t), intent(in) :: selection !! Selection.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      integer, intent(in) :: simulations !! Number of simulation draws.
+      real(dp), intent(in), optional :: probabilities(:) !! Probability values.
+      real(dp), intent(in), optional :: weights(:) !! Observation or objective weights.
+      real(dp), intent(in), optional :: correlation_matrix(:, :) !! Correlation matrix.
+      integer, intent(in), optional :: seed !! Random-number seed.
       type(tsissm_ensemble_t) :: out
       type(tsissm_prediction_decomposition_t) :: decomposition
       real(dp), allocatable :: copula_normal(:), eigenvalues(:), eigenvectors(:, :)
@@ -1707,9 +1782,11 @@ contains
 
    pure function forecast_selection_candidate(candidate, regressors, standardized, &
       probabilities) result(out)
-      ! Forecast one selected candidate from supplied standardized innovations.
-      type(tsissm_candidate_t), intent(in) :: candidate
-      real(dp), intent(in) :: regressors(:, :), standardized(:, :), probabilities(:)
+      !! Forecast one selected candidate from supplied standardized innovations.
+      type(tsissm_candidate_t), intent(in) :: candidate !! Candidate.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: standardized(:, :) !! Standardized.
+      real(dp), intent(in) :: probabilities(:) !! Probability values.
       type(tsissm_forecast_t) :: out
       real(dp), allocatable :: arch_history(:), innovations(:, :), variance_history(:)
       integer :: history, last_state
@@ -1758,9 +1835,9 @@ contains
    end function forecast_selection_candidate
 
    pure subroutine summarize_ensemble(out, probabilities)
-      ! Calculate ensemble path means and type-7 quantiles.
-      type(tsissm_ensemble_t), intent(inout) :: out
-      real(dp), intent(in) :: probabilities(:)
+      !! Calculate ensemble path means and type-7 quantiles.
+      type(tsissm_ensemble_t), intent(inout) :: out !! Procedure result, updated in place.
+      real(dp), intent(in) :: probabilities(:) !! Probability values.
       real(dp), allocatable :: ordered(:)
       integer :: horizon, probability_index
 
@@ -1771,19 +1848,20 @@ contains
       allocate(ordered(size(out%distribution, 1)))
       do horizon = 1, size(out%distribution, 2)
          ordered = out%distribution(:, horizon)
-         call sort_real_values(ordered)
+         call sort(ordered)
          do probability_index = 1, size(probabilities)
             out%quantile(probability_index, horizon) = &
-               type7_quantile(ordered, probabilities(probability_index))
+               quantile(ordered, probabilities(probability_index))
          end do
       end do
    end subroutine summarize_ensemble
 
    pure subroutine copula_eigensystem(correlation, eigenvalues, eigenvectors, info)
-      ! Project a correlation matrix to positive semidefinite form and factor it.
-      real(dp), intent(inout) :: correlation(:, :)
-      real(dp), allocatable, intent(out) :: eigenvalues(:), eigenvectors(:, :)
-      integer, intent(out) :: info
+      !! Project a correlation matrix to positive semidefinite form and factor it.
+      real(dp), intent(inout) :: correlation(:, :) !! Correlation, updated in place.
+      real(dp), allocatable, intent(out) :: eigenvalues(:) !! Eigenvalues.
+      real(dp), allocatable, intent(out) :: eigenvectors(:, :) !! Eigenvectors.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: projected(:, :), scale(:), values(:), vectors(:, :)
       integer :: i, j, n
 
@@ -1822,9 +1900,11 @@ contains
 
    pure real(dp) function standardized_innovation_from_normal(normal, distribution, skew, &
       shape) result(innovation)
-      ! Map a Gaussian-copula variate to one standardized innovation marginal.
-      real(dp), intent(in) :: normal, skew, shape
-      integer, intent(in) :: distribution
+      !! Map a Gaussian-copula variate to one standardized innovation marginal.
+      real(dp), intent(in) :: normal !! Normal.
+      real(dp), intent(in) :: skew !! Skew.
+      real(dp), intent(in) :: shape !! Shape.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
       real(dp) :: c, omega, probability, reciprocal_shape, w
 
       select case (distribution)
@@ -1846,8 +1926,9 @@ contains
    end function standardized_innovation_from_normal
 
    pure real(dp) function student_quantile(probability, degrees) result(value)
-      ! Invert the Student-t CDF by symmetric monotone bisection.
-      real(dp), intent(in) :: probability, degrees
+      !! Invert the Student-t CDF by symmetric monotone bisection.
+      real(dp), intent(in) :: probability !! Probability value.
+      real(dp), intent(in) :: degrees !! Degrees.
       real(dp) :: lower, middle, target, upper
       integer :: iteration
 
@@ -1874,8 +1955,9 @@ contains
    end function student_quantile
 
    pure real(dp) function student_cdf(value, degrees) result(probability)
-      ! Evaluate a positive Student-t CDF through the regularized beta function.
-      real(dp), intent(in) :: value, degrees
+      !! Evaluate a positive Student-t CDF through the regularized beta function.
+      real(dp), intent(in) :: value !! Input value.
+      real(dp), intent(in) :: degrees !! Degrees.
       real(dp) :: beta_argument
 
       beta_argument = degrees/(degrees + value**2)
@@ -1885,10 +1967,17 @@ contains
 
    pure function selection_initial_parameters(slope, damped, seasonal_count, ar_order, ma_order, &
       regression_count, lambda, distribution, skew, shape) result(parameters)
-      ! Build the structural estimator's flat initial-parameter vector.
-      logical, intent(in) :: slope, damped
-      integer, intent(in) :: seasonal_count, ar_order, ma_order, regression_count, distribution
-      real(dp), intent(in) :: lambda, skew, shape
+      !! Build the structural estimator's flat initial-parameter vector.
+      logical, intent(in) :: slope !! Flag controlling slope.
+      logical, intent(in) :: damped !! Flag controlling damped.
+      integer, intent(in) :: seasonal_count !! Number of seasonal.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      integer, intent(in) :: regression_count !! Number of regression.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: skew !! Skew.
+      real(dp), intent(in) :: shape !! Shape.
       real(dp), allocatable :: parameters(:)
       integer :: count, i, index
 
@@ -1925,9 +2014,9 @@ contains
    end function selection_initial_parameters
 
    pure function selection_variance_initial(order, total) result(parameters)
-      ! Split an initial ARCH or GARCH total equally across its lags.
-      integer, intent(in) :: order
-      real(dp), intent(in) :: total
+      !! Split an initial ARCH or GARCH total equally across its lags.
+      integer, intent(in) :: order !! Model or polynomial order.
+      real(dp), intent(in) :: total !! Total.
       real(dp), allocatable :: parameters(:)
 
       allocate(parameters(order))
@@ -1937,13 +2026,22 @@ contains
    pure subroutine store_selection_candidate(candidate, structural, slope, damped, seasonal, &
       harmonics, ar_order, ma_order, dynamic, distribution, garch_order, regressors, &
       observations, max_iterations, tolerance)
-      ! Convert a structural fit into a screened constant or dynamic candidate.
-      type(tsissm_candidate_t), intent(out) :: candidate
-      type(tsissm_structural_fit_t), intent(in) :: structural
-      logical, intent(in) :: slope, damped, seasonal, dynamic
-      integer, intent(in) :: harmonics(:), ar_order, ma_order, distribution, garch_order(2)
-      real(dp), intent(in) :: regressors(:, :), observations(:), tolerance
-      integer, intent(in) :: max_iterations
+      !! Convert a structural fit into a screened constant or dynamic candidate.
+      type(tsissm_candidate_t), intent(out) :: candidate !! Candidate.
+      type(tsissm_structural_fit_t), intent(in) :: structural !! Structural.
+      logical, intent(in) :: slope !! Flag controlling slope.
+      logical, intent(in) :: damped !! Flag controlling damped.
+      logical, intent(in) :: seasonal !! Flag controlling seasonal.
+      logical, intent(in) :: dynamic !! Flag controlling dynamic.
+      integer, intent(in) :: harmonics(:) !! Harmonics.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: garch_order(2) !! Garch order.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
       integer :: coefficient_start, parameter_count
 
       candidate%slope = slope
@@ -2001,9 +2099,9 @@ contains
    end subroutine store_selection_candidate
 
    pure logical function selection_candidate_feasible(candidate, structural_parameters) result(feasible)
-      ! Check likelihood finiteness and ISSM, AR, MA, and GARCH stability.
-      type(tsissm_candidate_t), intent(in) :: candidate
-      real(dp), intent(in) :: structural_parameters(:)
+      !! Check likelihood finiteness and ISSM, AR, MA, and GARCH stability.
+      type(tsissm_candidate_t), intent(in) :: candidate !! Candidate.
+      real(dp), intent(in) :: structural_parameters(:) !! Structural parameters.
       integer :: ar_start, seasonal_count
 
       feasible = candidate%likelihood%info == 0 .and. &
@@ -2033,9 +2131,10 @@ contains
    end function selection_candidate_feasible
 
    pure subroutine rank_selection(out, top_n, criterion)
-      ! Sort successful candidates and normalize information-criterion weights.
-      type(tsissm_selection_t), intent(inout) :: out
-      integer, intent(in) :: top_n, criterion
+      !! Sort successful candidates and normalize information-criterion weights.
+      type(tsissm_selection_t), intent(inout) :: out !! Procedure result, updated in place.
+      integer, intent(in) :: top_n !! Top n.
+      integer, intent(in) :: criterion !! Criterion.
       integer, allocatable :: order(:)
       integer :: held, i, j, retained
       real(dp) :: minimum_score, total
@@ -2083,11 +2182,13 @@ contains
 
    pure function tsissm_diagnose(filtered, original_observations, lambda, lag, &
       fitted_parameter_count, constant_sigma) result(out)
-      ! Diagnose transformed and standardized one-step innovation residuals.
-      type(tsissm_filter_t), intent(in) :: filtered
-      real(dp), intent(in) :: original_observations(:), lambda
-      integer, intent(in) :: lag, fitted_parameter_count
-      real(dp), intent(in), optional :: constant_sigma
+      !! Diagnose transformed and standardized one-step innovation residuals.
+      type(tsissm_filter_t), intent(in) :: filtered !! Filtered.
+      real(dp), intent(in) :: original_observations(:) !! Original observations.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      integer, intent(in) :: lag !! Lag index or number of lags.
+      integer, intent(in) :: fitted_parameter_count !! Number of fitted parameter.
+      real(dp), intent(in), optional :: constant_sigma !! Constant sigma.
       type(tsissm_diagnostics_t) :: out
       real(dp), allocatable :: scale(:)
       real(dp) :: centered, kurtosis, mean_value, second_moment, skewness
@@ -2157,12 +2258,15 @@ contains
 
    pure function tsissm_diagnose_structural(filtered, original_observations, lambda, ar, ma, &
       max_outliers, outlier_alpha, constant_sigma) result(out)
-      ! Diagnose fitted structural residuals, roots, stability, and generalized ESD outliers.
-      type(tsissm_filter_t), intent(in) :: filtered
-      real(dp), intent(in) :: original_observations(:), lambda, ar(:), ma(:)
-      integer, intent(in) :: max_outliers
-      real(dp), intent(in) :: outlier_alpha
-      real(dp), intent(in), optional :: constant_sigma
+      !! Diagnose fitted structural residuals, roots, stability, and generalized ESD outliers.
+      type(tsissm_filter_t), intent(in) :: filtered !! Filtered.
+      real(dp), intent(in) :: original_observations(:) !! Original observations.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma(:) !! Moving-average coefficients.
+      integer, intent(in) :: max_outliers !! Maximum outliers.
+      real(dp), intent(in) :: outlier_alpha !! Outlier alpha.
+      real(dp), intent(in), optional :: constant_sigma !! Constant sigma.
       type(tsissm_structural_diagnostics_t) :: out
       real(dp) :: gamma_scale, gamma_shape
       integer :: degrees, diagnostic_lag, i, j, n
@@ -2206,12 +2310,14 @@ contains
 
    pure subroutine generalized_esd(values, max_outliers, alpha, candidate_index, statistic, &
       critical, outlier_count)
-      ! Apply Rosner's generalized ESD test and retain original candidate indices.
-      real(dp), intent(in) :: values(:), alpha
-      integer, intent(in) :: max_outliers
-      integer, allocatable, intent(out) :: candidate_index(:)
-      real(dp), allocatable, intent(out) :: statistic(:), critical(:)
-      integer, intent(out) :: outlier_count
+      !! Apply Rosner's generalized ESD test and retain original candidate indices.
+      real(dp), intent(in) :: values(:) !! Input values.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      integer, intent(in) :: max_outliers !! Maximum outliers.
+      integer, allocatable, intent(out) :: candidate_index(:) !! Index of candidate.
+      real(dp), allocatable, intent(out) :: statistic(:) !! Statistic.
+      real(dp), allocatable, intent(out) :: critical(:) !! Critical.
+      integer, intent(out) :: outlier_count !! Number of outlier.
       logical, allocatable :: retained(:)
       real(dp) :: average, probability, scale, t_value
       integer :: candidate, current_count, i
@@ -2241,8 +2347,9 @@ contains
    end subroutine generalized_esd
 
    pure function inverse_arma_roots(parameters, sign_value) result(inverse_roots)
-      ! Return inverse roots of an AR or MA lag polynomial.
-      real(dp), intent(in) :: parameters(:), sign_value
+      !! Return inverse roots of an AR or MA lag polynomial.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(in) :: sign_value !! Sign value.
       complex(dp), allocatable :: inverse_roots(:)
       real(dp), allocatable :: polynomial(:)
       complex(dp), allocatable :: roots(:)
@@ -2256,10 +2363,12 @@ contains
    end function inverse_arma_roots
 
    pure function tsissm_forecast_accuracy(actual, forecast, training, period, alpha) result(out)
-      ! Calculate point, interval, CRPS, and kernel log scores for forecast paths.
-      real(dp), intent(in) :: actual(:), training(:), alpha
-      type(tsissm_forecast_t), intent(in) :: forecast
-      integer, intent(in) :: period
+      !! Calculate point, interval, CRPS, and kernel log scores for forecast paths.
+      real(dp), intent(in) :: actual(:) !! Observed values used for evaluation.
+      real(dp), intent(in) :: training(:) !! Training observations.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      type(tsissm_forecast_t), intent(in) :: forecast !! Forecast values.
+      integer, intent(in) :: period !! Seasonal period.
       type(tsissm_accuracy_t) :: out
       real(dp), allocatable :: lower(:), ordered(:), predicted(:), upper(:)
       real(dp) :: bandwidth, density, difference, scale, standard_deviation
@@ -2300,9 +2409,9 @@ contains
       allocate(lower(h), upper(h), ordered(simulations))
       do i = 1, h
          ordered = forecast%distribution(:, i)
-         call sort_real_values(ordered)
-         lower(i) = type7_quantile(ordered, 0.5_dp*alpha)
-         upper(i) = type7_quantile(ordered, 1.0_dp - 0.5_dp*alpha)
+         call sort(ordered)
+         lower(i) = quantile(ordered, 0.5_dp*alpha)
+         upper(i) = quantile(ordered, 1.0_dp - 0.5_dp*alpha)
          if (actual(i) >= lower(i) .and. actual(i) <= upper(i)) &
             out%interval_coverage = out%interval_coverage + 1.0_dp
          out%interval_score = out%interval_score + upper(i) - lower(i)
@@ -2340,15 +2449,30 @@ contains
       initial_state, seed_index, first_origin, horizon, simulations, window_length, &
       reestimate_every, lambda, distribution, skew, shape, alpha, seed, max_iterations, &
       tolerance) result(out)
-      ! Run expanding- or fixed-window constant-variance rolling forecasts.
-      real(dp), intent(in) :: observations(:), regressors(:, :)
-      real(dp), intent(in) :: transition_base(:, :), transition_scale(:, :)
-      real(dp), intent(in) :: transition_parameter(:, :), observation_loading(:)
-      real(dp), intent(in) :: initial_persistence(:), initial_coefficients(:), initial_state(:)
-      integer, intent(in) :: seed_index(:), first_origin, horizon, simulations
-      integer, intent(in) :: window_length, reestimate_every, distribution, max_iterations
-      real(dp), intent(in) :: lambda, skew, shape, alpha, tolerance
-      integer, intent(in), optional :: seed
+      !! Run expanding- or fixed-window constant-variance rolling forecasts.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: transition_base(:, :) !! Transition base.
+      real(dp), intent(in) :: transition_scale(:, :) !! Transition scale.
+      real(dp), intent(in) :: transition_parameter(:, :) !! Transition parameter.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: initial_persistence(:) !! Initial persistence.
+      real(dp), intent(in) :: initial_coefficients(:) !! Initial coefficients.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      integer, intent(in) :: seed_index(:) !! Index of seed.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: simulations !! Number of simulation draws.
+      integer, intent(in) :: window_length !! Window length.
+      integer, intent(in) :: reestimate_every !! Reestimate every.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: skew !! Skew.
+      real(dp), intent(in) :: shape !! Shape.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in), optional :: seed !! Random-number seed.
       type(tsissm_backtest_t) :: out
       type(tsissm_filter_t) :: filtered
       type(tsissm_fit_t) :: fitted
@@ -2445,18 +2569,37 @@ contains
       initial_variance_history, variance_intercept, first_origin, horizon, simulations, &
       window_length, reestimate_every, lambda, distribution, skew, shape, alpha, seed, &
       max_iterations, tolerance, variance_initialization, variance_sample_size) result(out)
-      ! Run expanding- or fixed-window GARCH rolling forecasts.
-      real(dp), intent(in) :: observations(:), regressors(:, :)
-      real(dp), intent(in) :: transition_base(:, :), transition_scale(:, :)
-      real(dp), intent(in) :: transition_parameter(:, :), observation_loading(:)
-      real(dp), intent(in) :: initial_persistence(:), initial_coefficients(:)
-      real(dp), intent(in) :: initial_arch(:), initial_garch(:), initial_state(:)
-      real(dp), intent(in) :: initial_arch_history(:), initial_variance_history(:)
-      real(dp), intent(in) :: variance_intercept, lambda, skew, shape, alpha, tolerance
-      integer, intent(in) :: seed_index(:), first_origin, horizon, simulations
-      integer, intent(in) :: window_length, reestimate_every, distribution, max_iterations
-      integer, intent(in), optional :: seed
-      integer, intent(in), optional :: variance_initialization, variance_sample_size
+      !! Run expanding- or fixed-window GARCH rolling forecasts.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: transition_base(:, :) !! Transition base.
+      real(dp), intent(in) :: transition_scale(:, :) !! Transition scale.
+      real(dp), intent(in) :: transition_parameter(:, :) !! Transition parameter.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: initial_persistence(:) !! Initial persistence.
+      real(dp), intent(in) :: initial_coefficients(:) !! Initial coefficients.
+      real(dp), intent(in) :: initial_arch(:) !! Initial arch.
+      real(dp), intent(in) :: initial_garch(:) !! Initial GARCH.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: initial_arch_history(:) !! Initial arch history.
+      real(dp), intent(in) :: initial_variance_history(:) !! Initial variance history.
+      real(dp), intent(in) :: variance_intercept !! Variance intercept.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: skew !! Skew.
+      real(dp), intent(in) :: shape !! Shape.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in) :: seed_index(:) !! Index of seed.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: simulations !! Number of simulation draws.
+      integer, intent(in) :: window_length !! Window length.
+      integer, intent(in) :: reestimate_every !! Reestimate every.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      integer, intent(in), optional :: seed !! Random-number seed.
+      integer, intent(in), optional :: variance_initialization !! Variance initialization.
+      integer, intent(in), optional :: variance_sample_size !! Variance sample size.
       type(tsissm_backtest_t) :: out
       type(tsissm_filter_t) :: filtered
       type(tsissm_fit_t) :: fitted
@@ -2570,14 +2713,28 @@ contains
       ma_order, initial_state, initial_parameters, first_origin, horizon, simulations, &
       window_length, reestimate_every, distribution, alpha, max_iterations, tolerance, &
       seed) result(out)
-      ! Run rolling forecasts with joint structural constant-variance refits.
-      real(dp), intent(in) :: observations(:), regressors(:, :), seasonal_frequency(:)
-      real(dp), intent(in) :: initial_state(:), initial_parameters(:), alpha, tolerance
-      logical, intent(in) :: slope, damped_slope, regular_seasonal
-      integer, intent(in) :: seasonal_harmonics(:), ar_order, ma_order
-      integer, intent(in) :: first_origin, horizon, simulations, window_length
-      integer, intent(in) :: reestimate_every, distribution, max_iterations
-      integer, intent(in), optional :: seed
+      !! Run rolling forecasts with joint structural constant-variance refits.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: seasonal_frequency(:) !! Seasonal frequency.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      logical, intent(in) :: slope !! Flag controlling slope.
+      logical, intent(in) :: damped_slope !! Flag controlling damped slope.
+      logical, intent(in) :: regular_seasonal !! Flag controlling regular seasonal.
+      integer, intent(in) :: seasonal_harmonics(:) !! Seasonal harmonics.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: simulations !! Number of simulation draws.
+      integer, intent(in) :: window_length !! Window length.
+      integer, intent(in) :: reestimate_every !! Reestimate every.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      integer, intent(in), optional :: seed !! Random-number seed.
       type(tsissm_backtest_t) :: out
       type(tsissm_filter_t) :: filtered
       type(tsissm_forecast_t) :: forecast
@@ -2689,16 +2846,32 @@ contains
       first_origin, horizon, simulations, window_length, reestimate_every, distribution, &
       alpha, max_iterations, tolerance, seed, variance_initialization, &
       variance_sample_size) result(out)
-      ! Run rolling forecasts with joint structural and GARCH refits.
-      real(dp), intent(in) :: observations(:), regressors(:, :), seasonal_frequency(:)
-      real(dp), intent(in) :: initial_state(:), initial_parameters(:)
-      real(dp), intent(in) :: initial_arch(:), initial_garch(:), alpha, tolerance
-      logical, intent(in) :: slope, damped_slope, regular_seasonal
-      integer, intent(in) :: seasonal_harmonics(:), ar_order, ma_order
-      integer, intent(in) :: first_origin, horizon, simulations, window_length
-      integer, intent(in) :: reestimate_every, distribution, max_iterations
-      integer, intent(in), optional :: seed
-      integer, intent(in), optional :: variance_initialization, variance_sample_size
+      !! Run rolling forecasts with joint structural and GARCH refits.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: seasonal_frequency(:) !! Seasonal frequency.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: initial_arch(:) !! Initial arch.
+      real(dp), intent(in) :: initial_garch(:) !! Initial GARCH.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      logical, intent(in) :: slope !! Flag controlling slope.
+      logical, intent(in) :: damped_slope !! Flag controlling damped slope.
+      logical, intent(in) :: regular_seasonal !! Flag controlling regular seasonal.
+      integer, intent(in) :: seasonal_harmonics(:) !! Seasonal harmonics.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: simulations !! Number of simulation draws.
+      integer, intent(in) :: window_length !! Window length.
+      integer, intent(in) :: reestimate_every !! Reestimate every.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      integer, intent(in), optional :: seed !! Random-number seed.
+      integer, intent(in), optional :: variance_initialization !! Variance initialization.
+      integer, intent(in), optional :: variance_sample_size !! Variance sample size.
       type(tsissm_backtest_t) :: out
       type(tsissm_filter_t) :: constant_filter, filtered
       type(tsissm_forecast_t) :: forecast
@@ -2849,15 +3022,23 @@ contains
    pure subroutine decode_structural_parameters(slope, damped_slope, seasonal_frequency, &
       seasonal_harmonics, regular_seasonal, ar_order, ma_order, regression_count, parameters, &
       distribution, model, coefficients, lambda, skew, shape, status)
-      ! Decode the common flat structural parameter representation.
-      logical, intent(in) :: slope, damped_slope, regular_seasonal
-      real(dp), intent(in) :: seasonal_frequency(:), parameters(:)
-      integer, intent(in) :: seasonal_harmonics(:), ar_order, ma_order, regression_count
-      integer, intent(in) :: distribution
-      type(tsissm_model_t), intent(out) :: model
-      real(dp), allocatable, intent(out) :: coefficients(:)
-      real(dp), intent(out) :: lambda, skew, shape
-      integer, intent(out) :: status
+      !! Decode the common flat structural parameter representation.
+      logical, intent(in) :: slope !! Flag controlling slope.
+      logical, intent(in) :: damped_slope !! Flag controlling damped slope.
+      logical, intent(in) :: regular_seasonal !! Flag controlling regular seasonal.
+      real(dp), intent(in) :: seasonal_frequency(:) !! Seasonal frequency.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      integer, intent(in) :: seasonal_harmonics(:) !! Seasonal harmonics.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      integer, intent(in) :: regression_count !! Number of regression.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      type(tsissm_model_t), intent(out) :: model !! Model specification.
+      real(dp), allocatable, intent(out) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(out) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(out) :: skew !! Skew.
+      real(dp), intent(out) :: shape !! Shape.
+      integer, intent(out) :: status !! Status.
       real(dp), allocatable :: ar(:), ma(:), seasonal_persistence(:)
       real(dp) :: alpha, beta, damping
       integer :: expected, index
@@ -2906,11 +3087,15 @@ contains
 
    pure subroutine structural_coefficients(parameters, slope, damped_slope, seasonal_count, &
       ar_order, ma_order, regression_count, coefficients)
-      ! Extract regression coefficients from a structural parameter vector.
-      real(dp), intent(in) :: parameters(:)
-      logical, intent(in) :: slope, damped_slope
-      integer, intent(in) :: seasonal_count, ar_order, ma_order, regression_count
-      real(dp), allocatable, intent(out) :: coefficients(:)
+      !! Extract regression coefficients from a structural parameter vector.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      logical, intent(in) :: slope !! Flag controlling slope.
+      logical, intent(in) :: damped_slope !! Flag controlling damped slope.
+      integer, intent(in) :: seasonal_count !! Number of seasonal.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      integer, intent(in) :: regression_count !! Number of regression.
+      real(dp), allocatable, intent(out) :: coefficients(:) !! Model coefficients.
       integer :: first
 
       first = 2 + merge(1, 0, slope) + merge(1, 0, damped_slope) + &
@@ -2920,9 +3105,14 @@ contains
 
    pure integer function structural_parameter_count(slope, damped_slope, seasonal_count, &
       ar_order, ma_order, regression_count, distribution) result(count_parameters)
-      ! Count parameters in the common flat structural representation.
-      logical, intent(in) :: slope, damped_slope
-      integer, intent(in) :: seasonal_count, ar_order, ma_order, regression_count, distribution
+      !! Count parameters in the common flat structural representation.
+      logical, intent(in) :: slope !! Flag controlling slope.
+      logical, intent(in) :: damped_slope !! Flag controlling damped slope.
+      integer, intent(in) :: seasonal_count !! Number of seasonal.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      integer, intent(in) :: regression_count !! Number of regression.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
 
       count_parameters = 1 + merge(1, 0, slope) + merge(1, 0, damped_slope) + &
          seasonal_count + ar_order + ma_order + regression_count + 1
@@ -2933,12 +3123,21 @@ contains
    pure logical function valid_structural_backtest_inputs(observations, regressors, initial_state, &
       parameters, model, model_status, first_origin, horizon, simulations, window_length, &
       reestimate_every, alpha, max_iterations, tolerance) result(valid)
-      ! Check dimensions and controls for joint structural rolling backtests.
-      real(dp), intent(in) :: observations(:), regressors(:, :), initial_state(:), parameters(:)
-      type(tsissm_model_t), intent(in) :: model
-      integer, intent(in) :: model_status, first_origin, horizon, simulations, window_length
-      integer, intent(in) :: reestimate_every, max_iterations
-      real(dp), intent(in) :: alpha, tolerance
+      !! Check dimensions and controls for joint structural rolling backtests.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      type(tsissm_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: model_status !! Model status.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: simulations !! Number of simulation draws.
+      integer, intent(in) :: window_length !! Window length.
+      integer, intent(in) :: reestimate_every !! Reestimate every.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
 
       valid = .false.
       if (model_status /= 0) return
@@ -2954,11 +3153,21 @@ contains
    pure logical function valid_backtest_inputs(observations, regressors, observation_loading, &
       persistence, coefficients, initial_state, first_origin, horizon, simulations, window_length, &
       reestimate_every, alpha, max_iterations, tolerance) result(valid)
-      ! Check dimensions and common rolling-backtest controls.
-      real(dp), intent(in) :: observations(:), regressors(:, :), observation_loading(:)
-      real(dp), intent(in) :: persistence(:), coefficients(:), initial_state(:), alpha, tolerance
-      integer, intent(in) :: first_origin, horizon, simulations, window_length
-      integer, intent(in) :: reestimate_every, max_iterations
+      !! Check dimensions and common rolling-backtest controls.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: persistence(:) !! Persistence.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in) :: first_origin !! First origin.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: simulations !! Number of simulation draws.
+      integer, intent(in) :: window_length !! Window length.
+      integer, intent(in) :: reestimate_every !! Reestimate every.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
 
       valid = size(observations) >= 3 .and. all(observations > 0.0_dp) .and. &
          size(regressors, 1) == size(observations) .and. &
@@ -2973,10 +3182,13 @@ contains
 
    pure subroutine allocate_backtest(out, origins, horizon, state_count, coefficient_count, &
       parameter_count)
-      ! Allocate and clear a rolling-backtest result.
-      type(tsissm_backtest_t), intent(out) :: out
-      integer, intent(in) :: origins, horizon, state_count, coefficient_count
-      integer, intent(in), optional :: parameter_count
+      !! Allocate and clear a rolling-backtest result.
+      type(tsissm_backtest_t), intent(out) :: out !! Procedure result.
+      integer, intent(in) :: origins !! Origins.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: state_count !! State count.
+      integer, intent(in) :: coefficient_count !! Number of coefficient.
+      integer, intent(in), optional :: parameter_count !! Number of parameter.
       integer :: stored_parameters
 
       allocate(out%forecast(origins, horizon), out%actual(origins, horizon))
@@ -3004,11 +3216,11 @@ contains
    end subroutine allocate_backtest
 
    pure subroutine store_backtest_origin(out, origin_index, actual, forecast)
-      ! Store one origin and calculate its horizon-specific distribution scores.
-      type(tsissm_backtest_t), intent(inout) :: out
-      integer, intent(in) :: origin_index
-      real(dp), intent(in) :: actual(:)
-      type(tsissm_forecast_t), intent(in) :: forecast
+      !! Store one origin and calculate its horizon-specific distribution scores.
+      type(tsissm_backtest_t), intent(inout) :: out !! Procedure result, updated in place.
+      integer, intent(in) :: origin_index !! Index of origin.
+      real(dp), intent(in) :: actual(:) !! Observed values used for evaluation.
+      type(tsissm_forecast_t), intent(in) :: forecast !! Forecast values.
       integer :: step
 
       do step = 1, size(actual)
@@ -3024,16 +3236,18 @@ contains
    end subroutine store_backtest_origin
 
    pure subroutine distribution_scores(actual, draws, crps, log_score)
-      ! Calculate one observation's ensemble CRPS and kernel log score.
-      real(dp), intent(in) :: actual, draws(:)
-      real(dp), intent(out) :: crps, log_score
+      !! Calculate one observation's ensemble CRPS and kernel log score.
+      real(dp), intent(in) :: actual !! Observed values used for evaluation.
+      real(dp), intent(in) :: draws(:) !! Draws.
+      real(dp), intent(out) :: crps !! Crps.
+      real(dp), intent(out) :: log_score !! Log score.
       real(dp), allocatable :: ordered(:)
       real(dp) :: bandwidth, density, difference, mean_value, standard_deviation
       integer :: i, simulations
 
       simulations = size(draws)
       ordered = draws
-      call sort_real_values(ordered)
+      call sort(ordered)
       crps = sum(abs(ordered - actual))/real(simulations, dp)
       do i = 1, simulations
          crps = crps - real(2*i - simulations - 1, dp)*ordered(i)/ &
@@ -3053,9 +3267,9 @@ contains
    end subroutine distribution_scores
 
    pure subroutine summarize_backtest(out, alpha)
-      ! Aggregate rolling errors and distribution scores by forecast horizon.
-      type(tsissm_backtest_t), intent(inout) :: out
-      real(dp), intent(in) :: alpha
+      !! Aggregate rolling errors and distribution scores by forecast horizon.
+      type(tsissm_backtest_t), intent(inout) :: out !! Procedure result, updated in place.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
       real(dp) :: score
       integer :: count_valid, origin, step
 
@@ -3093,11 +3307,13 @@ contains
 
    pure function tsissm_weighted_box_test(residuals, lag, test_type, &
       fitted_parameter_count, weighted, transform) result(out)
-      ! Compute weighted or classical Box-Pierce, Ljung-Box, and Monti tests.
-      real(dp), intent(in) :: residuals(:)
-      integer, intent(in) :: lag
-      integer, intent(in), optional :: test_type, fitted_parameter_count, transform
-      logical, intent(in), optional :: weighted
+      !! Compute weighted or classical Box-Pierce, Ljung-Box, and Monti tests.
+      real(dp), intent(in) :: residuals(:) !! Model residuals.
+      integer, intent(in) :: lag !! Lag index or number of lags.
+      integer, intent(in), optional :: test_type !! Test type.
+      integer, intent(in), optional :: fitted_parameter_count !! Number of fitted parameter.
+      integer, intent(in), optional :: transform !! Transform.
+      logical, intent(in), optional :: weighted !! Flag controlling weighted.
       type(tsissm_weighted_box_test_t) :: out
 
       out = shared_weighted_box_test(residuals, lag, test_type, &
@@ -3106,10 +3322,13 @@ contains
 
    pure subroutine weighted_ljung_box(residuals, lag, fitted_parameter_count, statistic, &
       gamma_shape, gamma_scale)
-      ! Compute Fisher-Gallagher's weighted Ljung-Box gamma approximation.
-      real(dp), intent(in) :: residuals(:)
-      integer, intent(in) :: lag, fitted_parameter_count
-      real(dp), intent(out) :: statistic, gamma_shape, gamma_scale
+      !! Compute Fisher-Gallagher's weighted Ljung-Box gamma approximation.
+      real(dp), intent(in) :: residuals(:) !! Model residuals.
+      integer, intent(in) :: lag !! Lag index or number of lags.
+      integer, intent(in) :: fitted_parameter_count !! Number of fitted parameter.
+      real(dp), intent(out) :: statistic !! Statistic.
+      real(dp), intent(out) :: gamma_shape !! Gamma shape.
+      real(dp), intent(out) :: gamma_scale !! Gamma scale.
       type(tsissm_weighted_box_test_t) :: test
 
       test = tsissm_weighted_box_test(residuals, lag, tsissm_box_test_ljung_box, &
@@ -3122,14 +3341,24 @@ contains
    function tsissm_simulate_constant(transition_base, transition_scale, transition_parameter, &
       observation_loading, persistence, regressors, coefficients, initial_state, sigma, lambda, &
       distribution, skew, shape, simulations, probabilities, seed, bootstrap_residuals) result(out)
-      ! Simulate and summarize constant-variance parametric or bootstrap forecasts.
-      real(dp), intent(in) :: transition_base(:, :), transition_scale(:, :)
-      real(dp), intent(in) :: transition_parameter(:, :), observation_loading(:), persistence(:)
-      real(dp), intent(in) :: regressors(:, :), coefficients(:), initial_state(:)
-      real(dp), intent(in) :: sigma, lambda, skew, shape
-      integer, intent(in) :: distribution, simulations
-      real(dp), intent(in), optional :: probabilities(:), bootstrap_residuals(:)
-      integer, intent(in), optional :: seed
+      !! Simulate and summarize constant-variance parametric or bootstrap forecasts.
+      real(dp), intent(in) :: transition_base(:, :) !! Transition base.
+      real(dp), intent(in) :: transition_scale(:, :) !! Transition scale.
+      real(dp), intent(in) :: transition_parameter(:, :) !! Transition parameter.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: persistence(:) !! Persistence.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: sigma !! Scale parameter or standard deviation.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: skew !! Skew.
+      real(dp), intent(in) :: shape !! Shape.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: simulations !! Number of simulation draws.
+      real(dp), intent(in), optional :: probabilities(:) !! Probability values.
+      real(dp), intent(in), optional :: bootstrap_residuals(:) !! Bootstrap residuals.
+      integer, intent(in), optional :: seed !! Random-number seed.
       type(tsissm_forecast_t) :: out
       real(dp), allocatable :: innovations(:, :), selected_probabilities(:)
 
@@ -3169,15 +3398,28 @@ contains
       observation_loading, persistence, regressors, coefficients, initial_state, arch, garch, &
       variance_intercept, initial_arch, initial_variance, lambda, distribution, skew, shape, &
       simulations, probabilities, seed, bootstrap_standardized_residuals) result(out)
-      ! Simulate and summarize GARCH-scaled parametric or bootstrap forecasts.
-      real(dp), intent(in) :: transition_base(:, :), transition_scale(:, :)
-      real(dp), intent(in) :: transition_parameter(:, :), observation_loading(:), persistence(:)
-      real(dp), intent(in) :: regressors(:, :), coefficients(:), initial_state(:)
-      real(dp), intent(in) :: arch(:), garch(:), variance_intercept
-      real(dp), intent(in) :: initial_arch(:), initial_variance(:), lambda, skew, shape
-      integer, intent(in) :: distribution, simulations
-      real(dp), intent(in), optional :: probabilities(:), bootstrap_standardized_residuals(:)
-      integer, intent(in), optional :: seed
+      !! Simulate and summarize GARCH-scaled parametric or bootstrap forecasts.
+      real(dp), intent(in) :: transition_base(:, :) !! Transition base.
+      real(dp), intent(in) :: transition_scale(:, :) !! Transition scale.
+      real(dp), intent(in) :: transition_parameter(:, :) !! Transition parameter.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: persistence(:) !! Persistence.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: arch(:) !! Arch.
+      real(dp), intent(in) :: garch(:) !! Garch.
+      real(dp), intent(in) :: variance_intercept !! Variance intercept.
+      real(dp), intent(in) :: initial_arch(:) !! Initial arch.
+      real(dp), intent(in) :: initial_variance(:) !! Initial variance.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: skew !! Skew.
+      real(dp), intent(in) :: shape !! Shape.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: simulations !! Number of simulation draws.
+      real(dp), intent(in), optional :: probabilities(:) !! Probability values.
+      real(dp), intent(in), optional :: bootstrap_standardized_residuals(:) !! Bootstrap standardized residuals.
+      integer, intent(in), optional :: seed !! Random-number seed.
       type(tsissm_forecast_t) :: out
       real(dp), allocatable :: selected_probabilities(:), standardized(:, :)
 
@@ -3216,14 +3458,28 @@ contains
       observation_loading, persistence, regressors, coefficients, initial_state, sigma, lambda, &
       distribution, skew, shape, horizon, profile_simulations, forecast_simulations, period, &
       seed_index, max_iterations, tolerance, seed) result(out)
-      ! Simulate, refit, and evaluate constant-variance ISSM paths.
-      real(dp), intent(in) :: transition_base(:, :), transition_scale(:, :)
-      real(dp), intent(in) :: transition_parameter(:, :), observation_loading(:), persistence(:)
-      real(dp), intent(in) :: regressors(:, :), coefficients(:), initial_state(:)
-      real(dp), intent(in) :: sigma, lambda, skew, shape, tolerance
-      integer, intent(in) :: distribution, horizon, profile_simulations, forecast_simulations
-      integer, intent(in) :: period, seed_index(:), max_iterations
-      integer, intent(in), optional :: seed
+      !! Simulate, refit, and evaluate constant-variance ISSM paths.
+      real(dp), intent(in) :: transition_base(:, :) !! Transition base.
+      real(dp), intent(in) :: transition_scale(:, :) !! Transition scale.
+      real(dp), intent(in) :: transition_parameter(:, :) !! Transition parameter.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: persistence(:) !! Persistence.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: sigma !! Scale parameter or standard deviation.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: skew !! Skew.
+      real(dp), intent(in) :: shape !! Shape.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: profile_simulations !! Profile simulations.
+      integer, intent(in) :: forecast_simulations !! Forecast simulations.
+      integer, intent(in) :: period !! Seasonal period.
+      integer, intent(in) :: seed_index(:) !! Index of seed.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      integer, intent(in), optional :: seed !! Random-number seed.
       type(tsissm_profile_t) :: out
       type(tsissm_fit_t) :: fitted
       type(tsissm_forecast_t) :: generated, forecast
@@ -3272,16 +3528,34 @@ contains
       variance_intercept, initial_arch, initial_variance, lambda, distribution, skew, shape, &
       horizon, profile_simulations, forecast_simulations, period, seed_index, max_iterations, &
       tolerance, seed, variance_initialization, variance_sample_size) result(out)
-      ! Simulate, refit, and evaluate variance-targeted GARCH ISSM paths.
-      real(dp), intent(in) :: transition_base(:, :), transition_scale(:, :)
-      real(dp), intent(in) :: transition_parameter(:, :), observation_loading(:), persistence(:)
-      real(dp), intent(in) :: regressors(:, :), coefficients(:), initial_state(:)
-      real(dp), intent(in) :: arch(:), garch(:), variance_intercept
-      real(dp), intent(in) :: initial_arch(:), initial_variance(:), lambda, skew, shape, tolerance
-      integer, intent(in) :: distribution, horizon, profile_simulations, forecast_simulations
-      integer, intent(in) :: period, seed_index(:), max_iterations
-      integer, intent(in), optional :: seed
-      integer, intent(in), optional :: variance_initialization, variance_sample_size
+      !! Simulate, refit, and evaluate variance-targeted GARCH ISSM paths.
+      real(dp), intent(in) :: transition_base(:, :) !! Transition base.
+      real(dp), intent(in) :: transition_scale(:, :) !! Transition scale.
+      real(dp), intent(in) :: transition_parameter(:, :) !! Transition parameter.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: persistence(:) !! Persistence.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: arch(:) !! Arch.
+      real(dp), intent(in) :: garch(:) !! Garch.
+      real(dp), intent(in) :: variance_intercept !! Variance intercept.
+      real(dp), intent(in) :: initial_arch(:) !! Initial arch.
+      real(dp), intent(in) :: initial_variance(:) !! Initial variance.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: skew !! Skew.
+      real(dp), intent(in) :: shape !! Shape.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: profile_simulations !! Profile simulations.
+      integer, intent(in) :: forecast_simulations !! Forecast simulations.
+      integer, intent(in) :: period !! Seasonal period.
+      integer, intent(in) :: seed_index(:) !! Index of seed.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      integer, intent(in), optional :: seed !! Random-number seed.
+      integer, intent(in), optional :: variance_initialization !! Variance initialization.
+      integer, intent(in), optional :: variance_sample_size !! Variance sample size.
       type(tsissm_profile_t) :: out
       type(tsissm_fit_t) :: fitted
       type(tsissm_forecast_t) :: generated, forecast
@@ -3339,14 +3613,26 @@ contains
       seasonal_frequency, seasonal_harmonics, regular_seasonal, ar_order, ma_order, &
       initial_state, parameters, sigma, horizon, profile_simulations, forecast_simulations, &
       period, distribution, max_iterations, tolerance, seed) result(out)
-      ! Profile complete constant-variance structural fits by simulation and refitting.
-      real(dp), intent(in) :: regressors(:, :), seasonal_frequency(:), initial_state(:)
-      real(dp), intent(in) :: parameters(:), sigma, tolerance
-      logical, intent(in) :: slope, damped_slope, regular_seasonal
-      integer, intent(in) :: seasonal_harmonics(:), ar_order, ma_order, horizon
-      integer, intent(in) :: profile_simulations, forecast_simulations, period, distribution
-      integer, intent(in) :: max_iterations
-      integer, intent(in), optional :: seed
+      !! Profile complete constant-variance structural fits by simulation and refitting.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: seasonal_frequency(:) !! Seasonal frequency.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(in) :: sigma !! Scale parameter or standard deviation.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      logical, intent(in) :: slope !! Flag controlling slope.
+      logical, intent(in) :: damped_slope !! Flag controlling damped slope.
+      logical, intent(in) :: regular_seasonal !! Flag controlling regular seasonal.
+      integer, intent(in) :: seasonal_harmonics(:) !! Seasonal harmonics.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: profile_simulations !! Profile simulations.
+      integer, intent(in) :: forecast_simulations !! Forecast simulations.
+      integer, intent(in) :: period !! Seasonal period.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      integer, intent(in), optional :: seed !! Random-number seed.
       type(tsissm_profile_t) :: out
       type(tsissm_forecast_t) :: forecast, generated
       type(tsissm_model_t) :: model
@@ -3406,16 +3692,32 @@ contains
       initial_variance, horizon, profile_simulations, forecast_simulations, period, &
       distribution, max_iterations, tolerance, seed, variance_initialization, &
       variance_sample_size) result(out)
-      ! Profile complete structural and GARCH fits by simulation and refitting.
-      real(dp), intent(in) :: regressors(:, :), seasonal_frequency(:), initial_state(:)
-      real(dp), intent(in) :: parameters(:), arch(:), garch(:), variance_intercept
-      real(dp), intent(in) :: initial_arch(:), initial_variance(:), tolerance
-      logical, intent(in) :: slope, damped_slope, regular_seasonal
-      integer, intent(in) :: seasonal_harmonics(:), ar_order, ma_order, horizon
-      integer, intent(in) :: profile_simulations, forecast_simulations, period, distribution
-      integer, intent(in) :: max_iterations
-      integer, intent(in), optional :: seed
-      integer, intent(in), optional :: variance_initialization, variance_sample_size
+      !! Profile complete structural and GARCH fits by simulation and refitting.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: seasonal_frequency(:) !! Seasonal frequency.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      real(dp), intent(in) :: arch(:) !! Arch.
+      real(dp), intent(in) :: garch(:) !! Garch.
+      real(dp), intent(in) :: variance_intercept !! Variance intercept.
+      real(dp), intent(in) :: initial_arch(:) !! Initial arch.
+      real(dp), intent(in) :: initial_variance(:) !! Initial variance.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      logical, intent(in) :: slope !! Flag controlling slope.
+      logical, intent(in) :: damped_slope !! Flag controlling damped slope.
+      logical, intent(in) :: regular_seasonal !! Flag controlling regular seasonal.
+      integer, intent(in) :: seasonal_harmonics(:) !! Seasonal harmonics.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: profile_simulations !! Profile simulations.
+      integer, intent(in) :: forecast_simulations !! Forecast simulations.
+      integer, intent(in) :: period !! Seasonal period.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      integer, intent(in), optional :: seed !! Random-number seed.
+      integer, intent(in), optional :: variance_initialization !! Variance initialization.
+      integer, intent(in), optional :: variance_sample_size !! Variance sample size.
       type(tsissm_profile_t) :: out
       type(tsissm_forecast_t) :: forecast, generated
       type(tsissm_model_t) :: model
@@ -3481,9 +3783,11 @@ contains
    end function tsissm_profile_structural_dynamic
 
    pure subroutine allocate_profile(out, simulations, horizon, parameters)
-      ! Allocate and initialize a simulation profile result.
-      type(tsissm_profile_t), intent(out) :: out
-      integer, intent(in) :: simulations, horizon, parameters
+      !! Allocate and initialize a simulation profile result.
+      type(tsissm_profile_t), intent(out) :: out !! Procedure result.
+      integer, intent(in) :: simulations !! Number of simulation draws.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: parameters !! Model parameter values.
 
       allocate(out%parameter(simulations, parameters), out%true_parameter(parameters))
       allocate(out%actual(simulations, horizon), out%predicted(simulations, horizon))
@@ -3504,11 +3808,13 @@ contains
    end subroutine allocate_profile
 
    pure subroutine store_profile_metrics(out, simulation, actual, forecast, training, period)
-      ! Store point metrics and cumulative CRPS for one successful profile path.
-      type(tsissm_profile_t), intent(inout) :: out
-      integer, intent(in) :: simulation, period
-      real(dp), intent(in) :: actual(:), training(:)
-      type(tsissm_forecast_t), intent(in) :: forecast
+      !! Store point metrics and cumulative CRPS for one successful profile path.
+      type(tsissm_profile_t), intent(inout) :: out !! Procedure result, updated in place.
+      integer, intent(in) :: simulation !! Simulation.
+      integer, intent(in) :: period !! Seasonal period.
+      real(dp), intent(in) :: actual(:) !! Observed values used for evaluation.
+      real(dp), intent(in) :: training(:) !! Training observations.
+      type(tsissm_forecast_t), intent(in) :: forecast !! Forecast values.
       real(dp) :: crps_value, log_score, scale
       integer :: i
 
@@ -3536,10 +3842,11 @@ contains
    end subroutine store_profile_metrics
 
    subroutine random_standardized_innovations(innovations, distribution, skew, shape)
-      ! Fill a matrix from a standardized tsissm innovation distribution.
-      real(dp), intent(out) :: innovations(:, :)
-      integer, intent(in) :: distribution
-      real(dp), intent(in) :: skew, shape
+      !! Fill a matrix from a standardized tsissm innovation distribution.
+      real(dp), intent(out) :: innovations(:, :) !! Model innovations.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      real(dp), intent(in) :: skew !! Skew.
+      real(dp), intent(in) :: shape !! Shape.
       integer :: i, j
 
       do j = 1, size(innovations, 2)
@@ -3557,9 +3864,9 @@ contains
    end subroutine random_standardized_innovations
 
    subroutine resample_innovations(residuals, innovations)
-      ! Sample empirical residuals independently with replacement.
-      real(dp), intent(in) :: residuals(:)
-      real(dp), intent(out) :: innovations(:, :)
+      !! Sample empirical residuals independently with replacement.
+      real(dp), intent(in) :: residuals(:) !! Model residuals.
+      real(dp), intent(out) :: innovations(:, :) !! Model innovations.
       integer :: i, index, j
 
       do j = 1, size(innovations, 2)
@@ -3571,10 +3878,10 @@ contains
    end subroutine resample_innovations
 
    pure subroutine prepare_probabilities(probabilities, selected, info)
-      ! Validate requested probabilities or supply the usual 95 percent interval.
-      real(dp), intent(in), optional :: probabilities(:)
-      real(dp), allocatable, intent(out) :: selected(:)
-      integer, intent(out) :: info
+      !! Validate requested probabilities or supply the usual 95 percent interval.
+      real(dp), intent(in), optional :: probabilities(:) !! Probability values.
+      real(dp), allocatable, intent(out) :: selected(:) !! Selected.
+      integer, intent(out) :: info !! Status code; zero indicates success.
 
       info = 0
       if (present(probabilities)) then
@@ -3590,9 +3897,10 @@ contains
    end subroutine prepare_probabilities
 
    pure subroutine summarize_forecast(out, probabilities, lambda)
-      ! Back-transform paths and calculate means and type-7 sample quantiles.
-      type(tsissm_forecast_t), intent(inout) :: out
-      real(dp), intent(in) :: probabilities(:), lambda
+      !! Back-transform paths and calculate means and type-7 sample quantiles.
+      type(tsissm_forecast_t), intent(inout) :: out !! Procedure result, updated in place.
+      real(dp), intent(in) :: probabilities(:) !! Probability values.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
       real(dp), allocatable :: ordered(:)
       real(dp) :: base
       integer :: horizon, i, probability_index, simulation
@@ -3617,52 +3925,18 @@ contains
       allocate(ordered(size(out%distribution, 1)))
       do horizon = 1, size(out%distribution, 2)
          ordered = out%distribution(:, horizon)
-         call sort_real_values(ordered)
+         call sort(ordered)
          do probability_index = 1, size(probabilities)
             out%quantile(probability_index, horizon) = &
-               type7_quantile(ordered, probabilities(probability_index))
+               quantile(ordered, probabilities(probability_index))
          end do
       end do
    end subroutine summarize_forecast
 
-   pure subroutine sort_real_values(values)
-      ! Sort real values into ascending order by insertion.
-      real(dp), intent(inout) :: values(:)
-      real(dp) :: held
-      integer :: i, j
-
-      do i = 2, size(values)
-         held = values(i)
-         j = i - 1
-         do while (j >= 1)
-            if (values(j) <= held) exit
-            values(j + 1) = values(j)
-            j = j - 1
-         end do
-         values(j + 1) = held
-      end do
-   end subroutine sort_real_values
-
-   pure real(dp) function type7_quantile(sorted, probability) result(value)
-      ! Interpolate an ascending sample using R's default type-7 quantile.
-      real(dp), intent(in) :: sorted(:), probability
-      real(dp) :: fraction, position
-      integer :: lower
-
-      position = 1.0_dp + real(size(sorted) - 1, dp)*probability
-      lower = floor(position)
-      if (lower >= size(sorted)) then
-         value = sorted(size(sorted))
-      else
-         fraction = position - real(lower, dp)
-         value = (1.0_dp - fraction)*sorted(lower) + fraction*sorted(lower + 1)
-      end if
-   end function type7_quantile
-
    pure logical function valid_distribution_parameters(distribution, shape) result(valid)
-      ! Check the distribution code and its required shape parameter.
-      integer, intent(in) :: distribution
-      real(dp), intent(in) :: shape
+      !! Check the distribution code and its required shape parameter.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      real(dp), intent(in) :: shape !! Shape.
 
       valid = distribution == tsissm_distribution_gaussian .or. &
          (distribution == tsissm_distribution_student .and. shape > 2.0_dp) .or. &
@@ -3671,11 +3945,14 @@ contains
 
    pure function tsissm_decompose_filter(model, filtered, regressors, coefficients, &
       original_observations, lambda, updated_states) result(out)
-      ! Decompose filtered values into structural, regression, and irregular terms.
-      type(tsissm_model_t), intent(in) :: model
-      type(tsissm_filter_t), intent(in) :: filtered
-      real(dp), intent(in) :: regressors(:, :), coefficients(:), original_observations(:), lambda
-      logical, intent(in), optional :: updated_states
+      !! Decompose filtered values into structural, regression, and irregular terms.
+      type(tsissm_model_t), intent(in) :: model !! Model specification.
+      type(tsissm_filter_t), intent(in) :: filtered !! Filtered.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: original_observations(:) !! Original observations.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      logical, intent(in), optional :: updated_states !! Flag controlling updated states.
       type(tsissm_decomposition_t) :: out
       logical :: use_updated
       integer :: i, n, seasonal_count, state_column
@@ -3750,11 +4027,13 @@ contains
 
    pure function tsissm_decompose_prediction(model, prediction, regressors, coefficients, &
       lambda, updated_states) result(out)
-      ! Decompose simulated predictions using pre-update or updated state paths.
-      type(tsissm_model_t), intent(in) :: model
-      type(tsissm_prediction_t), intent(in) :: prediction
-      real(dp), intent(in) :: regressors(:, :), coefficients(:), lambda
-      logical, intent(in), optional :: updated_states
+      !! Decompose simulated predictions using pre-update or updated state paths.
+      type(tsissm_model_t), intent(in) :: model !! Model specification.
+      type(tsissm_prediction_t), intent(in) :: prediction !! Prediction.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      logical, intent(in), optional :: updated_states !! Flag controlling updated states.
       type(tsissm_prediction_decomposition_t) :: out
       logical :: use_updated
       integer :: h, i, seasonal_count, simulation, simulations, state_column
@@ -3829,10 +4108,10 @@ contains
    end function tsissm_decompose_prediction
 
    pure subroutine decompose_seasonal_state(model, state, contribution)
-      ! Reduce each seasonal state block through its observation loading.
-      type(tsissm_model_t), intent(in) :: model
-      real(dp), intent(in) :: state(:)
-      real(dp), intent(out) :: contribution(:)
+      !! Reduce each seasonal state block through its observation loading.
+      type(tsissm_model_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(out) :: contribution(:) !! Contribution.
       integer :: i
 
       do i = 1, size(contribution)
@@ -3843,8 +4122,9 @@ contains
    end subroutine decompose_seasonal_state
 
    pure elemental real(dp) function inverse_box_cox_value(value, lambda) result(inverse)
-      ! Invert the Box-Cox transform for a valid transformed value.
-      real(dp), intent(in) :: value, lambda
+      !! Invert the Box-Cox transform for a valid transformed value.
+      real(dp), intent(in) :: value !! Input value.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
 
       if (abs(lambda) <= sqrt(epsilon(1.0_dp))) then
          inverse = exp(value)
@@ -3854,9 +4134,11 @@ contains
    end function inverse_box_cox_value
 
    pure real(dp) function tsissm_log_density(value, distribution, skew, shape) result(log_density)
-      ! Evaluate a standardized Gaussian, Student-t, or Johnson SU log density.
-      real(dp), intent(in) :: value, skew, shape
-      integer, intent(in) :: distribution
+      !! Evaluate a standardized Gaussian, Student-t, or Johnson SU log density.
+      real(dp), intent(in) :: value !! Input value.
+      real(dp), intent(in) :: skew !! Skew.
+      real(dp), intent(in) :: shape !! Shape.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
       real(dp) :: c, omega, r, reciprocal_shape, scaled, w, z
 
       select case (distribution)
@@ -3891,11 +4173,16 @@ contains
 
    pure function tsissm_likelihood(innovations, original_observations, lambda, distribution, &
       skew, shape, parameter_count, observed, conditional_sd) result(out)
-      ! Evaluate constant- or dynamic-scale tsissm innovation likelihoods.
-      real(dp), intent(in) :: innovations(:), original_observations(:), lambda, skew, shape
-      integer, intent(in) :: distribution, parameter_count
-      logical, intent(in), optional :: observed(:)
-      real(dp), intent(in), optional :: conditional_sd(:)
+      !! Evaluate constant- or dynamic-scale tsissm innovation likelihoods.
+      real(dp), intent(in) :: innovations(:) !! Model innovations.
+      real(dp), intent(in) :: original_observations(:) !! Original observations.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: skew !! Skew.
+      real(dp), intent(in) :: shape !! Shape.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: parameter_count !! Number of parameter.
+      logical, intent(in), optional :: observed(:) !! Flag controlling observed.
+      real(dp), intent(in), optional :: conditional_sd(:) !! Conditional standard deviation.
       type(tsissm_likelihood_t) :: out
       logical, allocatable :: use_observation(:)
       real(dp) :: density
@@ -3961,8 +4248,9 @@ contains
    end function tsissm_likelihood
 
    pure real(dp) function tsissm_ar_constraint(coefficients, margin) result(residual)
-      ! Return the AR companion stability margin.
-      real(dp), intent(in) :: coefficients(:), margin
+      !! Return the AR companion stability margin.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: margin !! Margin.
       real(dp), allocatable :: companion(:, :)
       integer :: i
 
@@ -3980,8 +4268,9 @@ contains
    end function tsissm_ar_constraint
 
    pure real(dp) function tsissm_ma_constraint(coefficients, margin) result(residual)
-      ! Return the MA inverse-companion stability margin.
-      real(dp), intent(in) :: coefficients(:), margin
+      !! Return the MA inverse-companion stability margin.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: margin !! Margin.
       real(dp), allocatable :: companion(:, :)
       integer :: i
 
@@ -4000,10 +4289,13 @@ contains
 
    pure real(dp) function tsissm_stability_constraint(transition_base, transition_scale, &
       transition_parameter, observation_loading, persistence, margin) result(residual)
-      ! Return the discount-transition stability margin.
-      real(dp), intent(in) :: transition_base(:, :), transition_scale(:, :)
-      real(dp), intent(in) :: transition_parameter(:, :), observation_loading(:), persistence(:)
-      real(dp), intent(in) :: margin
+      !! Return the discount-transition stability margin.
+      real(dp), intent(in) :: transition_base(:, :) !! Transition base.
+      real(dp), intent(in) :: transition_scale(:, :) !! Transition scale.
+      real(dp), intent(in) :: transition_parameter(:, :) !! Transition parameter.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: persistence(:) !! Persistence.
+      real(dp), intent(in) :: margin !! Margin.
       real(dp), allocatable :: discount(:, :)
       integer :: dimension
 
@@ -4024,13 +4316,25 @@ contains
       transition_parameter, observation_loading, persistence, ar_coefficients, ma_coefficients, &
       level_persistence, slope_persistence, arch, garch, distribution, skew, shape, lambda, &
       lambda_lower, lambda_upper, margin) result(out)
-      ! Collect ISSM, ARMA, slope, GARCH, distribution, and bound constraints.
-      real(dp), intent(in) :: transition_base(:, :), transition_scale(:, :)
-      real(dp), intent(in) :: transition_parameter(:, :), observation_loading(:), persistence(:)
-      real(dp), intent(in) :: ar_coefficients(:), ma_coefficients(:), level_persistence
-      real(dp), intent(in) :: slope_persistence, arch(:), garch(:), skew, shape, lambda
-      real(dp), intent(in) :: lambda_lower, lambda_upper, margin
-      integer, intent(in) :: distribution
+      !! Collect ISSM, ARMA, slope, GARCH, distribution, and bound constraints.
+      real(dp), intent(in) :: transition_base(:, :) !! Transition base.
+      real(dp), intent(in) :: transition_scale(:, :) !! Transition scale.
+      real(dp), intent(in) :: transition_parameter(:, :) !! Transition parameter.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: persistence(:) !! Persistence.
+      real(dp), intent(in) :: ar_coefficients(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma_coefficients(:) !! Moving-average coefficients.
+      real(dp), intent(in) :: level_persistence !! Level persistence.
+      real(dp), intent(in) :: slope_persistence !! Slope persistence.
+      real(dp), intent(in) :: arch(:) !! Arch.
+      real(dp), intent(in) :: garch(:) !! Garch.
+      real(dp), intent(in) :: skew !! Skew.
+      real(dp), intent(in) :: shape !! Shape.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: lambda_lower !! Lambda lower.
+      real(dp), intent(in) :: lambda_upper !! Lambda upper.
+      real(dp), intent(in) :: margin !! Margin.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
       type(tsissm_constraint_t) :: out
       integer :: i, position
 
@@ -4076,12 +4380,19 @@ contains
    pure function tsissm_initialize_states(observations, transition_base, transition_scale, &
       transition_parameter, observation_loading, persistence, regressors, coefficients, &
       initial_state, seed_index, observed, lambda) result(out)
-      ! Estimate selected initial states by the tsissm propagated-loading least squares.
-      real(dp), intent(in) :: observations(:), transition_base(:, :), transition_scale(:, :)
-      real(dp), intent(in) :: transition_parameter(:, :), observation_loading(:), persistence(:)
-      real(dp), intent(in) :: regressors(:, :), coefficients(:), initial_state(:), lambda
-      integer, intent(in) :: seed_index(:)
-      logical, intent(in), optional :: observed(:)
+      !! Estimate selected initial states by the tsissm propagated-loading least squares.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: transition_base(:, :) !! Transition base.
+      real(dp), intent(in) :: transition_scale(:, :) !! Transition scale.
+      real(dp), intent(in) :: transition_parameter(:, :) !! Transition parameter.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: persistence(:) !! Persistence.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      integer, intent(in) :: seed_index(:) !! Index of seed.
+      logical, intent(in), optional :: observed(:) !! Flag controlling observed.
       type(tsissm_initialization_t) :: out
       logical, allocatable :: use_observation(:)
       real(dp), allocatable :: design(:, :), inverse(:, :), state(:), target(:), transformed(:)
@@ -4149,13 +4460,24 @@ contains
       transition_parameter, observation_loading, initial_persistence, regressors, &
       initial_coefficients, initial_state, seed_index, observed, lambda, distribution, &
       skew, shape, max_iterations, tolerance) result(out)
-      ! Estimate ISSM persistence and regression coefficients by penalized BFGS.
-      real(dp), intent(in) :: observations(:), transition_base(:, :), transition_scale(:, :)
-      real(dp), intent(in) :: transition_parameter(:, :), observation_loading(:)
-      real(dp), intent(in) :: initial_persistence(:), regressors(:, :), initial_coefficients(:)
-      real(dp), intent(in) :: initial_state(:), lambda, skew, shape, tolerance
-      integer, intent(in) :: seed_index(:), distribution, max_iterations
-      logical, intent(in), optional :: observed(:)
+      !! Estimate ISSM persistence and regression coefficients by penalized BFGS.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: transition_base(:, :) !! Transition base.
+      real(dp), intent(in) :: transition_scale(:, :) !! Transition scale.
+      real(dp), intent(in) :: transition_parameter(:, :) !! Transition parameter.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: initial_persistence(:) !! Initial persistence.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: initial_coefficients(:) !! Initial coefficients.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: skew !! Skew.
+      real(dp), intent(in) :: shape !! Shape.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in) :: seed_index(:) !! Index of seed.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: observed(:) !! Flag controlling observed.
       type(tsissm_fit_t) :: out
       type(optimization_result_t) :: optimized
       type(tsissm_initialization_t) :: initialized
@@ -4218,8 +4540,8 @@ contains
    contains
 
       pure real(dp) function objective(parameters) result(value)
-         ! Evaluate penalized likelihood for the current persistence and regressors.
-         real(dp), intent(in) :: parameters(:)
+         !! Evaluate penalized likelihood for the current persistence and regressors.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          type(tsissm_filter_t) :: trial_filter
          type(tsissm_likelihood_t) :: trial_likelihood
          real(dp) :: stability, penalty
@@ -4251,15 +4573,28 @@ contains
       initial_coefficients, initial_arch, initial_garch, initial_state, seed_index, observed, &
       lambda, distribution, skew, shape, max_iterations, tolerance, variance_initialization, &
       variance_sample_size) result(out)
-      ! Estimate ISSM, regression, and GARCH parameters by penalized BFGS.
-      real(dp), intent(in) :: observations(:), transition_base(:, :), transition_scale(:, :)
-      real(dp), intent(in) :: transition_parameter(:, :), observation_loading(:)
-      real(dp), intent(in) :: initial_persistence(:), regressors(:, :), initial_coefficients(:)
-      real(dp), intent(in) :: initial_arch(:), initial_garch(:), initial_state(:)
-      real(dp), intent(in) :: lambda, skew, shape, tolerance
-      integer, intent(in) :: seed_index(:), distribution, max_iterations
-      integer, intent(in), optional :: variance_initialization, variance_sample_size
-      logical, intent(in), optional :: observed(:)
+      !! Estimate ISSM, regression, and GARCH parameters by penalized BFGS.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: transition_base(:, :) !! Transition base.
+      real(dp), intent(in) :: transition_scale(:, :) !! Transition scale.
+      real(dp), intent(in) :: transition_parameter(:, :) !! Transition parameter.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: initial_persistence(:) !! Initial persistence.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: initial_coefficients(:) !! Initial coefficients.
+      real(dp), intent(in) :: initial_arch(:) !! Initial arch.
+      real(dp), intent(in) :: initial_garch(:) !! Initial GARCH.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(in) :: skew !! Skew.
+      real(dp), intent(in) :: shape !! Shape.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      integer, intent(in) :: seed_index(:) !! Index of seed.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      integer, intent(in), optional :: variance_initialization !! Variance initialization.
+      integer, intent(in), optional :: variance_sample_size !! Variance sample size.
+      logical, intent(in), optional :: observed(:) !! Flag controlling observed.
       type(tsissm_fit_t) :: out
       type(optimization_result_t) :: optimized
       type(tsissm_initialization_t) :: initialized
@@ -4327,8 +4662,8 @@ contains
    contains
 
       pure real(dp) function objective(parameters) result(value)
-         ! Evaluate penalized dynamic-scale likelihood.
-         real(dp), intent(in) :: parameters(:)
+         !! Evaluate penalized dynamic-scale likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          type(tsissm_filter_t) :: trial_filter
          type(tsissm_likelihood_t) :: trial_likelihood
          real(dp) :: initial_variance_value, intercept, penalty, stability
@@ -4357,11 +4692,15 @@ contains
 
       pure subroutine variance_target(persistence, coefficients, arch, garch, &
          initial_variance_value, intercept, filtered, likelihood)
-         ! Filter once, target GARCH variance, then evaluate dynamic likelihood.
-         real(dp), intent(in) :: persistence(:), coefficients(:), arch(:), garch(:)
-         real(dp), intent(out) :: initial_variance_value, intercept
-         type(tsissm_filter_t), intent(out) :: filtered
-         type(tsissm_likelihood_t), intent(out) :: likelihood
+         !! Filter once, target GARCH variance, then evaluate dynamic likelihood.
+         real(dp), intent(in) :: persistence(:) !! Persistence.
+         real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+         real(dp), intent(in) :: arch(:) !! Arch.
+         real(dp), intent(in) :: garch(:) !! Garch.
+         real(dp), intent(out) :: initial_variance_value !! Initial variance value.
+         real(dp), intent(out) :: intercept !! Model intercept.
+         type(tsissm_filter_t), intent(out) :: filtered !! Filtered.
+         type(tsissm_likelihood_t), intent(out) :: likelihood !! Likelihood.
          type(tsissm_filter_t) :: constant_filter
          type(tsissm_variance_initialization_t) :: initialized_variance
          real(dp), allocatable :: initial_arch_history(:), initial_variance_history(:)
@@ -4404,12 +4743,22 @@ contains
       seasonal_frequency, seasonal_harmonics, regular_seasonal, ar_order, ma_order, &
       regressors, initial_state, initial_parameters, observed, distribution, &
       max_iterations, tolerance) result(out)
-      ! Jointly estimate a constant-variance structural ISSM from a flat parameter vector.
-      real(dp), intent(in) :: observations(:), seasonal_frequency(:), regressors(:, :)
-      integer, intent(in) :: seasonal_harmonics(:), ar_order, ma_order, distribution, max_iterations
-      logical, intent(in) :: slope, damped_slope, regular_seasonal
-      real(dp), intent(in) :: initial_state(:), initial_parameters(:), tolerance
-      logical, intent(in), optional :: observed(:)
+      !! Jointly estimate a constant-variance structural ISSM from a flat parameter vector.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: seasonal_frequency(:) !! Seasonal frequency.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      integer, intent(in) :: seasonal_harmonics(:) !! Seasonal harmonics.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in) :: slope !! Flag controlling slope.
+      logical, intent(in) :: damped_slope !! Flag controlling damped slope.
+      logical, intent(in) :: regular_seasonal !! Flag controlling regular seasonal.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      logical, intent(in), optional :: observed(:) !! Flag controlling observed.
       type(tsissm_structural_fit_t) :: out
       type(optimization_result_t) :: optimized
       logical, allocatable :: use_observation(:)
@@ -4457,8 +4806,8 @@ contains
    contains
 
       pure real(dp) function objective(parameters) result(value)
-         ! Evaluate joint structural likelihood with parameter-domain penalties.
-         real(dp), intent(in) :: parameters(:)
+         !! Evaluate joint structural likelihood with parameter-domain penalties.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          type(tsissm_model_t) :: model
          type(tsissm_filter_t) :: filtered
          type(tsissm_likelihood_t) :: likelihood
@@ -4475,13 +4824,15 @@ contains
 
       pure subroutine evaluate(parameters, model, filtered, likelihood, lambda, skew, shape, &
          status)
-         ! Decode the structural parameter order and run filter plus likelihood.
-         real(dp), intent(in) :: parameters(:)
-         type(tsissm_model_t), intent(out) :: model
-         type(tsissm_filter_t), intent(out) :: filtered
-         type(tsissm_likelihood_t), intent(out) :: likelihood
-         real(dp), intent(out) :: lambda, skew, shape
-         integer, intent(out) :: status
+         !! Decode the structural parameter order and run filter plus likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         type(tsissm_model_t), intent(out) :: model !! Model specification.
+         type(tsissm_filter_t), intent(out) :: filtered !! Filtered.
+         type(tsissm_likelihood_t), intent(out) :: likelihood !! Likelihood.
+         real(dp), intent(out) :: lambda !! Penalty or shrinkage parameter.
+         real(dp), intent(out) :: skew !! Skew.
+         real(dp), intent(out) :: shape !! Shape.
+         integer, intent(out) :: status !! Status.
          real(dp), allocatable :: ar(:), coefficients(:), ma(:), seasonal_persistence(:)
          real(dp) :: alpha, beta, damping
          integer :: index
@@ -4536,9 +4887,12 @@ contains
       end subroutine evaluate
 
       pure real(dp) function structural_penalty(parameters, model, lambda, skew, shape) result(penalty)
-         ! Penalize structural, transformation, and distribution constraint violations.
-         real(dp), intent(in) :: parameters(:), lambda, skew, shape
-         type(tsissm_model_t), intent(in) :: model
+         !! Penalize structural, transformation, and distribution constraint violations.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+         real(dp), intent(in) :: skew !! Skew.
+         real(dp), intent(in) :: shape !! Shape.
+         type(tsissm_model_t), intent(in) :: model !! Model specification.
          real(dp) :: stability
          integer :: ar_start, ma_start
 
@@ -4567,15 +4921,26 @@ contains
       regressors, initial_state, initial_parameters, initial_arch, initial_garch, &
       observed, distribution, max_iterations, tolerance, variance_initialization, &
       variance_sample_size) result(out)
-      ! Jointly estimate structural, transformation, distribution, and GARCH parameters.
-      real(dp), intent(in) :: observations(:), seasonal_frequency(:), regressors(:, :)
-      real(dp), intent(in) :: initial_state(:), initial_parameters(:)
-      real(dp), intent(in) :: initial_arch(:), initial_garch(:), tolerance
-      logical, intent(in) :: slope, damped_slope, regular_seasonal
-      integer, intent(in) :: seasonal_harmonics(:), ar_order, ma_order
-      integer, intent(in) :: distribution, max_iterations
-      logical, intent(in), optional :: observed(:)
-      integer, intent(in), optional :: variance_initialization, variance_sample_size
+      !! Jointly estimate structural, transformation, distribution, and GARCH parameters.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: seasonal_frequency(:) !! Seasonal frequency.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: initial_parameters(:) !! Initial parameter values.
+      real(dp), intent(in) :: initial_arch(:) !! Initial arch.
+      real(dp), intent(in) :: initial_garch(:) !! Initial GARCH.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
+      logical, intent(in) :: slope !! Flag controlling slope.
+      logical, intent(in) :: damped_slope !! Flag controlling damped slope.
+      logical, intent(in) :: regular_seasonal !! Flag controlling regular seasonal.
+      integer, intent(in) :: seasonal_harmonics(:) !! Seasonal harmonics.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      integer, intent(in) :: distribution !! Probability-distribution specification.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: observed(:) !! Flag controlling observed.
+      integer, intent(in), optional :: variance_initialization !! Variance initialization.
+      integer, intent(in), optional :: variance_sample_size !! Variance sample size.
       type(tsissm_structural_fit_t) :: out
       type(optimization_result_t) :: optimized
       logical, allocatable :: use_observation(:)
@@ -4637,8 +5002,8 @@ contains
    contains
 
       pure real(dp) function objective(parameters) result(value)
-         ! Evaluate penalized joint dynamic structural likelihood.
-         real(dp), intent(in) :: parameters(:)
+         !! Evaluate penalized joint dynamic structural likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          type(tsissm_model_t) :: model
          type(tsissm_filter_t) :: filtered
          type(tsissm_likelihood_t) :: likelihood
@@ -4657,13 +5022,17 @@ contains
 
       pure subroutine evaluate(parameters, model, filtered, likelihood, lambda, skew, shape, &
          initial_variance, intercept, evaluation_status)
-         ! Decode all parameters, target GARCH variance, and evaluate likelihood.
-         real(dp), intent(in) :: parameters(:)
-         type(tsissm_model_t), intent(out) :: model
-         type(tsissm_filter_t), intent(out) :: filtered
-         type(tsissm_likelihood_t), intent(out) :: likelihood
-         real(dp), intent(out) :: lambda, skew, shape, initial_variance, intercept
-         integer, intent(out) :: evaluation_status
+         !! Decode all parameters, target GARCH variance, and evaluate likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         type(tsissm_model_t), intent(out) :: model !! Model specification.
+         type(tsissm_filter_t), intent(out) :: filtered !! Filtered.
+         type(tsissm_likelihood_t), intent(out) :: likelihood !! Likelihood.
+         real(dp), intent(out) :: lambda !! Penalty or shrinkage parameter.
+         real(dp), intent(out) :: skew !! Skew.
+         real(dp), intent(out) :: shape !! Shape.
+         real(dp), intent(out) :: initial_variance !! Initial variance.
+         real(dp), intent(out) :: intercept !! Model intercept.
+         integer, intent(out) :: evaluation_status !! Evaluation status.
          type(tsissm_filter_t) :: constant_filter
          type(tsissm_variance_initialization_t) :: initialized_variance
          real(dp), allocatable :: ar(:), arch(:), coefficients(:), garch(:), ma(:)
@@ -4745,9 +5114,12 @@ contains
       end subroutine evaluate
 
       pure real(dp) function joint_penalty(parameters, model, lambda, skew, shape) result(penalty)
-         ! Penalize joint structural, distribution, and GARCH constraint violations.
-         real(dp), intent(in) :: parameters(:), lambda, skew, shape
-         type(tsissm_model_t), intent(in) :: model
+         !! Penalize joint structural, distribution, and GARCH constraint violations.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
+         real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+         real(dp), intent(in) :: skew !! Skew.
+         real(dp), intent(in) :: shape !! Shape.
+         type(tsissm_model_t), intent(in) :: model !! Model specification.
          real(dp) :: stability
          integer :: ar_start, arch_start, ma_start
 
@@ -4778,11 +5150,16 @@ contains
 
    pure function tsissm_moments_constant(transition, observation_loading, persistence, &
       initial_state, regressors, coefficients, innovation_variance, lambda, transform) result(out)
-      ! Compute constant-scale ISSM analytical forecast moments.
-      real(dp), intent(in) :: transition(:, :), observation_loading(:), persistence(:)
-      real(dp), intent(in) :: initial_state(:), regressors(:, :), coefficients(:)
-      real(dp), intent(in) :: innovation_variance, lambda
-      logical, intent(in) :: transform
+      !! Compute constant-scale ISSM analytical forecast moments.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: persistence(:) !! Persistence.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: innovation_variance !! Innovation variance.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      logical, intent(in) :: transform !! Flag controlling transform.
       type(tsissm_moments_t) :: out
       real(dp) :: accumulated, impulse(size(initial_state)), state(size(initial_state))
       integer :: horizon, i
@@ -4819,12 +5196,20 @@ contains
    pure function tsissm_moments_dynamic(transition, observation_loading, persistence, &
       initial_state, regressors, coefficients, arch, garch, variance_intercept, &
       initial_arch, initial_variance, lambda, transform) result(out)
-      ! Compute GARCH-scale ISSM analytical forecast moments.
-      real(dp), intent(in) :: transition(:, :), observation_loading(:), persistence(:)
-      real(dp), intent(in) :: initial_state(:), regressors(:, :), coefficients(:)
-      real(dp), intent(in) :: arch(:), garch(:), variance_intercept
-      real(dp), intent(in) :: initial_arch(:), initial_variance(:), lambda
-      logical, intent(in) :: transform
+      !! Compute GARCH-scale ISSM analytical forecast moments.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: persistence(:) !! Persistence.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: arch(:) !! Arch.
+      real(dp), intent(in) :: garch(:) !! Garch.
+      real(dp), intent(in) :: variance_intercept !! Variance intercept.
+      real(dp), intent(in) :: initial_arch(:) !! Initial arch.
+      real(dp), intent(in) :: initial_variance(:) !! Initial variance.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      logical, intent(in) :: transform !! Flag controlling transform.
       type(tsissm_moments_t) :: out
       real(dp), allocatable :: expected_square(:), variance_history(:)
       real(dp) :: accumulated, impulse(size(initial_state)), state(size(initial_state))
@@ -4885,12 +5270,16 @@ contains
 
    pure function tsissm_hresiduals_constant(observations, filtered, regressors, coefficients, &
       innovation_variance, lambda, horizon, first_origin, transformed) result(out)
-      ! Compute expanding-origin residuals for every requested forecast horizon.
-      real(dp), intent(in) :: observations(:), regressors(:, :), coefficients(:)
-      type(tsissm_filter_t), intent(in) :: filtered
-      real(dp), intent(in) :: innovation_variance, lambda
-      integer, intent(in) :: horizon, first_origin
-      logical, intent(in) :: transformed
+      !! Compute expanding-origin residuals for every requested forecast horizon.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      type(tsissm_filter_t), intent(in) :: filtered !! Filtered.
+      real(dp), intent(in) :: innovation_variance !! Innovation variance.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: first_origin !! First origin.
+      logical, intent(in) :: transformed !! Flag controlling transformed.
       type(tsissm_hresiduals_t) :: out
       type(tsissm_moments_t) :: moments
       integer :: available, current, i, origins
@@ -4928,13 +5317,20 @@ contains
    pure function tsissm_hresiduals_dynamic(observations, filtered, regressors, coefficients, &
       arch, garch, variance_intercept, initial_arch, initial_variance, lambda, horizon, &
       first_origin, transformed) result(out)
-      ! Compute expanding-origin residuals with origin-specific GARCH histories.
-      real(dp), intent(in) :: observations(:), regressors(:, :), coefficients(:)
-      type(tsissm_filter_t), intent(in) :: filtered
-      real(dp), intent(in) :: arch(:), garch(:), variance_intercept
-      real(dp), intent(in) :: initial_arch(:), initial_variance(:), lambda
-      integer, intent(in) :: horizon, first_origin
-      logical, intent(in) :: transformed
+      !! Compute expanding-origin residuals with origin-specific GARCH histories.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      type(tsissm_filter_t), intent(in) :: filtered !! Filtered.
+      real(dp), intent(in) :: arch(:) !! Arch.
+      real(dp), intent(in) :: garch(:) !! Garch.
+      real(dp), intent(in) :: variance_intercept !! Variance intercept.
+      real(dp), intent(in) :: initial_arch(:) !! Initial arch.
+      real(dp), intent(in) :: initial_variance(:) !! Initial variance.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: first_origin !! First origin.
+      logical, intent(in) :: transformed !! Flag controlling transformed.
       type(tsissm_hresiduals_t) :: out
       type(tsissm_moments_t) :: moments
       real(dp), allocatable :: arch_history(:), variance_history(:)
@@ -4979,10 +5375,13 @@ contains
 
    pure logical function hresidual_inputs_valid(observations, filtered, regressors, &
       coefficients, horizon, first_origin) result(valid)
-      ! Validate dimensions shared by constant and dynamic horizon residuals.
-      real(dp), intent(in) :: observations(:), regressors(:, :), coefficients(:)
-      type(tsissm_filter_t), intent(in) :: filtered
-      integer, intent(in) :: horizon, first_origin
+      !! Validate dimensions shared by constant and dynamic horizon residuals.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      type(tsissm_filter_t), intent(in) :: filtered !! Filtered.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: first_origin !! First origin.
 
       valid = .false.
       if (.not. allocated(filtered%state) .or. .not. allocated(filtered%transition) .or. &
@@ -4998,10 +5397,12 @@ contains
    end function hresidual_inputs_valid
 
    pure subroutine allocate_hresiduals(out, origins, horizon, first_origin, transformed)
-      ! Allocate and initialize a multi-horizon residual result.
-      type(tsissm_hresiduals_t), intent(out) :: out
-      integer, intent(in) :: origins, horizon, first_origin
-      logical, intent(in) :: transformed
+      !! Allocate and initialize a multi-horizon residual result.
+      type(tsissm_hresiduals_t), intent(out) :: out !! Procedure result.
+      integer, intent(in) :: origins !! Origins.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: first_origin !! First origin.
+      logical, intent(in) :: transformed !! Flag controlling transformed.
 
       allocate(out%forecast(origins, horizon), out%actual(origins, horizon))
       allocate(out%residual(origins, horizon), out%valid(origins, horizon))
@@ -5022,11 +5423,13 @@ contains
 
    pure subroutine garch_history_at_origin(filtered, initial_arch, initial_variance, &
       origin, arch_history, variance_history)
-      ! Form the latest squared-innovation and variance histories at an origin.
-      type(tsissm_filter_t), intent(in) :: filtered
-      real(dp), intent(in) :: initial_arch(:), initial_variance(:)
-      integer, intent(in) :: origin
-      real(dp), intent(out) :: arch_history(:), variance_history(:)
+      !! Form the latest squared-innovation and variance histories at an origin.
+      type(tsissm_filter_t), intent(in) :: filtered !! Filtered.
+      real(dp), intent(in) :: initial_arch(:) !! Initial arch.
+      real(dp), intent(in) :: initial_variance(:) !! Initial variance.
+      integer, intent(in) :: origin !! Origin.
+      real(dp), intent(out) :: arch_history(:) !! Arch history.
+      real(dp), intent(out) :: variance_history(:) !! Variance history.
       integer :: history, retained
 
       history = size(arch_history)
@@ -5047,8 +5450,8 @@ contains
    end subroutine garch_history_at_origin
 
    pure subroutine summarize_hresiduals(out)
-      ! Summarize horizon errors using pairwise-complete forecast origins.
-      type(tsissm_hresiduals_t), intent(inout) :: out
+      !! Summarize horizon errors using pairwise-complete forecast origins.
+      type(tsissm_hresiduals_t), intent(inout) :: out !! Procedure result, updated in place.
       real(dp) :: mean_i, mean_j
       integer :: i, j, pair_total
 
@@ -5079,11 +5482,15 @@ contains
 
    pure subroutine box_cox_moments(mean, variance, lambda, corrected_mean, corrected_variance, &
       info, garch_variance, unconditional_variance)
-      ! Apply tsissm Box-Cox mean and higher-order variance corrections.
-      real(dp), intent(in) :: mean(:), variance(:), lambda
-      real(dp), intent(out) :: corrected_mean(:), corrected_variance(:)
-      integer, intent(out) :: info
-      real(dp), intent(in), optional :: garch_variance(:), unconditional_variance
+      !! Apply tsissm Box-Cox mean and higher-order variance corrections.
+      real(dp), intent(in) :: mean(:) !! Mean value or vector.
+      real(dp), intent(in) :: variance(:) !! Variance value or matrix.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      real(dp), intent(out) :: corrected_mean(:) !! Corrected mean.
+      real(dp), intent(out) :: corrected_variance(:) !! Corrected variance.
+      integer, intent(out) :: info !! Status code; zero indicates success.
+      real(dp), intent(in), optional :: garch_variance(:) !! Garch variance.
+      real(dp), intent(in), optional :: unconditional_variance !! Unconditional variance.
       real(dp) :: base, scale
       integer :: i
 
@@ -5114,11 +5521,18 @@ contains
    pure function tsissm_model(slope, damped_slope, seasonal_frequency, seasonal_harmonics, &
       regular_seasonal, ar_coefficients, ma_coefficients, level_persistence, slope_persistence, &
       seasonal_persistence, damping) result(out)
-      ! Construct level, slope, multiple-seasonal, AR, and MA innovations matrices.
-      logical, intent(in) :: slope, damped_slope, regular_seasonal
-      real(dp), intent(in) :: seasonal_frequency(:), ar_coefficients(:), ma_coefficients(:)
-      integer, intent(in) :: seasonal_harmonics(:)
-      real(dp), intent(in) :: level_persistence, slope_persistence, seasonal_persistence(:), damping
+      !! Construct level, slope, multiple-seasonal, AR, and MA innovations matrices.
+      logical, intent(in) :: slope !! Flag controlling slope.
+      logical, intent(in) :: damped_slope !! Flag controlling damped slope.
+      logical, intent(in) :: regular_seasonal !! Flag controlling regular seasonal.
+      real(dp), intent(in) :: seasonal_frequency(:) !! Seasonal frequency.
+      real(dp), intent(in) :: ar_coefficients(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: ma_coefficients(:) !! Moving-average coefficients.
+      integer, intent(in) :: seasonal_harmonics(:) !! Seasonal harmonics.
+      real(dp), intent(in) :: level_persistence !! Level persistence.
+      real(dp), intent(in) :: slope_persistence !! Slope persistence.
+      real(dp), intent(in) :: seasonal_persistence(:) !! Seasonal persistence.
+      real(dp), intent(in) :: damping !! Damping.
       type(tsissm_model_t) :: out
       real(dp) :: angle, phi
       integer :: ar_order, dimension, frequency_count, i, j, k, ma_order, offset, seasonal_dimension
@@ -5231,11 +5645,18 @@ contains
    pure function tsissm_filter_constant(observations, transition_base, transition_scale, &
       transition_parameter, observation_loading, persistence, regressors, coefficients, &
       initial_state, observed, lambda) result(out)
-      ! Filter a constant-variance single-source-of-error innovations model.
-      real(dp), intent(in) :: observations(:), transition_base(:, :), transition_scale(:, :)
-      real(dp), intent(in) :: transition_parameter(:, :), observation_loading(:), persistence(:)
-      real(dp), intent(in) :: regressors(:, :), coefficients(:), initial_state(:), lambda
-      logical, intent(in), optional :: observed(:)
+      !! Filter a constant-variance single-source-of-error innovations model.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: transition_base(:, :) !! Transition base.
+      real(dp), intent(in) :: transition_scale(:, :) !! Transition scale.
+      real(dp), intent(in) :: transition_parameter(:, :) !! Transition parameter.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: persistence(:) !! Persistence.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      logical, intent(in), optional :: observed(:) !! Flag controlling observed.
       type(tsissm_filter_t) :: out
       logical, allocatable :: use_observation(:)
       integer :: dimension, i, n
@@ -5287,11 +5708,16 @@ contains
    pure function tsissm_predict_constant(transition_base, transition_scale, transition_parameter, &
       observation_loading, persistence, regressors, coefficients, initial_state, &
       innovations) result(out)
-      ! Simulate constant-variance ISSM forecasts from supplied innovations.
-      real(dp), intent(in) :: transition_base(:, :), transition_scale(:, :)
-      real(dp), intent(in) :: transition_parameter(:, :), observation_loading(:), persistence(:)
-      real(dp), intent(in) :: regressors(:, :), coefficients(:), initial_state(:)
-      real(dp), intent(in) :: innovations(:, :)
+      !! Simulate constant-variance ISSM forecasts from supplied innovations.
+      real(dp), intent(in) :: transition_base(:, :) !! Transition base.
+      real(dp), intent(in) :: transition_scale(:, :) !! Transition scale.
+      real(dp), intent(in) :: transition_parameter(:, :) !! Transition parameter.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: persistence(:) !! Persistence.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: innovations(:, :) !! Model innovations.
       type(tsissm_prediction_t) :: out
       real(dp), allocatable :: transition(:, :)
       integer :: dimension, horizon, i, simulation
@@ -5326,9 +5752,13 @@ contains
 
    pure function tsissm_garch_recursion(innovations, arch, garch, initial_arch, &
       initial_variance, variance_intercept) result(out)
-      ! Compute GARCH variance using chronological pre-sample histories.
-      real(dp), intent(in) :: innovations(:), arch(:), garch(:), initial_arch(:)
-      real(dp), intent(in) :: initial_variance(:), variance_intercept
+      !! Compute GARCH variance using chronological pre-sample histories.
+      real(dp), intent(in) :: innovations(:) !! Model innovations.
+      real(dp), intent(in) :: arch(:) !! Arch.
+      real(dp), intent(in) :: garch(:) !! Garch.
+      real(dp), intent(in) :: initial_arch(:) !! Initial arch.
+      real(dp), intent(in) :: initial_variance(:) !! Initial variance.
+      real(dp), intent(in) :: variance_intercept !! Variance intercept.
       type(tsissm_garch_t) :: out
       integer :: history, i, j, lag
 
@@ -5370,13 +5800,23 @@ contains
       transition_parameter, observation_loading, persistence, regressors, coefficients, &
       initial_state, observed, lambda, arch, garch, initial_arch, initial_variance, &
       variance_intercept) result(out)
-      ! Filter an ISSM and attach its observation-driven GARCH scale path.
-      real(dp), intent(in) :: observations(:), transition_base(:, :), transition_scale(:, :)
-      real(dp), intent(in) :: transition_parameter(:, :), observation_loading(:), persistence(:)
-      real(dp), intent(in) :: regressors(:, :), coefficients(:), initial_state(:), lambda
-      logical, intent(in), optional :: observed(:)
-      real(dp), intent(in) :: arch(:), garch(:), initial_arch(:), initial_variance(:)
-      real(dp), intent(in) :: variance_intercept
+      !! Filter an ISSM and attach its observation-driven GARCH scale path.
+      real(dp), intent(in) :: observations(:) !! Observed time-series values.
+      real(dp), intent(in) :: transition_base(:, :) !! Transition base.
+      real(dp), intent(in) :: transition_scale(:, :) !! Transition scale.
+      real(dp), intent(in) :: transition_parameter(:, :) !! Transition parameter.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: persistence(:) !! Persistence.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: lambda !! Penalty or shrinkage parameter.
+      logical, intent(in), optional :: observed(:) !! Flag controlling observed.
+      real(dp), intent(in) :: arch(:) !! Arch.
+      real(dp), intent(in) :: garch(:) !! Garch.
+      real(dp), intent(in) :: initial_arch(:) !! Initial arch.
+      real(dp), intent(in) :: initial_variance(:) !! Initial variance.
+      real(dp), intent(in) :: variance_intercept !! Variance intercept.
       type(tsissm_filter_t) :: out
       type(tsissm_garch_t) :: variance_path
 
@@ -5397,12 +5837,21 @@ contains
       observation_loading, persistence, regressors, coefficients, initial_state, &
       standardized_innovations, arch, garch, initial_arch, initial_variance, &
       variance_intercept) result(out)
-      ! Simulate ISSM forecasts with path-dependent GARCH innovations.
-      real(dp), intent(in) :: transition_base(:, :), transition_scale(:, :)
-      real(dp), intent(in) :: transition_parameter(:, :), observation_loading(:), persistence(:)
-      real(dp), intent(in) :: regressors(:, :), coefficients(:), initial_state(:)
-      real(dp), intent(in) :: standardized_innovations(:, :), arch(:), garch(:)
-      real(dp), intent(in) :: initial_arch(:), initial_variance(:), variance_intercept
+      !! Simulate ISSM forecasts with path-dependent GARCH innovations.
+      real(dp), intent(in) :: transition_base(:, :) !! Transition base.
+      real(dp), intent(in) :: transition_scale(:, :) !! Transition scale.
+      real(dp), intent(in) :: transition_parameter(:, :) !! Transition parameter.
+      real(dp), intent(in) :: observation_loading(:) !! Observation loading matrix.
+      real(dp), intent(in) :: persistence(:) !! Persistence.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: initial_state(:) !! Initial state vector.
+      real(dp), intent(in) :: standardized_innovations(:, :) !! Standardized innovations.
+      real(dp), intent(in) :: arch(:) !! Arch.
+      real(dp), intent(in) :: garch(:) !! Garch.
+      real(dp), intent(in) :: initial_arch(:) !! Initial arch.
+      real(dp), intent(in) :: initial_variance(:) !! Initial variance.
+      real(dp), intent(in) :: variance_intercept !! Variance intercept.
       type(tsissm_prediction_t) :: out
       real(dp), allocatable :: innovation_history(:), variance_history(:), transition(:, :)
       integer :: dimension, history, horizon, i, j, lag, simulation
@@ -5462,21 +5911,10 @@ contains
       end do
    end function tsissm_predict_dynamic
 
-   pure function outer_product(left, right) result(matrix)
-      ! Form the outer product of two state vectors.
-      real(dp), intent(in) :: left(:), right(:)
-      real(dp) :: matrix(size(left), size(right))
-      integer :: i
-
-      do i = 1, size(left)
-         matrix(i, :) = left(i)*right
-      end do
-   end function outer_product
-
    pure function pack_rows(matrix, mask) result(packed)
-      ! Pack selected matrix rows while retaining every column.
-      real(dp), intent(in) :: matrix(:, :)
-      logical, intent(in) :: mask(:)
+      !! Pack selected matrix rows while retaining every column.
+      real(dp), intent(in) :: matrix(:, :) !! Input matrix.
+      logical, intent(in) :: mask(:) !! Flag controlling mask.
       real(dp), allocatable :: packed(:, :)
       integer :: i, row
 
@@ -5491,8 +5929,8 @@ contains
    end function pack_rows
 
    pure function matrix_polynomial_roots(matrix) result(roots)
-      ! Compute matrix eigenvalues from Faddeev-LeVerrier coefficients.
-      real(dp), intent(in) :: matrix(:, :)
+      !! Compute matrix eigenvalues from Faddeev-LeVerrier coefficients.
+      real(dp), intent(in) :: matrix(:, :) !! Input matrix.
       complex(dp), allocatable :: roots(:)
       real(dp) :: coefficient(size(matrix, 1)), work(size(matrix, 1), size(matrix, 1))
       real(dp) :: identity(size(matrix, 1), size(matrix, 1)), polynomial(size(matrix, 1) + 1)
@@ -5517,8 +5955,8 @@ contains
    end function matrix_polynomial_roots
 
    pure function polynomial_roots(polynomial) result(roots)
-      ! Find all roots of a real ascending-power polynomial by Durand-Kerner iteration.
-      real(dp), intent(in) :: polynomial(:)
+      !! Find all roots of a real ascending-power polynomial by Durand-Kerner iteration.
+      real(dp), intent(in) :: polynomial(:) !! Polynomial.
       complex(dp), allocatable :: roots(:)
       complex(dp), allocatable :: next_roots(:)
       complex(dp) :: denominator, value
@@ -5557,8 +5995,8 @@ contains
    end function polynomial_roots
 
    pure real(dp) function spectral_radius(matrix) result(radius)
-      ! Compute the largest matrix eigenvalue modulus.
-      real(dp), intent(in) :: matrix(:, :)
+      !! Compute the largest matrix eigenvalue modulus.
+      real(dp), intent(in) :: matrix(:, :) !! Input matrix.
       complex(dp), allocatable :: roots(:)
 
       roots = matrix_polynomial_roots(matrix)

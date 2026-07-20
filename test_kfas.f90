@@ -3,7 +3,7 @@
 program test_kfas
    use kind_mod, only: dp
    use kfas_mod
-   use time_series_linalg_mod, only: inverse_logdet
+   use linalg_mod, only: inverse_logdet
    implicit none
    real(dp) :: y(5)
    type(ssm_model_t) :: model
@@ -99,9 +99,9 @@ program test_kfas
 contains
 
    subroutine check(ok, name)
-      ! Stop the test program when a named assertion fails.
-      logical, intent(in) :: ok
-      character(len=*), intent(in) :: name
+      !! Stop the test program when a named assertion fails.
+      logical, intent(in) :: ok !! Flag controlling ok.
+      character(len=*), intent(in) :: name !! Name.
       if (.not. ok) then
          print '(a)', 'FAILED: '//name
          error stop 1

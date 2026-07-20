@@ -1,7 +1,7 @@
 ! SPDX-License-Identifier: MIT
 ! SPDX-FileComment: Regression tests for the shared calendar module.
 program test_calendar
-   use time_series_calendar_mod
+   use calendar_mod
    implicit none
 
    type(date_t) :: value, other
@@ -41,9 +41,9 @@ program test_calendar
 contains
 
    subroutine check(condition, label)
-      ! Stop the test program when an assertion fails.
-      logical, intent(in) :: condition
-      character(*), intent(in) :: label
+      !! Stop the test program when an assertion fails.
+      logical, intent(in) :: condition !! Flag controlling condition.
+      character(*), intent(in) :: label !! Label.
 
       if (.not. condition) then
          write (*, '(a)') 'FAILED: '//label

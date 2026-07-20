@@ -4,7 +4,7 @@
 module arima2_mod
    use kind_mod, only: dp
    use astsa_mod, only: astsa_sarima_fit_t, sarima_fit
-   use time_series_random_mod, only: random_uniform, random_standard_normal
+   use random_mod, only: random_uniform, random_standard_normal
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
    implicit none
    private
@@ -60,9 +60,9 @@ module arima2_mod
 contains
 
    pure function arma_polynomial_roots(coefficients, moving_average) result(out)
-      ! Return roots of an AR or MA lag polynomial.
-      real(dp), intent(in) :: coefficients(:)
-      logical, intent(in), optional :: moving_average
+      !! Return roots of an AR or MA lag polynomial.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      logical, intent(in), optional :: moving_average !! Flag controlling moving average.
       type(arima2_roots_t) :: out
       real(dp), allocatable :: polynomial(:)
       logical :: is_ma
@@ -85,9 +85,9 @@ contains
    end function arma_polynomial_roots
 
    pure function inverse_roots_to_coefficients(inverse_roots, moving_average) result(coefficients)
-      ! Convert inverse polynomial roots to real AR or MA coefficients.
-      complex(dp), intent(in) :: inverse_roots(:)
-      logical, intent(in), optional :: moving_average
+      !! Convert inverse polynomial roots to real AR or MA coefficients.
+      complex(dp), intent(in) :: inverse_roots(:) !! Inverse roots.
+      logical, intent(in), optional :: moving_average !! Flag controlling moving average.
       real(dp), allocatable :: coefficients(:)
       complex(dp), allocatable :: polynomial(:), next_polynomial(:)
       logical :: is_ma
@@ -116,9 +116,9 @@ contains
    end function inverse_roots_to_coefficients
 
    pure function durbin_levinson_coefficients(partial, moving_average) result(coefficients)
-      ! Convert sampled partial autocorrelations to stable AR or MA coefficients.
-      real(dp), intent(in) :: partial(:)
-      logical, intent(in), optional :: moving_average
+      !! Convert sampled partial autocorrelations to stable AR or MA coefficients.
+      real(dp), intent(in) :: partial(:) !! Partial.
+      logical, intent(in), optional :: moving_average !! Flag controlling moving average.
       real(dp) :: coefficients(size(partial)), previous(size(partial))
       logical :: is_ma
       integer :: order, j
@@ -140,15 +140,26 @@ contains
       seasonal_q, season, starts, include_mean, max_repeats, epsilon_tolerance, &
       max_inverse_root, min_inverse_root_distance, max_iterations, tolerance, regressors, &
       estimated, exact_likelihood) result(out)
-      ! Select the best exact SARIMA likelihood from caller-supplied restart values.
-      real(dp), intent(in) :: series(:), starts(:, :)
-      integer, intent(in) :: p, d, q, seasonal_p, seasonal_difference, seasonal_q, season
-      logical, intent(in), optional :: include_mean
-      integer, intent(in), optional :: max_repeats, max_iterations
-      real(dp), intent(in), optional :: epsilon_tolerance, max_inverse_root
-      real(dp), intent(in), optional :: min_inverse_root_distance, tolerance
-      real(dp), intent(in), optional :: regressors(:, :)
-      logical, intent(in), optional :: estimated(:), exact_likelihood
+      !! Select the best exact SARIMA likelihood from caller-supplied restart values.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: starts(:, :) !! Starts.
+      integer, intent(in) :: p !! Autoregressive order or model dimension.
+      integer, intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      integer, intent(in) :: q !! Model order, dimension, or parameter.
+      integer, intent(in) :: seasonal_p !! Seasonal p.
+      integer, intent(in) :: seasonal_difference !! Seasonal difference.
+      integer, intent(in) :: seasonal_q !! Seasonal q.
+      integer, intent(in) :: season !! Season.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      integer, intent(in), optional :: max_repeats !! Maximum repeats.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: epsilon_tolerance !! Epsilon tolerance.
+      real(dp), intent(in), optional :: max_inverse_root !! Maximum inverse root.
+      real(dp), intent(in), optional :: min_inverse_root_distance !! Minimum inverse root distance.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      logical, intent(in), optional :: estimated(:) !! Flag controlling estimated.
+      logical, intent(in), optional :: exact_likelihood !! Flag controlling exact likelihood.
       type(arima2_fit_t) :: out
       type(astsa_sarima_fit_t) :: candidate
       real(dp) :: best_log_likelihood, improvement_tolerance, root_limit, distance_limit
@@ -212,12 +223,14 @@ contains
 
    pure function arima2_aic_table(series, max_ar, differencing, max_ma, corrected, &
       max_iterations, tolerance) result(out)
-      ! Fit every nonseasonal ARIMA order and return its AIC or AICc.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: max_ar, differencing, max_ma
-      logical, intent(in), optional :: corrected
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Fit every nonseasonal ARIMA order and return its AIC or AICc.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: max_ar !! Maximum autoregressive.
+      integer, intent(in) :: differencing !! Differencing.
+      integer, intent(in) :: max_ma !! Maximum moving-average.
+      logical, intent(in), optional :: corrected !! Flag controlling corrected.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(arima2_aic_table_t) :: out
       type(astsa_sarima_fit_t) :: fitted
       real(dp), allocatable :: initial(:)
@@ -258,12 +271,13 @@ contains
 
    pure function arima2_profile(series, fitted, parameter_index, parameter_values, &
       max_iterations, tolerance) result(out)
-      ! Refit an ARIMA model over a grid with one reported parameter fixed.
-      real(dp), intent(in) :: series(:), parameter_values(:)
-      type(astsa_sarima_fit_t), intent(in) :: fitted
-      integer, intent(in) :: parameter_index
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Refit an ARIMA model over a grid with one reported parameter fixed.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: parameter_values(:) !! Parameter values.
+      type(astsa_sarima_fit_t), intent(in) :: fitted !! Fitted.
+      integer, intent(in) :: parameter_index !! Index of parameter.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(arima2_profile_t) :: out
       type(astsa_sarima_fit_t) :: candidate
       real(dp), allocatable :: initial(:)
@@ -302,14 +316,19 @@ contains
    function sample_arma_coefficients(ar_order, ma_order, seasonal_ar_order, &
       seasonal_ma_order, sample_count, min_inverse_root_distance, include_intercept, &
       intercept_mean, intercept_sd, max_attempts, sampling_method, modulus_bounds) result(out)
-      ! Sample stable ARMA coefficients by the arima2 Durbin-Levinson method.
-      integer, intent(in) :: ar_order, ma_order, seasonal_ar_order, seasonal_ma_order
-      integer, intent(in) :: sample_count
-      real(dp), intent(in), optional :: min_inverse_root_distance, intercept_mean, intercept_sd
-      logical, intent(in), optional :: include_intercept
-      integer, intent(in), optional :: max_attempts
-      integer, intent(in), optional :: sampling_method
-      real(dp), intent(in), optional :: modulus_bounds(2)
+      !! Sample stable ARMA coefficients by the arima2 Durbin-Levinson method.
+      integer, intent(in) :: ar_order !! Autoregressive order.
+      integer, intent(in) :: ma_order !! Moving-average order.
+      integer, intent(in) :: seasonal_ar_order !! Seasonal autoregressive order.
+      integer, intent(in) :: seasonal_ma_order !! Seasonal moving-average order.
+      integer, intent(in) :: sample_count !! Number of sample.
+      real(dp), intent(in), optional :: min_inverse_root_distance !! Minimum inverse root distance.
+      real(dp), intent(in), optional :: intercept_mean !! Intercept mean.
+      real(dp), intent(in), optional :: intercept_sd !! Intercept standard deviation.
+      logical, intent(in), optional :: include_intercept !! Whether to include an intercept.
+      integer, intent(in), optional :: max_attempts !! Maximum attempts.
+      integer, intent(in), optional :: sampling_method !! Sampling method.
+      real(dp), intent(in), optional :: modulus_bounds(2) !! Modulus bounds.
       type(arima2_coefficient_samples_t) :: out
       real(dp), allocatable :: partial(:), coefficients(:)
       real(dp) :: distance_limit, mean_value, sd_value
@@ -373,11 +392,11 @@ contains
    contains
 
       subroutine sampled_block(block_order, moving_average, values, start)
-         ! Draw one stable coefficient block from bounded partial autocorrelations.
-         integer, intent(in) :: block_order
-         logical, intent(in) :: moving_average
-         real(dp), intent(inout) :: values(:)
-         integer, intent(inout) :: start
+         !! Draw one stable coefficient block from bounded partial autocorrelations.
+         integer, intent(in) :: block_order !! Block order.
+         logical, intent(in) :: moving_average !! Flag controlling moving average.
+         real(dp), intent(inout) :: values(:) !! Input values, updated in place.
+         integer, intent(inout) :: start !! Start, updated in place.
          integer :: j
          complex(dp), allocatable :: inverse_roots(:)
 
@@ -400,9 +419,10 @@ contains
    end function sample_arma_coefficients
 
    function sample_inverse_roots(order, minimum_modulus, maximum_modulus) result(inverse_roots)
-      ! Sample real roots and conjugate pairs within an inverse-root annulus.
-      integer, intent(in) :: order
-      real(dp), intent(in) :: minimum_modulus, maximum_modulus
+      !! Sample real roots and conjugate pairs within an inverse-root annulus.
+      integer, intent(in) :: order !! Model or polynomial order.
+      real(dp), intent(in) :: minimum_modulus !! Minimum modulus.
+      real(dp), intent(in) :: maximum_modulus !! Maximum modulus.
       complex(dp), allocatable :: inverse_roots(:)
       real(dp) :: radius, angle, sign_value
       integer :: index
@@ -431,8 +451,8 @@ contains
    end function sample_inverse_roots
 
    pure function invert_ma_coefficients(coefficients) result(inverted)
-      ! Reflect MA polynomial roots inside the unit circle to obtain invertibility.
-      real(dp), intent(in) :: coefficients(:)
+      !! Reflect MA polynomial roots inside the unit circle to obtain invertibility.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
       real(dp), allocatable :: inverted(:)
       type(arima2_roots_t) :: root_result
       complex(dp), allocatable :: roots(:)
@@ -454,16 +474,27 @@ contains
       season, max_starts, max_repeats, epsilon_tolerance, max_inverse_root, &
       min_inverse_root_distance, include_mean, max_iterations, tolerance, method, &
       initial, estimated, regressors) result(out)
-      ! Fit SARIMA by a conditional baseline followed by random exact-likelihood restarts.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: p, d, q, seasonal_p, seasonal_difference, seasonal_q, season
-      integer, intent(in), optional :: max_starts, max_repeats, max_iterations
-      real(dp), intent(in), optional :: epsilon_tolerance, max_inverse_root
-      real(dp), intent(in), optional :: min_inverse_root_distance, tolerance
-      logical, intent(in), optional :: include_mean
-      integer, intent(in), optional :: method
-      real(dp), intent(in), optional :: initial(:), regressors(:, :)
-      logical, intent(in), optional :: estimated(:)
+      !! Fit SARIMA by a conditional baseline followed by random exact-likelihood restarts.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: p !! Autoregressive order or model dimension.
+      integer, intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      integer, intent(in) :: q !! Model order, dimension, or parameter.
+      integer, intent(in) :: seasonal_p !! Seasonal p.
+      integer, intent(in) :: seasonal_difference !! Seasonal difference.
+      integer, intent(in) :: seasonal_q !! Seasonal q.
+      integer, intent(in) :: season !! Season.
+      integer, intent(in), optional :: max_starts !! Maximum starts.
+      integer, intent(in), optional :: max_repeats !! Maximum repeats.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: epsilon_tolerance !! Epsilon tolerance.
+      real(dp), intent(in), optional :: max_inverse_root !! Maximum inverse root.
+      real(dp), intent(in), optional :: min_inverse_root_distance !! Minimum inverse root distance.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      logical, intent(in), optional :: include_mean !! Whether to include a mean term.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      real(dp), intent(in), optional :: initial(:) !! Initial value.
+      real(dp), intent(in), optional :: regressors(:, :) !! Regression design matrix.
+      logical, intent(in), optional :: estimated(:) !! Flag controlling estimated.
       type(arima2_fit_t) :: out
       type(astsa_sarima_fit_t) :: baseline
       type(arima2_coefficient_samples_t) :: samples
@@ -553,9 +584,14 @@ contains
 
    pure logical function acceptable_roots(coefficients, p, q, seasonal_p, seasonal_q, &
       root_limit, distance_limit) result(acceptable)
-      ! Test inverse-root magnitude and AR-MA separation constraints.
-      real(dp), intent(in) :: coefficients(:), root_limit, distance_limit
-      integer, intent(in) :: p, q, seasonal_p, seasonal_q
+      !! Test inverse-root magnitude and AR-MA separation constraints.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      real(dp), intent(in) :: root_limit !! Root limit.
+      real(dp), intent(in) :: distance_limit !! Distance limit.
+      integer, intent(in) :: p !! Autoregressive order or model dimension.
+      integer, intent(in) :: q !! Model order, dimension, or parameter.
+      integer, intent(in) :: seasonal_p !! Seasonal p.
+      integer, intent(in) :: seasonal_q !! Seasonal q.
       type(arima2_roots_t) :: ar_roots, ma_roots, sar_roots, sma_roots
       integer :: offset
 
@@ -579,16 +615,17 @@ contains
    end function acceptable_roots
 
    pure logical function roots_within_limit(root_result, limit) result(acceptable)
-      ! Test that converged inverse roots do not exceed a limit.
-      type(arima2_roots_t), intent(in) :: root_result
-      real(dp), intent(in) :: limit
+      !! Test that converged inverse roots do not exceed a limit.
+      type(arima2_roots_t), intent(in) :: root_result !! Root result.
+      real(dp), intent(in) :: limit !! Limit.
       acceptable = root_result%info == 0
       if (acceptable) acceptable = maxval(1.0_dp/abs(root_result%roots)) <= limit
    end function roots_within_limit
 
    pure real(dp) function inverse_root_distance(first, second) result(distance)
-      ! Return the minimum distance between two sets of inverse roots.
-      type(arima2_roots_t), intent(in) :: first, second
+      !! Return the minimum distance between two sets of inverse roots.
+      type(arima2_roots_t), intent(in) :: first !! First operand.
+      type(arima2_roots_t), intent(in) :: second !! Second operand.
       integer :: i, j
 
       distance = huge(1.0_dp)
@@ -604,8 +641,8 @@ contains
    end function inverse_root_distance
 
    pure function polynomial_roots(polynomial) result(out)
-      ! Compute complex polynomial roots by Durand-Kerner iteration.
-      real(dp), intent(in) :: polynomial(0:)
+      !! Compute complex polynomial roots by Durand-Kerner iteration.
+      real(dp), intent(in) :: polynomial(0:) !! Polynomial.
       type(arima2_roots_t) :: out
       complex(dp), allocatable :: previous(:)
       complex(dp) :: numerator, denominator

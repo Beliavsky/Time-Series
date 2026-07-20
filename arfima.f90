@@ -3,16 +3,18 @@
 ! Long-memory covariance and simulation algorithms translated from arfima.
 module arfima_mod
    use kind_mod, only: dp
-   use itsmr_mod, only: itsmr_arma_model_t, arma_acvf, regularized_gamma_q
+   use itsmr_mod, only: itsmr_arma_model_t, arma_acvf
+   use special_functions_mod, only: regularized_gamma_q
+   use polynomial_mod, only: polynomial_product_truncated
    use arima2_mod, only: arima2_roots_t, arma_polynomial_roots, &
       durbin_levinson_coefficients
-   use time_series_optimization_mod, only: optimization_result_t, bfgs_minimize_fd, &
+   use optimization_mod, only: optimization_result_t, bfgs_minimize_fd, &
       finite_difference_hessian
-   use time_series_linalg_mod, only: invert_matrix, cholesky_lower
-   use time_series_random_mod, only: set_random_seed, random_uniform, &
+   use linalg_mod, only: invert_matrix, cholesky_lower
+   use random_mod, only: set_random_seed, random_uniform, &
       random_standard_normal, &
       multivariate_normal_from_standard
-   use time_series_stats_mod, only: normal_quantile
+   use stats_mod, only: normal_quantile, sorted, correlation_from_covariance
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
    implicit none
    private
@@ -224,12 +226,20 @@ contains
    pure function arfima_model(ar, theta, d, seasonal_ar, seasonal_theta, seasonal_d, &
       period, innovation_variance, mean, difference_order, seasonal_difference_order, &
       long_memory_type, seasonal_long_memory_type) result(model)
-      ! Construct an ARFIMA model with allocated coefficient arrays.
-      real(dp), intent(in) :: ar(:), theta(:), d
-      real(dp), intent(in), optional :: seasonal_ar(:), seasonal_theta(:), seasonal_d
-      real(dp), intent(in), optional :: innovation_variance, mean
-      integer, intent(in), optional :: period, difference_order, seasonal_difference_order
-      integer, intent(in), optional :: long_memory_type, seasonal_long_memory_type
+      !! Construct an ARFIMA model with allocated coefficient arrays.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: theta(:) !! Theta.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in), optional :: seasonal_ar(:) !! Seasonal autoregressive.
+      real(dp), intent(in), optional :: seasonal_theta(:) !! Seasonal theta.
+      real(dp), intent(in), optional :: seasonal_d !! Seasonal d.
+      real(dp), intent(in), optional :: innovation_variance !! Innovation variance.
+      real(dp), intent(in), optional :: mean !! Mean value or vector.
+      integer, intent(in), optional :: period !! Seasonal period.
+      integer, intent(in), optional :: difference_order !! Difference order.
+      integer, intent(in), optional :: seasonal_difference_order !! Seasonal difference order.
+      integer, intent(in), optional :: long_memory_type !! Long memory type.
+      integer, intent(in), optional :: seasonal_long_memory_type !! Seasonal long memory type.
       type(arfima_model_t) :: model
 
       model%ar = ar
@@ -254,9 +264,10 @@ contains
    end function arfima_model
 
    pure function arfima_transfer(denominator, numerator, delay) result(transfer)
-      ! Construct and validate one dynamic-regression transfer function.
-      real(dp), intent(in) :: denominator(:), numerator(:)
-      integer, intent(in), optional :: delay
+      !! Construct and validate one dynamic-regression transfer function.
+      real(dp), intent(in) :: denominator(:) !! Denominator polynomial coefficients.
+      real(dp), intent(in) :: numerator(:) !! Numerator polynomial coefficients.
+      integer, intent(in), optional :: delay !! Delay.
       type(arfima_transfer_t) :: transfer
 
       transfer%denominator = denominator
@@ -266,9 +277,9 @@ contains
    end function arfima_transfer
 
    pure function arfima_transfer_response(regressor, transfer) result(response)
-      ! Filter one regressor through a delayed rational transfer function.
-      real(dp), intent(in) :: regressor(:)
-      type(arfima_transfer_t), intent(in) :: transfer
+      !! Filter one regressor through a delayed rational transfer function.
+      real(dp), intent(in) :: regressor(:) !! Regressor.
+      type(arfima_transfer_t), intent(in) :: transfer !! Transfer.
       real(dp), allocatable :: response(:)
       integer :: i, j, start
 
@@ -296,13 +307,15 @@ contains
 
    pure function arfima_regression_likelihood(series, model, regressors, coefficients, &
       transfers, transfer_regressors, method, estimate_mean) result(out)
-      ! Evaluate ARFIMA likelihood after removing static and dynamic regressors.
-      real(dp), intent(in) :: series(:), regressors(:, :), coefficients(:)
-      type(arfima_model_t), intent(in) :: model
-      type(arfima_transfer_t), intent(in) :: transfers(:)
-      real(dp), intent(in) :: transfer_regressors(:, :)
-      integer, intent(in), optional :: method
-      logical, intent(in), optional :: estimate_mean
+      !! Evaluate ARFIMA likelihood after removing static and dynamic regressors.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
+      type(arfima_transfer_t), intent(in) :: transfers(:) !! Transfers.
+      real(dp), intent(in) :: transfer_regressors(:, :) !! Transfer regressors.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      logical, intent(in), optional :: estimate_mean !! Whether to estimate the mean.
       type(arfima_likelihood_t) :: out
       real(dp), allocatable :: effect(:)
       integer :: selected_method
@@ -322,10 +335,10 @@ contains
    end function arfima_regression_likelihood
 
    pure function arfima_identifiability(model, transfers, tolerance) result(out)
-      ! Diagnose stability and AR/MA common polynomial factors.
-      type(arfima_model_t), intent(in) :: model
-      type(arfima_transfer_t), intent(in), optional :: transfers(:)
-      real(dp), intent(in), optional :: tolerance
+      !! Diagnose stability and AR/MA common polynomial factors.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
+      type(arfima_transfer_t), intent(in), optional :: transfers(:) !! Transfers.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(arfima_identifiability_t) :: out
       type(arima2_roots_t) :: ar_roots, ma_roots
       real(dp), allocatable :: combined_ar(:), combined_ma(:)
@@ -377,10 +390,10 @@ contains
    end function arfima_identifiability
 
    pure function arfima_fractional_weights(d, max_lag, period) result(weights)
-      ! Expand (1-B**period)**d through the requested ordinary lag.
-      real(dp), intent(in) :: d
-      integer, intent(in) :: max_lag
-      integer, intent(in), optional :: period
+      !! Expand (1-B**period)**d through the requested ordinary lag.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      integer, intent(in), optional :: period !! Seasonal period.
       real(dp), allocatable :: weights(:)
       integer :: k, selected_period
 
@@ -404,9 +417,11 @@ contains
    end function arfima_fractional_weights
 
    pure function arfima_psi_weights(ar, theta, d, max_lag) result(weights)
-      ! Compute FARMA impulse weights using arfima's Box-Jenkins MA sign.
-      real(dp), intent(in) :: ar(:), theta(:), d
-      integer, intent(in) :: max_lag
+      !! Compute FARMA impulse weights using arfima's Box-Jenkins MA sign.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: theta(:) !! Theta.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: weights(:)
       real(dp), allocatable :: fractional(:), short_memory(:)
       integer :: i, j
@@ -432,10 +447,15 @@ contains
 
    pure function arfima_seasonal_psi_weights(ar, theta, d, seasonal_ar, &
       seasonal_theta, seasonal_d, period, max_lag) result(weights)
-      ! Combine ordinary and seasonal FARMA impulse weights.
-      real(dp), intent(in) :: ar(:), theta(:), d
-      real(dp), intent(in) :: seasonal_ar(:), seasonal_theta(:), seasonal_d
-      integer, intent(in) :: period, max_lag
+      !! Combine ordinary and seasonal FARMA impulse weights.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: theta(:) !! Theta.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: seasonal_ar(:) !! Seasonal autoregressive.
+      real(dp), intent(in) :: seasonal_theta(:) !! Seasonal theta.
+      real(dp), intent(in) :: seasonal_d !! Seasonal d.
+      integer, intent(in) :: period !! Seasonal period.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: weights(:)
       real(dp), allocatable :: ordinary(:), seasonal_base(:), seasonal(:)
       integer :: lag
@@ -461,9 +481,9 @@ contains
    end function arfima_seasonal_psi_weights
 
    pure function arfima_pi_weights(model, max_lag) result(weights)
-      ! Expand the inverse FD-ARFIMA filter through the requested lag.
-      type(arfima_model_t), intent(in) :: model
-      integer, intent(in) :: max_lag
+      !! Expand the inverse FD-ARFIMA filter through the requested lag.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: weights(:)
       real(dp), allocatable :: numerator(:), factor(:), ma(:)
       integer :: lag, j
@@ -522,9 +542,9 @@ contains
    end function arfima_pi_weights
 
    pure function arfima_fdwn_acvf(d, max_lag) result(out)
-      ! Compute fractional-differenced white-noise autocovariances.
-      real(dp), intent(in) :: d
-      integer, intent(in) :: max_lag
+      !! Compute fractional-differenced white-noise autocovariances.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       type(arfima_acvf_t) :: out
       integer :: lag
 
@@ -544,9 +564,9 @@ contains
    end function arfima_fdwn_acvf
 
    pure function arfima_fgn_acvf(hurst, max_lag) result(out)
-      ! Compute unit-variance fractional Gaussian-noise autocovariances.
-      real(dp), intent(in) :: hurst
-      integer, intent(in) :: max_lag
+      !! Compute unit-variance fractional Gaussian-noise autocovariances.
+      real(dp), intent(in) :: hurst !! Hurst.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       type(arfima_acvf_t) :: out
       real(dp) :: exponent
       integer :: lag
@@ -567,10 +587,10 @@ contains
    end function arfima_fgn_acvf
 
    pure function arfima_hd_acvf(alpha, max_lag, zeta_terms) result(out)
-      ! Compute normalized hyperbolic-decay autocovariances.
-      real(dp), intent(in) :: alpha
-      integer, intent(in) :: max_lag
-      integer, intent(in), optional :: zeta_terms
+      !! Compute normalized hyperbolic-decay autocovariances.
+      real(dp), intent(in) :: alpha !! Significance, smoothing, or model coefficient.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      integer, intent(in), optional :: zeta_terms !! Zeta terms.
       type(arfima_acvf_t) :: out
       real(dp) :: scale, zeta_value
       integer :: lag, terms
@@ -602,10 +622,13 @@ contains
 
    pure function arfima_farma_acvf(ar, theta, d, max_lag, innovation_variance, &
       truncation_lag) result(out)
-      ! Combine FDWN and ARMA covariances by truncated spectral convolution.
-      real(dp), intent(in) :: ar(:), theta(:), d, innovation_variance
-      integer, intent(in) :: max_lag
-      integer, intent(in), optional :: truncation_lag
+      !! Combine FDWN and ARMA covariances by truncated spectral convolution.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: theta(:) !! Theta.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: innovation_variance !! Innovation variance.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      integer, intent(in), optional :: truncation_lag !! Truncation lag.
       type(arfima_acvf_t) :: out
       type(arfima_acvf_t) :: fractional
       type(itsmr_arma_model_t) :: arma_model
@@ -641,10 +664,10 @@ contains
    end function arfima_farma_acvf
 
    pure function arfima_model_acvf(model, max_lag, truncation_lag) result(out)
-      ! Compute a seasonal ARFIMA covariance by multiplying component spectra.
-      type(arfima_model_t), intent(in) :: model
-      integer, intent(in) :: max_lag
-      integer, intent(in), optional :: truncation_lag
+      !! Compute a seasonal ARFIMA covariance by multiplying component spectra.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      integer, intent(in), optional :: truncation_lag !! Truncation lag.
       type(arfima_acvf_t) :: out
       type(arfima_acvf_t) :: ordinary, seasonal_base
       real(dp), allocatable :: seasonal(:)
@@ -693,9 +716,12 @@ contains
 
    pure function arfima_integrate(series, initial_values, difference_order, &
       seasonal_difference_order, period) result(integrated)
-      ! Reverse ordinary and seasonal integer differencing using initial values.
-      real(dp), intent(in) :: series(:), initial_values(:)
-      integer, intent(in) :: difference_order, seasonal_difference_order, period
+      !! Reverse ordinary and seasonal integer differencing using initial values.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: initial_values(:) !! Initial values.
+      integer, intent(in) :: difference_order !! Difference order.
+      integer, intent(in) :: seasonal_difference_order !! Seasonal difference order.
+      integer, intent(in) :: period !! Seasonal period.
       real(dp), allocatable :: integrated(:)
       real(dp), allocatable :: ordinary(:), seasonal(:), coefficient(:)
       integer :: active, i, lag
@@ -732,9 +758,9 @@ contains
    end function arfima_integrate
 
    pure function arfima_durbin_levinson_simulate(innovations, covariance) result(out)
-      ! Simulate a stationary process from its autocovariances and innovations.
-      real(dp), intent(in) :: innovations(:)
-      real(dp), intent(in) :: covariance(0:)
+      !! Simulate a stationary process from its autocovariances and innovations.
+      real(dp), intent(in) :: innovations(:) !! Model innovations.
+      real(dp), intent(in) :: covariance(0:) !! Covariance matrix.
       type(arfima_simulation_t) :: out
       real(dp), allocatable :: previous(:), current(:)
       real(dp) :: reflection, accumulated
@@ -782,10 +808,10 @@ contains
 
    pure function arfima_simulate_from_innovations(model, innovations, &
       initial_values) result(out)
-      ! Simulate, center, and optionally inverse-difference an ARFIMA process.
-      type(arfima_model_t), intent(in) :: model
-      real(dp), intent(in) :: innovations(:)
-      real(dp), intent(in), optional :: initial_values(:)
+      !! Simulate, center, and optionally inverse-difference an ARFIMA process.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in) :: innovations(:) !! Model innovations.
+      real(dp), intent(in), optional :: initial_values(:) !! Initial values.
       type(arfima_simulation_t) :: out
       type(arfima_acvf_t) :: covariance_result
       real(dp), allocatable :: initial(:), integrated(:)
@@ -830,11 +856,11 @@ contains
    end function arfima_simulate_from_innovations
 
    function arfima_simulate(model, observations, seed, initial_values) result(out)
-      ! Simulate an ARFIMA process using standard-normal innovations.
-      type(arfima_model_t), intent(in) :: model
-      integer, intent(in) :: observations
-      integer, intent(in), optional :: seed
-      real(dp), intent(in), optional :: initial_values(:)
+      !! Simulate an ARFIMA process using standard-normal innovations.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: observations !! Observed time-series values.
+      integer, intent(in), optional :: seed !! Random-number seed.
+      real(dp), intent(in), optional :: initial_values(:) !! Initial values.
       type(arfima_simulation_t) :: out
       real(dp), allocatable :: innovations(:)
       integer :: i
@@ -856,11 +882,11 @@ contains
    end function arfima_simulate
 
    pure function arfima_likelihood(series, model, method, estimate_mean) result(out)
-      ! Evaluate a profiled exact or conditional Gaussian likelihood.
-      real(dp), intent(in) :: series(:)
-      type(arfima_model_t), intent(in) :: model
-      integer, intent(in), optional :: method
-      logical, intent(in), optional :: estimate_mean
+      !! Evaluate a profiled exact or conditional Gaussian likelihood.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      logical, intent(in), optional :: estimate_mean !! Whether to estimate the mean.
       type(arfima_likelihood_t) :: out
       integer :: selected_method
       logical :: profile_mean
@@ -879,10 +905,10 @@ contains
    end function arfima_likelihood
 
    pure function exact_likelihood(series, model, estimate_mean) result(out)
-      ! Evaluate the exact likelihood using the Durbin-Levinson recursion.
-      real(dp), intent(in) :: series(:)
-      type(arfima_model_t), intent(in) :: model
-      logical, intent(in) :: estimate_mean
+      !! Evaluate the exact likelihood using the Durbin-Levinson recursion.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
+      logical, intent(in) :: estimate_mean !! Whether to estimate the mean.
       type(arfima_likelihood_t) :: out
       type(arfima_model_t) :: unit_model
       type(arfima_acvf_t) :: covariance_result
@@ -967,10 +993,10 @@ contains
    end function exact_likelihood
 
    pure function css_likelihood(series, model, estimate_mean) result(out)
-      ! Evaluate a conditional likelihood from truncated impulse weights.
-      real(dp), intent(in) :: series(:)
-      type(arfima_model_t), intent(in) :: model
-      logical, intent(in) :: estimate_mean
+      !! Evaluate a conditional likelihood from truncated impulse weights.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
+      logical, intent(in) :: estimate_mean !! Whether to estimate the mean.
       type(arfima_likelihood_t) :: out
       real(dp), allocatable :: work(:), weights(:), base_innovation(:), mean_loading(:)
       real(dp) :: denominator
@@ -1035,12 +1061,13 @@ contains
 
    pure function arfima_fit(series, initial_model, method, estimate_mean, &
       max_iterations, tolerance) result(out)
-      ! Estimate ARFIMA parameters by finite-difference BFGS.
-      real(dp), intent(in) :: series(:)
-      type(arfima_model_t), intent(in) :: initial_model
-      integer, intent(in), optional :: method, max_iterations
-      logical, intent(in), optional :: estimate_mean
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate ARFIMA parameters by finite-difference BFGS.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(arfima_model_t), intent(in) :: initial_model !! Initial model.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: estimate_mean !! Whether to estimate the mean.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(arfima_fit_t) :: out
       type(optimization_result_t) :: optimization
       real(dp), allocatable :: initial(:), hessian(:, :)
@@ -1117,8 +1144,8 @@ contains
    contains
 
       pure function objective(parameters) result(value)
-         ! Return the profiled negative log-likelihood for BFGS.
-         real(dp), intent(in) :: parameters(:)
+         !! Return the profiled negative log-likelihood for BFGS.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: value
          type(arfima_model_t) :: candidate
          type(arfima_likelihood_t) :: likelihood
@@ -1136,13 +1163,14 @@ contains
 
    pure function arfima_fit_fixed(series, initial_model, fixed_parameters, method, &
       estimate_mean, max_iterations, tolerance) result(out)
-      ! Estimate free ARFIMA coordinates while retaining selected initial values.
-      real(dp), intent(in) :: series(:)
-      type(arfima_model_t), intent(in) :: initial_model
-      logical, intent(in) :: fixed_parameters(:)
-      integer, intent(in), optional :: method, max_iterations
-      logical, intent(in), optional :: estimate_mean
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate free ARFIMA coordinates while retaining selected initial values.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(arfima_model_t), intent(in) :: initial_model !! Initial model.
+      logical, intent(in) :: fixed_parameters(:) !! Flag controlling fixed parameters.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: estimate_mean !! Whether to estimate the mean.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(arfima_fit_t) :: out
       type(optimization_result_t) :: optimization
       real(dp), allocatable :: initial(:), free_initial(:), full(:)
@@ -1232,8 +1260,8 @@ contains
    contains
 
       pure function objective(free_parameters) result(value)
-         ! Return the negative likelihood after inserting fixed coordinates.
-         real(dp), intent(in) :: free_parameters(:)
+         !! Return the negative likelihood after inserting fixed coordinates.
+         real(dp), intent(in) :: free_parameters(:) !! Free parameters.
          real(dp) :: value
          real(dp) :: candidate_parameters(size(initial))
          type(arfima_model_t) :: candidate
@@ -1255,12 +1283,14 @@ contains
 
    pure function arfima_fit_modes(series, initial_model, starts, method, &
       estimate_mean, max_iterations, tolerance) result(out)
-      ! Fit independent local modes from caller-supplied optimizer coordinates.
-      real(dp), intent(in) :: series(:), starts(:, :)
-      type(arfima_model_t), intent(in) :: initial_model
-      integer, intent(in), optional :: method, max_iterations
-      logical, intent(in), optional :: estimate_mean
-      real(dp), intent(in), optional :: tolerance
+      !! Fit independent local modes from caller-supplied optimizer coordinates.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: starts(:, :) !! Starts.
+      type(arfima_model_t), intent(in) :: initial_model !! Initial model.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: estimate_mean !! Whether to estimate the mean.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(arfima_multifit_t) :: out
       type(arfima_fit_t), allocatable :: candidates(:)
       type(arfima_model_t) :: start_model
@@ -1315,13 +1345,15 @@ contains
 
    pure function arfima_fit_modes_fixed(series, initial_model, fixed_parameters, &
       starts, method, estimate_mean, max_iterations, tolerance) result(out)
-      ! Fit local modes while retaining selected coordinates at initial values.
-      real(dp), intent(in) :: series(:), starts(:, :)
-      type(arfima_model_t), intent(in) :: initial_model
-      logical, intent(in) :: fixed_parameters(:)
-      integer, intent(in), optional :: method, max_iterations
-      logical, intent(in), optional :: estimate_mean
-      real(dp), intent(in), optional :: tolerance
+      !! Fit local modes while retaining selected coordinates at initial values.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: starts(:, :) !! Starts.
+      type(arfima_model_t), intent(in) :: initial_model !! Initial model.
+      logical, intent(in) :: fixed_parameters(:) !! Flag controlling fixed parameters.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: estimate_mean !! Whether to estimate the mean.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(arfima_multifit_t) :: out
       type(arfima_fit_t), allocatable :: candidates(:)
       type(arfima_model_t) :: start_model
@@ -1382,14 +1414,16 @@ contains
 
    function arfima_multistart_fit_fixed(series, initial_model, fixed_parameters, &
       number_starts, seed, method, estimate_mean, max_iterations, tolerance) result(out)
-      ! Fit fixed-parameter modes from seeded random stable starts.
-      real(dp), intent(in) :: series(:)
-      type(arfima_model_t), intent(in) :: initial_model
-      logical, intent(in) :: fixed_parameters(:)
-      integer, intent(in) :: number_starts
-      integer, intent(in), optional :: seed, method, max_iterations
-      logical, intent(in), optional :: estimate_mean
-      real(dp), intent(in), optional :: tolerance
+      !! Fit fixed-parameter modes from seeded random stable starts.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(arfima_model_t), intent(in) :: initial_model !! Initial model.
+      logical, intent(in) :: fixed_parameters(:) !! Flag controlling fixed parameters.
+      integer, intent(in) :: number_starts !! Number starts.
+      integer, intent(in), optional :: seed !! Random-number seed.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: estimate_mean !! Whether to estimate the mean.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(arfima_multifit_t) :: out
       real(dp), allocatable :: starts(:, :)
       integer :: selected_method, iteration_limit
@@ -1412,13 +1446,15 @@ contains
 
    function arfima_multistart_fit(series, initial_model, number_starts, seed, &
       method, estimate_mean, max_iterations, tolerance) result(out)
-      ! Fit local modes from seeded random stable PACF and memory starts.
-      real(dp), intent(in) :: series(:)
-      type(arfima_model_t), intent(in) :: initial_model
-      integer, intent(in) :: number_starts
-      integer, intent(in), optional :: seed, method, max_iterations
-      logical, intent(in), optional :: estimate_mean
-      real(dp), intent(in), optional :: tolerance
+      !! Fit local modes from seeded random stable PACF and memory starts.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(arfima_model_t), intent(in) :: initial_model !! Initial model.
+      integer, intent(in) :: number_starts !! Number starts.
+      integer, intent(in), optional :: seed !! Random-number seed.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: estimate_mean !! Whether to estimate the mean.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(arfima_multifit_t) :: out
       real(dp), allocatable :: starts(:, :)
       integer :: selected_method, iteration_limit
@@ -1441,13 +1477,16 @@ contains
 
    function arfima_select_long_memory(series, initial_model, starts_per_family, &
       seed, method, estimate_mean, max_iterations, tolerance, weed_tolerance) result(out)
-      ! Compare none, FDWN, FGN, and hyperbolic-decay likelihood modes.
-      real(dp), intent(in) :: series(:)
-      type(arfima_model_t), intent(in) :: initial_model
-      integer, intent(in) :: starts_per_family
-      integer, intent(in), optional :: seed, method, max_iterations
-      logical, intent(in), optional :: estimate_mean
-      real(dp), intent(in), optional :: tolerance, weed_tolerance
+      !! Compare none, FDWN, FGN, and hyperbolic-decay likelihood modes.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(arfima_model_t), intent(in) :: initial_model !! Initial model.
+      integer, intent(in) :: starts_per_family !! Starts per family.
+      integer, intent(in), optional :: seed !! Random-number seed.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: estimate_mean !! Whether to estimate the mean.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: weed_tolerance !! Weed tolerance.
       type(arfima_multifit_t) :: out
       type(arfima_multifit_t) :: groups(4)
       type(arfima_model_t) :: candidate
@@ -1491,10 +1530,11 @@ contains
 
    pure real(dp) function arfima_mode_distance(first, second, p, transformed) &
       result(distance)
-      ! Return a p-norm distance in coefficient or PACF parameter space.
-      type(arfima_fit_t), intent(in) :: first, second
-      real(dp), intent(in), optional :: p
-      logical, intent(in), optional :: transformed
+      !! Return a p-norm distance in coefficient or PACF parameter space.
+      type(arfima_fit_t), intent(in) :: first !! First operand.
+      type(arfima_fit_t), intent(in) :: second !! Second operand.
+      real(dp), intent(in), optional :: p !! Autoregressive order or model dimension.
+      logical, intent(in), optional :: transformed !! Flag controlling transformed.
       real(dp), allocatable :: first_parameters(:), second_parameters(:)
       real(dp) :: norm_order
       logical :: use_transformed
@@ -1518,10 +1558,10 @@ contains
    end function arfima_mode_distance
 
    pure function arfima_mode_distances(multifit, p, transformed) result(distances)
-      ! Return the symmetric pairwise distance matrix for retained modes.
-      type(arfima_multifit_t), intent(in) :: multifit
-      real(dp), intent(in), optional :: p
-      logical, intent(in), optional :: transformed
+      !! Return the symmetric pairwise distance matrix for retained modes.
+      type(arfima_multifit_t), intent(in) :: multifit !! Multifit.
+      real(dp), intent(in), optional :: p !! Autoregressive order or model dimension.
+      logical, intent(in), optional :: transformed !! Flag controlling transformed.
       real(dp), allocatable :: distances(:, :)
       real(dp) :: norm_order
       logical :: use_transformed
@@ -1543,11 +1583,14 @@ contains
 
    pure function arfima_weed_modes(multifit, space, tolerance, adaptive, p, walls, &
       wall_tolerance) result(out)
-      ! Remove nearby modes and secondary modes sharing a parameter boundary.
-      type(arfima_multifit_t), intent(in) :: multifit
-      integer, intent(in), optional :: space
-      real(dp), intent(in), optional :: tolerance, p, wall_tolerance
-      logical, intent(in), optional :: adaptive, walls
+      !! Remove nearby modes and secondary modes sharing a parameter boundary.
+      type(arfima_multifit_t), intent(in) :: multifit !! Multifit.
+      integer, intent(in), optional :: space !! Space.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
+      real(dp), intent(in), optional :: p !! Autoregressive order or model dimension.
+      real(dp), intent(in), optional :: wall_tolerance !! Wall tolerance.
+      logical, intent(in), optional :: adaptive !! Flag controlling adaptive.
+      logical, intent(in), optional :: walls !! Flag controlling walls.
       type(arfima_multifit_t) :: out
       integer, allocatable :: order(:), retained(:)
       integer :: selected_space, i, j, kept, dimension
@@ -1612,9 +1655,9 @@ contains
    end function arfima_weed_modes
 
    pure function arfima_best_modes(multifit, number) result(out)
-      ! Retain the requested number of highest-likelihood modes.
-      type(arfima_multifit_t), intent(in) :: multifit
-      integer, intent(in) :: number
+      !! Retain the requested number of highest-likelihood modes.
+      type(arfima_multifit_t), intent(in) :: multifit !! Multifit.
+      integer, intent(in) :: number !! Number.
       type(arfima_multifit_t) :: out
       integer, allocatable :: order(:)
 
@@ -1628,9 +1671,9 @@ contains
    end function arfima_best_modes
 
    pure function arfima_remove_mode(multifit, index) result(out)
-      ! Return a multimode fit with one selected mode removed.
-      type(arfima_multifit_t), intent(in) :: multifit
-      integer, intent(in) :: index
+      !! Return a multimode fit with one selected mode removed.
+      type(arfima_multifit_t), intent(in) :: multifit !! Multifit.
+      integer, intent(in) :: index !! Element or observation index.
       type(arfima_multifit_t) :: out
       integer, allocatable :: retained(:)
       integer :: i, offset
@@ -1651,11 +1694,12 @@ contains
    end function arfima_remove_mode
 
    pure function arfima_mode_forecast(series, multifit, index, horizon, level) result(out)
-      ! Forecast from one selected local likelihood mode.
-      real(dp), intent(in) :: series(:)
-      type(arfima_multifit_t), intent(in) :: multifit
-      integer, intent(in) :: index, horizon
-      real(dp), intent(in), optional :: level
+      !! Forecast from one selected local likelihood mode.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(arfima_multifit_t), intent(in) :: multifit !! Multifit.
+      integer, intent(in) :: index !! Element or observation index.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in), optional :: level !! Model level or confidence level.
       type(arfima_forecast_t) :: out
 
       if (index < 1 .or. index > size(multifit%modes)) then
@@ -1668,11 +1712,11 @@ contains
    end function arfima_mode_forecast
 
    pure function arfima_mode_information(multifit, index, exact, resolution) result(out)
-      ! Compute Fisher information for one selected local mode.
-      type(arfima_multifit_t), intent(in) :: multifit
-      integer, intent(in) :: index
-      logical, intent(in), optional :: exact
-      integer, intent(in), optional :: resolution
+      !! Compute Fisher information for one selected local mode.
+      type(arfima_multifit_t), intent(in) :: multifit !! Multifit.
+      integer, intent(in) :: index !! Element or observation index.
+      logical, intent(in), optional :: exact !! Flag controlling exact.
+      integer, intent(in), optional :: resolution !! Resolution.
       type(arfima_information_t) :: out
 
       if (index < 1 .or. index > size(multifit%modes)) then
@@ -1689,9 +1733,9 @@ contains
    end function arfima_mode_information
 
    pure function arfima_mode_identifiability(multifit, index) result(out)
-      ! Diagnose stability and common factors for one selected local mode.
-      type(arfima_multifit_t), intent(in) :: multifit
-      integer, intent(in) :: index
+      !! Diagnose stability and common factors for one selected local mode.
+      type(arfima_multifit_t), intent(in) :: multifit !! Multifit.
+      integer, intent(in) :: index !! Element or observation index.
       type(arfima_identifiability_t) :: out
 
       if (index < 1 .or. index > size(multifit%modes)) then
@@ -1704,14 +1748,17 @@ contains
    pure function arfima_regression_fit(series, initial_model, regressors, &
       initial_coefficients, initial_transfers, transfer_regressors, method, &
       estimate_mean, max_iterations, tolerance) result(out)
-      ! Jointly estimate ARFIMA, static regression, and transfer parameters.
-      real(dp), intent(in) :: series(:), regressors(:, :), initial_coefficients(:)
-      type(arfima_model_t), intent(in) :: initial_model
-      type(arfima_transfer_t), intent(in) :: initial_transfers(:)
-      real(dp), intent(in) :: transfer_regressors(:, :)
-      integer, intent(in), optional :: method, max_iterations
-      logical, intent(in), optional :: estimate_mean
-      real(dp), intent(in), optional :: tolerance
+      !! Jointly estimate ARFIMA, static regression, and transfer parameters.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: initial_coefficients(:) !! Initial coefficients.
+      type(arfima_model_t), intent(in) :: initial_model !! Initial model.
+      type(arfima_transfer_t), intent(in) :: initial_transfers(:) !! Initial transfers.
+      real(dp), intent(in) :: transfer_regressors(:, :) !! Transfer regressors.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: estimate_mean !! Whether to estimate the mean.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(arfima_regression_fit_t) :: out
       type(optimization_result_t) :: optimization
       real(dp), allocatable :: initial(:), hessian(:, :)
@@ -1799,8 +1846,8 @@ contains
    contains
 
       pure function objective(parameters) result(value)
-         ! Return the joint profiled negative log-likelihood.
-         real(dp), intent(in) :: parameters(:)
+         !! Return the joint profiled negative log-likelihood.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: value
          type(arfima_model_t) :: candidate_model
          type(arfima_transfer_t), allocatable :: candidate_transfers(:)
@@ -1826,15 +1873,18 @@ contains
    pure function arfima_regression_fit_fixed(series, initial_model, regressors, &
       initial_coefficients, initial_transfers, transfer_regressors, fixed_parameters, &
       method, estimate_mean, max_iterations, tolerance) result(out)
-      ! Estimate a joint regression model with selected coordinates held fixed.
-      real(dp), intent(in) :: series(:), regressors(:, :), initial_coefficients(:)
-      type(arfima_model_t), intent(in) :: initial_model
-      type(arfima_transfer_t), intent(in) :: initial_transfers(:)
-      real(dp), intent(in) :: transfer_regressors(:, :)
-      logical, intent(in) :: fixed_parameters(:)
-      integer, intent(in), optional :: method, max_iterations
-      logical, intent(in), optional :: estimate_mean
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate a joint regression model with selected coordinates held fixed.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: initial_coefficients(:) !! Initial coefficients.
+      type(arfima_model_t), intent(in) :: initial_model !! Initial model.
+      type(arfima_transfer_t), intent(in) :: initial_transfers(:) !! Initial transfers.
+      real(dp), intent(in) :: transfer_regressors(:, :) !! Transfer regressors.
+      logical, intent(in) :: fixed_parameters(:) !! Flag controlling fixed parameters.
+      integer, intent(in), optional :: method !! Algorithm or estimation method.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      logical, intent(in), optional :: estimate_mean !! Whether to estimate the mean.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(arfima_regression_fit_t) :: out
       type(optimization_result_t) :: optimization
       real(dp), allocatable :: initial(:), free_initial(:), full(:)
@@ -1934,8 +1984,8 @@ contains
    contains
 
       pure function objective(free_parameters) result(value)
-         ! Return the joint negative likelihood after inserting fixed values.
-         real(dp), intent(in) :: free_parameters(:)
+         !! Return the joint negative likelihood after inserting fixed values.
+         real(dp), intent(in) :: free_parameters(:) !! Free parameters.
          real(dp) :: value
          real(dp) :: candidate_parameters(size(initial))
          type(arfima_model_t) :: candidate_model
@@ -1966,10 +2016,11 @@ contains
 
    pure function arfima_fisher_information(model, exact, resolution, &
       observations) result(out)
-      ! Compute spectral or truncated-score Fisher information.
-      type(arfima_model_t), intent(in) :: model
-      logical, intent(in), optional :: exact
-      integer, intent(in), optional :: resolution, observations
+      !! Compute spectral or truncated-score Fisher information.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
+      logical, intent(in), optional :: exact !! Flag controlling exact.
+      integer, intent(in), optional :: resolution !! Resolution.
+      integer, intent(in), optional :: observations !! Observed time-series values.
       type(arfima_information_t) :: out
       real(dp), allocatable :: lower(:, :)
       integer :: inversion_info, status
@@ -2014,10 +2065,10 @@ contains
    end function arfima_fisher_information
 
    pure function arfima_fit_information(fit, exact, resolution) result(out)
-      ! Compute information and covariance for a fitted ARFIMA model.
-      type(arfima_fit_t), intent(in) :: fit
-      logical, intent(in), optional :: exact
-      integer, intent(in), optional :: resolution
+      !! Compute information and covariance for a fitted ARFIMA model.
+      type(arfima_fit_t), intent(in) :: fit !! Previously fitted model.
+      logical, intent(in), optional :: exact !! Flag controlling exact.
+      integer, intent(in), optional :: resolution !! Resolution.
       type(arfima_information_t) :: out
       logical :: selected_exact
       integer :: selected_resolution
@@ -2035,10 +2086,10 @@ contains
    end function arfima_fit_information
 
    pure function arfima_fit_diagnostics(series, fit, max_lag) result(out)
-      ! Diagnose one fitted ARFIMA model from its one-step innovations.
-      real(dp), intent(in) :: series(:)
-      type(arfima_fit_t), intent(in) :: fit
-      integer, intent(in), optional :: max_lag
+      !! Diagnose one fitted ARFIMA model from its one-step innovations.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(arfima_fit_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in), optional :: max_lag !! Maximum lag to consider.
       type(arfima_diagnostics_t) :: out
       type(arfima_likelihood_t) :: likelihood
       integer :: selected_lag
@@ -2057,10 +2108,12 @@ contains
 
    pure function arfima_regression_diagnostics(series, fit, regressors, &
       transfer_regressors, max_lag) result(out)
-      ! Diagnose fitted regression and transfer-function ARFIMA innovations.
-      real(dp), intent(in) :: series(:), regressors(:, :), transfer_regressors(:, :)
-      type(arfima_regression_fit_t), intent(in) :: fit
-      integer, intent(in), optional :: max_lag
+      !! Diagnose fitted regression and transfer-function ARFIMA innovations.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: transfer_regressors(:, :) !! Transfer regressors.
+      type(arfima_regression_fit_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in), optional :: max_lag !! Maximum lag to consider.
       type(arfima_diagnostics_t) :: out
       type(arfima_likelihood_t) :: likelihood
       real(dp), allocatable :: effect(:), adjusted(:)
@@ -2084,11 +2137,11 @@ contains
    end function arfima_regression_diagnostics
 
    pure function arfima_mode_diagnostics(series, multifit, index, max_lag) result(out)
-      ! Diagnose one selected mode from a multimode ARFIMA fit.
-      real(dp), intent(in) :: series(:)
-      type(arfima_multifit_t), intent(in) :: multifit
-      integer, intent(in) :: index
-      integer, intent(in), optional :: max_lag
+      !! Diagnose one selected mode from a multimode ARFIMA fit.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(arfima_multifit_t), intent(in) :: multifit !! Multifit.
+      integer, intent(in) :: index !! Element or observation index.
+      integer, intent(in), optional :: max_lag !! Maximum lag to consider.
       type(arfima_diagnostics_t) :: out
 
       if (index < 1 .or. index > size(multifit%modes)) then
@@ -2101,10 +2154,10 @@ contains
    end function arfima_mode_diagnostics
 
    pure function arfima_fit_covariance(fit, exact, resolution) result(out)
-      ! Extract observed and, when defined, expected covariance correlations.
-      type(arfima_fit_t), intent(in) :: fit
-      logical, intent(in), optional :: exact
-      integer, intent(in), optional :: resolution
+      !! Extract observed and, when defined, expected covariance correlations.
+      type(arfima_fit_t), intent(in) :: fit !! Previously fitted model.
+      logical, intent(in), optional :: exact !! Flag controlling exact.
+      integer, intent(in), optional :: resolution !! Resolution.
       type(arfima_covariance_t) :: out
       type(arfima_information_t) :: expected_information
       real(dp), allocatable :: jacobian(:, :), free_information(:, :)
@@ -2122,7 +2175,7 @@ contains
       jacobian = operating_parameter_jacobian(fit)
       out%observed = matmul(matmul(jacobian, fit%parameter_covariance), &
          transpose(jacobian))
-      out%observed_correlation = covariance_to_correlation(out%observed)
+      out%observed_correlation = correlation_from_covariance(out%observed)
       allocate(out%expected(0, 0), out%expected_correlation(0, 0))
       selected_exact = .true.
       if (present(exact)) selected_exact = exact
@@ -2153,17 +2206,17 @@ contains
                end do
             end do
          end if
-         out%expected_correlation = covariance_to_correlation(out%expected)
+         out%expected_correlation = correlation_from_covariance(out%expected)
          out%expected_available = .true.
       end if
    end function arfima_fit_covariance
 
    pure function arfima_average_forecast(series, multifit, horizon, level) result(out)
-      ! Average mode forecasts and include between-mode mean uncertainty.
-      real(dp), intent(in) :: series(:)
-      type(arfima_multifit_t), intent(in) :: multifit
-      integer, intent(in) :: horizon
-      real(dp), intent(in), optional :: level
+      !! Average mode forecasts and include between-mode mean uncertainty.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(arfima_multifit_t), intent(in) :: multifit !! Multifit.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in), optional :: level !! Model level or confidence level.
       type(arfima_forecast_t) :: out
       type(arfima_forecast_t), allocatable :: forecasts(:)
       real(dp), allocatable :: weights(:), difference(:)
@@ -2226,11 +2279,11 @@ contains
    end function arfima_average_forecast
 
    pure function arfima_forecast_model(series, model, horizon, level) result(out)
-      ! Compute exact conditional Gaussian forecasts from an ARFIMA model.
-      real(dp), intent(in) :: series(:)
-      type(arfima_model_t), intent(in) :: model
-      integer, intent(in) :: horizon
-      real(dp), intent(in), optional :: level
+      !! Compute exact conditional Gaussian forecasts from an ARFIMA model.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in), optional :: level !! Model level or confidence level.
       type(arfima_forecast_t) :: out
       type(arfima_acvf_t) :: covariance_result
       real(dp), allocatable :: work(:), past_covariance(:, :), inverse(:, :)
@@ -2317,11 +2370,11 @@ contains
    end function arfima_forecast_model
 
    pure function arfima_forecast_fit(series, fit, horizon, level) result(out)
-      ! Compute exact forecasts directly from a fitted ARFIMA object.
-      real(dp), intent(in) :: series(:)
-      type(arfima_fit_t), intent(in) :: fit
-      integer, intent(in) :: horizon
-      real(dp), intent(in), optional :: level
+      !! Compute exact forecasts directly from a fitted ARFIMA object.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(arfima_fit_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in), optional :: level !! Model level or confidence level.
       type(arfima_forecast_t) :: out
 
       if (present(level)) then
@@ -2334,12 +2387,13 @@ contains
 
    function arfima_forecast_model_paths(series, model, horizon, simulations, &
       seed, level) result(out)
-      ! Draw conditional Gaussian forecast paths from an ARFIMA model.
-      real(dp), intent(in) :: series(:)
-      type(arfima_model_t), intent(in) :: model
-      integer, intent(in) :: horizon, simulations
-      integer, intent(in), optional :: seed
-      real(dp), intent(in), optional :: level
+      !! Draw conditional Gaussian forecast paths from an ARFIMA model.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: simulations !! Number of simulation draws.
+      integer, intent(in), optional :: seed !! Random-number seed.
+      real(dp), intent(in), optional :: level !! Model level or confidence level.
       type(arfima_forecast_t) :: out
       real(dp), allocatable :: standard(:), draw(:)
       integer :: i, simulation, status
@@ -2372,12 +2426,13 @@ contains
 
    function arfima_forecast_fit_paths(series, fit, horizon, simulations, seed, &
       level) result(out)
-      ! Draw conditional forecast paths directly from an ARFIMA fit.
-      real(dp), intent(in) :: series(:)
-      type(arfima_fit_t), intent(in) :: fit
-      integer, intent(in) :: horizon, simulations
-      integer, intent(in), optional :: seed
-      real(dp), intent(in), optional :: level
+      !! Draw conditional forecast paths directly from an ARFIMA fit.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(arfima_fit_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      integer, intent(in) :: simulations !! Number of simulation draws.
+      integer, intent(in), optional :: seed !! Random-number seed.
+      real(dp), intent(in), optional :: level !! Model level or confidence level.
       type(arfima_forecast_t) :: out
 
       if (present(seed) .and. present(level)) then
@@ -2397,12 +2452,14 @@ contains
 
    pure function arfima_regression_forecast(series, fit, regressors, future_regressors, &
       transfer_regressors, horizon, level) result(out)
-      ! Forecast a fitted regression ARFIMA model using future regressors.
-      real(dp), intent(in) :: series(:), regressors(:, :), future_regressors(:, :)
-      type(arfima_regression_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: transfer_regressors(:, :)
-      integer, intent(in) :: horizon
-      real(dp), intent(in), optional :: level
+      !! Forecast a fitted regression ARFIMA model using future regressors.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: future_regressors(:, :) !! Future regressors.
+      type(arfima_regression_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: transfer_regressors(:, :) !! Transfer regressors.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in), optional :: level !! Model level or confidence level.
       type(arfima_forecast_t) :: out
       real(dp), allocatable :: historical_effect(:), full_static(:, :), full_effect(:)
       integer :: n
@@ -2439,10 +2496,12 @@ contains
 
    pure function arfima_regression_simulate_from_innovations(fit, innovations, &
       regressors, transfer_regressors, initial_values) result(out)
-      ! Simulate a fitted regression ARFIMA model from supplied innovations.
-      type(arfima_regression_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: innovations(:), regressors(:, :), transfer_regressors(:, :)
-      real(dp), intent(in), optional :: initial_values(:)
+      !! Simulate a fitted regression ARFIMA model from supplied innovations.
+      type(arfima_regression_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: innovations(:) !! Model innovations.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: transfer_regressors(:, :) !! Transfer regressors.
+      real(dp), intent(in), optional :: initial_values(:) !! Initial values.
       type(arfima_simulation_t) :: out
       real(dp), allocatable :: effect(:)
 
@@ -2465,11 +2524,12 @@ contains
 
    function arfima_regression_simulate(fit, regressors, transfer_regressors, seed, &
       initial_values) result(out)
-      ! Simulate a fitted regression ARFIMA model with Gaussian innovations.
-      type(arfima_regression_fit_t), intent(in) :: fit
-      real(dp), intent(in) :: regressors(:, :), transfer_regressors(:, :)
-      integer, intent(in), optional :: seed
-      real(dp), intent(in), optional :: initial_values(:)
+      !! Simulate a fitted regression ARFIMA model with Gaussian innovations.
+      type(arfima_regression_fit_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: transfer_regressors(:, :) !! Transfer regressors.
+      integer, intent(in), optional :: seed !! Random-number seed.
+      real(dp), intent(in), optional :: initial_values(:) !! Initial values.
       type(arfima_simulation_t) :: out
       real(dp), allocatable :: innovations(:)
       integer :: i
@@ -2493,9 +2553,9 @@ contains
    end function arfima_regression_simulate
 
    function random_model_starts(model, number_starts) result(starts)
-      ! Generate stable starts in unconstrained PACF and memory coordinates.
-      type(arfima_model_t), intent(in) :: model
-      integer, intent(in) :: number_starts
+      !! Generate stable starts in unconstrained PACF and memory coordinates.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: number_starts !! Number starts.
       real(dp), allocatable :: starts(:, :)
       real(dp), allocatable :: initial(:)
       integer :: i, j
@@ -2512,8 +2572,8 @@ contains
    end function random_model_starts
 
    pure function combine_multifits(groups) result(out)
-      ! Concatenate mode searches that may have different parameter counts.
-      type(arfima_multifit_t), intent(in) :: groups(:)
+      !! Concatenate mode searches that may have different parameter counts.
+      type(arfima_multifit_t), intent(in) :: groups(:) !! Groups.
       type(arfima_multifit_t) :: out
       integer :: i, j, mode_offset, start_offset, total_modes, total_starts
       integer :: maximum_parameters
@@ -2556,9 +2616,9 @@ contains
    end function combine_multifits
 
    pure function subset_multifit(multifit, indices) result(out)
-      ! Copy selected modes while retaining search provenance.
-      type(arfima_multifit_t), intent(in) :: multifit
-      integer, intent(in) :: indices(:)
+      !! Copy selected modes while retaining search provenance.
+      type(arfima_multifit_t), intent(in) :: multifit !! Multifit.
+      integer, intent(in) :: indices(:) !! Indices.
       type(arfima_multifit_t) :: out
       integer :: i
 
@@ -2578,8 +2638,8 @@ contains
    end function subset_multifit
 
    pure function mode_weights(modes) result(weights)
-      ! Normalize relative likelihoods into numerically stable mode weights.
-      type(arfima_fit_t), intent(in) :: modes(:)
+      !! Normalize relative likelihoods into numerically stable mode weights.
+      type(arfima_fit_t), intent(in) :: modes(:) !! Modes.
       real(dp), allocatable :: weights(:)
       real(dp) :: maximum_log_likelihood, total
       integer :: i
@@ -2596,8 +2656,8 @@ contains
    end function mode_weights
 
    pure function likelihood_order(modes) result(order)
-      ! Return mode indices sorted by decreasing log likelihood.
-      type(arfima_fit_t), intent(in) :: modes(:)
+      !! Return mode indices sorted by decreasing log likelihood.
+      type(arfima_fit_t), intent(in) :: modes(:) !! Modes.
       integer, allocatable :: order(:)
       integer :: i, j, best, temporary
 
@@ -2615,9 +2675,9 @@ contains
    end function likelihood_order
 
    pure function mode_parameters(model, transformed) result(parameters)
-      ! Flatten operating coefficients or PACFs and long-memory parameters.
-      type(arfima_model_t), intent(in) :: model
-      logical, intent(in) :: transformed
+      !! Flatten operating coefficients or PACFs and long-memory parameters.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
+      logical, intent(in) :: transformed !! Flag controlling transformed.
       real(dp), allocatable :: parameters(:), block(:)
       integer :: count, offset
 
@@ -2665,8 +2725,9 @@ contains
    end function mode_parameters
 
    pure logical function compatible_mode_models(first, second) result(compatible)
-      ! Test whether two fitted modes share one parameterization.
-      type(arfima_model_t), intent(in) :: first, second
+      !! Test whether two fitted modes share one parameterization.
+      type(arfima_model_t), intent(in) :: first !! First operand.
+      type(arfima_model_t), intent(in) :: second !! Second operand.
 
       compatible = size(first%ar) == size(second%ar) .and. &
          size(first%theta) == size(second%theta) .and. &
@@ -2678,9 +2739,10 @@ contains
    end function compatible_mode_models
 
    pure logical function modes_share_wall(first, second, tolerance) result(shared)
-      ! Test whether two compatible modes occupy the same parameter boundary.
-      type(arfima_fit_t), intent(in) :: first, second
-      real(dp), intent(in) :: tolerance
+      !! Test whether two compatible modes occupy the same parameter boundary.
+      type(arfima_fit_t), intent(in) :: first !! First operand.
+      type(arfima_fit_t), intent(in) :: second !! Second operand.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
       real(dp), allocatable :: first_parameters(:), second_parameters(:)
       real(dp), allocatable :: lower(:), upper(:)
       integer :: i
@@ -2705,9 +2767,10 @@ contains
    end function modes_share_wall
 
    pure subroutine mode_parameter_bounds(model, lower, upper)
-      ! Return PACF and long-memory bounds in flattened mode order.
-      type(arfima_model_t), intent(in) :: model
-      real(dp), allocatable, intent(out) :: lower(:), upper(:)
+      !! Return PACF and long-memory bounds in flattened mode order.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
+      real(dp), allocatable, intent(out) :: lower(:) !! Lower.
+      real(dp), allocatable, intent(out) :: upper(:) !! Upper.
       real(dp) :: midpoint, half_width
       integer :: arma_count, count, offset
 
@@ -2734,8 +2797,8 @@ contains
    end subroutine mode_parameter_bounds
 
    pure subroutine allocate_empty_multifit(out)
-      ! Allocate empty mode arrays for an invalid or unsuccessful search.
-      type(arfima_multifit_t), intent(inout) :: out
+      !! Allocate empty mode arrays for an invalid or unsuccessful search.
+      type(arfima_multifit_t), intent(inout) :: out !! Procedure result, updated in place.
 
       if (.not. allocated(out%modes)) allocate(out%modes(0))
       if (.not. allocated(out%starting_index)) allocate(out%starting_index(0))
@@ -2747,8 +2810,8 @@ contains
    end subroutine allocate_empty_multifit
 
    pure function encode_model_parameters(model) result(parameters)
-      ! Map stable model parameters to unconstrained optimizer coordinates.
-      type(arfima_model_t), intent(in) :: model
+      !! Map stable model parameters to unconstrained optimizer coordinates.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
       real(dp), allocatable :: parameters(:)
       real(dp), allocatable :: partial(:)
       integer :: count, offset
@@ -2794,9 +2857,9 @@ contains
    end function encode_model_parameters
 
    pure function decode_model_parameters(template, parameters) result(model)
-      ! Convert unconstrained optimizer coordinates into a stable model.
-      type(arfima_model_t), intent(in) :: template
-      real(dp), intent(in) :: parameters(:)
+      !! Convert unconstrained optimizer coordinates into a stable model.
+      type(arfima_model_t), intent(in) :: template !! Template.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
       type(arfima_model_t) :: model
       integer :: offset, width
 
@@ -2844,10 +2907,10 @@ contains
 
    pure function encode_regression_parameters(model, coefficients, transfers) &
       result(parameters)
-      ! Flatten joint model parameters into unconstrained optimizer coordinates.
-      type(arfima_model_t), intent(in) :: model
-      real(dp), intent(in) :: coefficients(:)
-      type(arfima_transfer_t), intent(in) :: transfers(:)
+      !! Flatten joint model parameters into unconstrained optimizer coordinates.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      type(arfima_transfer_t), intent(in) :: transfers(:) !! Transfers.
       real(dp), allocatable :: parameters(:)
       real(dp), allocatable :: model_parameters(:), partial(:)
       integer :: count, i, offset
@@ -2878,13 +2941,14 @@ contains
 
    pure subroutine decode_regression_parameters(model_template, coefficient_template, &
       transfer_template, parameters, model, coefficients, transfers)
-      ! Reconstruct joint model objects from optimizer coordinates.
-      type(arfima_model_t), intent(in) :: model_template
-      real(dp), intent(in) :: coefficient_template(:), parameters(:)
-      type(arfima_transfer_t), intent(in) :: transfer_template(:)
-      type(arfima_model_t), intent(out) :: model
-      real(dp), allocatable, intent(out) :: coefficients(:)
-      type(arfima_transfer_t), allocatable, intent(out) :: transfers(:)
+      !! Reconstruct joint model objects from optimizer coordinates.
+      type(arfima_model_t), intent(in) :: model_template !! Model template.
+      real(dp), intent(in) :: coefficient_template(:) !! Coefficient template.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      type(arfima_transfer_t), intent(in) :: transfer_template(:) !! Transfer template.
+      type(arfima_model_t), intent(out) :: model !! Model specification.
+      real(dp), allocatable, intent(out) :: coefficients(:) !! Model coefficients.
+      type(arfima_transfer_t), allocatable, intent(out) :: transfers(:) !! Transfers.
       integer :: i, model_count, offset, width
 
       model_count = size(encode_model_parameters(model_template))
@@ -2911,10 +2975,10 @@ contains
    end subroutine decode_regression_parameters
 
    pure subroutine impose_fixed_model(template, fixed_parameters, model)
-      ! Restore fixed operating coefficients after a stable-coordinate decode.
-      type(arfima_model_t), intent(in) :: template
-      logical, intent(in) :: fixed_parameters(:)
-      type(arfima_model_t), intent(inout) :: model
+      !! Restore fixed operating coefficients after a stable-coordinate decode.
+      type(arfima_model_t), intent(in) :: template !! Template.
+      logical, intent(in) :: fixed_parameters(:) !! Flag controlling fixed parameters.
+      type(arfima_model_t), intent(inout) :: model !! Model specification, updated in place.
       integer :: offset, width
 
       offset = 0
@@ -2960,14 +3024,14 @@ contains
 
    pure subroutine impose_fixed_regression(model_template, coefficient_template, &
       transfer_template, fixed_parameters, model, coefficients, transfers)
-      ! Restore fixed model, regression, and transfer operating coefficients.
-      type(arfima_model_t), intent(in) :: model_template
-      real(dp), intent(in) :: coefficient_template(:)
-      type(arfima_transfer_t), intent(in) :: transfer_template(:)
-      logical, intent(in) :: fixed_parameters(:)
-      type(arfima_model_t), intent(inout) :: model
-      real(dp), intent(inout) :: coefficients(:)
-      type(arfima_transfer_t), intent(inout) :: transfers(:)
+      !! Restore fixed model, regression, and transfer operating coefficients.
+      type(arfima_model_t), intent(in) :: model_template !! Model template.
+      real(dp), intent(in) :: coefficient_template(:) !! Coefficient template.
+      type(arfima_transfer_t), intent(in) :: transfer_template(:) !! Transfer template.
+      logical, intent(in) :: fixed_parameters(:) !! Flag controlling fixed parameters.
+      type(arfima_model_t), intent(inout) :: model !! Model specification, updated in place.
+      real(dp), intent(inout) :: coefficients(:) !! Model coefficients, updated in place.
+      type(arfima_transfer_t), intent(inout) :: transfers(:) !! Transfers, updated in place.
       integer :: i, model_count, offset, width
 
       model_count = size(encode_model_parameters(model_template))
@@ -2999,8 +3063,8 @@ contains
    end subroutine impose_fixed_regression
 
    pure integer function information_parameter_count(model) result(count)
-      ! Count dynamic coefficients represented in ARFIMA information matrices.
-      type(arfima_model_t), intent(in) :: model
+      !! Count dynamic coefficients represented in ARFIMA information matrices.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
 
       count = size(model%ar) + size(model%theta) + size(model%seasonal_ar) + &
          size(model%seasonal_theta)
@@ -3010,9 +3074,9 @@ contains
    end function information_parameter_count
 
    pure function spectral_information(model, grid_size) result(information)
-      ! Integrate log-spectrum score products over positive frequencies.
-      type(arfima_model_t), intent(in) :: model
-      integer, intent(in) :: grid_size
+      !! Integrate log-spectrum score products over positive frequencies.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: grid_size !! Grid size.
       real(dp), allocatable :: information(:, :)
       real(dp), allocatable :: score(:)
       complex(dp) :: z, ar_value, theta_value, seasonal_ar_value, seasonal_theta_value
@@ -3063,9 +3127,9 @@ contains
    end function spectral_information
 
    pure function truncated_score_information(model, max_lag) result(information)
-      ! Approximate information using finite causal score-filter weights.
-      type(arfima_model_t), intent(in) :: model
-      integer, intent(in) :: max_lag
+      !! Approximate information using finite causal score-filter weights.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: information(:, :)
       real(dp), allocatable :: score(:, :), inverse_weights(:)
       integer :: count, j, lag, offset, shift
@@ -3121,10 +3185,10 @@ contains
    end function truncated_score_information
 
    pure complex(dp) function lag_polynomial(coefficients, z, period) result(value)
-      ! Evaluate 1-sum(coefficients(j)*z**(j*period)).
-      real(dp), intent(in) :: coefficients(:)
-      complex(dp), intent(in) :: z
-      integer, intent(in) :: period
+      !! Evaluate 1-sum(coefficients(j)*z**(j*period)).
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      complex(dp), intent(in) :: z !! Z.
+      integer, intent(in) :: period !! Seasonal period.
       integer :: j
 
       value = cmplx(1.0_dp, 0.0_dp, dp)
@@ -3134,9 +3198,10 @@ contains
    end function lag_polynomial
 
    pure function inverse_operator_weights(coefficients, period, max_lag) result(weights)
-      ! Expand the inverse of one ordinary or seasonal AR-form polynomial.
-      real(dp), intent(in) :: coefficients(:)
-      integer, intent(in) :: period, max_lag
+      !! Expand the inverse of one ordinary or seasonal AR-form polynomial.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      integer, intent(in) :: period !! Seasonal period.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: weights(:), base(:)
       integer :: lag
 
@@ -3153,9 +3218,10 @@ contains
    end function inverse_operator_weights
 
    pure function combined_operator_coefficients(ordinary, seasonal, period) result(coefficients)
-      ! Multiply ordinary and expanded seasonal AR-form polynomials.
-      real(dp), intent(in) :: ordinary(:), seasonal(:)
-      integer, intent(in) :: period
+      !! Multiply ordinary and expanded seasonal AR-form polynomials.
+      real(dp), intent(in) :: ordinary(:) !! Ordinary.
+      real(dp), intent(in) :: seasonal(:) !! Seasonal.
+      integer, intent(in) :: period !! Seasonal period.
       real(dp), allocatable :: coefficients(:)
       real(dp), allocatable :: ordinary_polynomial(:), seasonal_polynomial(:), product(:)
       integer :: degree, j, seasonal_degree
@@ -3185,8 +3251,8 @@ contains
    end function combined_operator_coefficients
 
    pure function ar_to_partial(coefficients) result(partial)
-      ! Convert stable AR coefficients to partial autocorrelations.
-      real(dp), intent(in) :: coefficients(:)
+      !! Convert stable AR coefficients to partial autocorrelations.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
       real(dp) :: partial(size(coefficients)), work(size(coefficients))
       real(dp) :: previous(size(coefficients)), reflection, denominator
       integer :: j, order
@@ -3207,8 +3273,8 @@ contains
    end function ar_to_partial
 
    pure function inverse_hyperbolic(values) result(transformed)
-      ! Apply a guarded inverse hyperbolic tangent elementally.
-      real(dp), intent(in) :: values(:)
+      !! Apply a guarded inverse hyperbolic tangent elementally.
+      real(dp), intent(in) :: values(:) !! Input values.
       real(dp) :: transformed(size(values)), bounded
       integer :: i
 
@@ -3219,9 +3285,9 @@ contains
    end function inverse_hyperbolic
 
    pure real(dp) function encode_long_memory(long_memory_type, parameter) result(value)
-      ! Map one bounded long-memory parameter to the real line.
-      integer, intent(in) :: long_memory_type
-      real(dp), intent(in) :: parameter
+      !! Map one bounded long-memory parameter to the real line.
+      integer, intent(in) :: long_memory_type !! Long memory type.
+      real(dp), intent(in) :: parameter !! Parameter.
       real(dp) :: midpoint, half_width, scaled
 
       call long_memory_bounds(long_memory_type, midpoint, half_width)
@@ -3231,9 +3297,9 @@ contains
    end function encode_long_memory
 
    pure real(dp) function decode_long_memory(long_memory_type, value) result(parameter)
-      ! Map one optimizer coordinate into its long-memory domain.
-      integer, intent(in) :: long_memory_type
-      real(dp), intent(in) :: value
+      !! Map one optimizer coordinate into its long-memory domain.
+      integer, intent(in) :: long_memory_type !! Long memory type.
+      real(dp), intent(in) :: value !! Input value.
       real(dp) :: midpoint, half_width
 
       call long_memory_bounds(long_memory_type, midpoint, half_width)
@@ -3241,9 +3307,10 @@ contains
    end function decode_long_memory
 
    pure subroutine long_memory_bounds(long_memory_type, midpoint, half_width)
-      ! Return the midpoint and half-width of a long-memory domain.
-      integer, intent(in) :: long_memory_type
-      real(dp), intent(out) :: midpoint, half_width
+      !! Return the midpoint and half-width of a long-memory domain.
+      integer, intent(in) :: long_memory_type !! Long memory type.
+      real(dp), intent(out) :: midpoint !! Midpoint.
+      real(dp), intent(out) :: half_width !! Half width.
 
       select case (long_memory_type)
       case (arfima_long_memory_fdwn)
@@ -3263,9 +3330,11 @@ contains
 
    pure function difference_series(series, difference_order, &
       seasonal_difference_order, period) result(differenced)
-      ! Apply ordinary and seasonal integer differencing in one polynomial.
-      real(dp), intent(in) :: series(:)
-      integer, intent(in) :: difference_order, seasonal_difference_order, period
+      !! Apply ordinary and seasonal integer differencing in one polynomial.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      integer, intent(in) :: difference_order !! Difference order.
+      integer, intent(in) :: seasonal_difference_order !! Seasonal difference order.
+      integer, intent(in) :: period !! Seasonal period.
       real(dp), allocatable :: differenced(:)
       real(dp), allocatable :: ordinary(:), seasonal(:), coefficient(:)
       integer :: active, i, lag
@@ -3302,8 +3371,11 @@ contains
 
    pure function inverse_difference_weights(difference_order, &
       seasonal_difference_order, period, max_lag) result(weights)
-      ! Expand the inverse ordinary and seasonal differencing polynomial.
-      integer, intent(in) :: difference_order, seasonal_difference_order, period, max_lag
+      !! Expand the inverse ordinary and seasonal differencing polynomial.
+      integer, intent(in) :: difference_order !! Difference order.
+      integer, intent(in) :: seasonal_difference_order !! Seasonal difference order.
+      integer, intent(in) :: period !! Seasonal period.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: weights(:)
       real(dp), allocatable :: ordinary(:), seasonal(:)
 
@@ -3324,8 +3396,8 @@ contains
    end function inverse_difference_weights
 
    pure logical function valid_transfer(transfer) result(valid)
-      ! Check one transfer function for finite stable coefficients.
-      type(arfima_transfer_t), intent(in) :: transfer
+      !! Check one transfer function for finite stable coefficients.
+      type(arfima_transfer_t), intent(in) :: transfer !! Transfer.
 
       valid = allocated(transfer%denominator) .and. allocated(transfer%numerator)
       if (.not. valid) return
@@ -3337,10 +3409,12 @@ contains
 
    pure logical function valid_regression_inputs(series, regressors, coefficients, &
       transfers, transfer_regressors) result(valid)
-      ! Check static and dynamic regression dimensions and values.
-      real(dp), intent(in) :: series(:), regressors(:, :), coefficients(:)
-      type(arfima_transfer_t), intent(in) :: transfers(:)
-      real(dp), intent(in) :: transfer_regressors(:, :)
+      !! Check static and dynamic regression dimensions and values.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      type(arfima_transfer_t), intent(in) :: transfers(:) !! Transfers.
+      real(dp), intent(in) :: transfer_regressors(:, :) !! Transfer regressors.
       integer :: i
 
       valid = size(series) > 1 .and. size(regressors, 1) == size(series) .and. &
@@ -3361,10 +3435,11 @@ contains
 
    pure function regression_effect(regressors, coefficients, transfers, &
       transfer_regressors) result(effect)
-      ! Combine static regression and dynamic transfer-function effects.
-      real(dp), intent(in) :: regressors(:, :), coefficients(:)
-      type(arfima_transfer_t), intent(in) :: transfers(:)
-      real(dp), intent(in) :: transfer_regressors(:, :)
+      !! Combine static regression and dynamic transfer-function effects.
+      real(dp), intent(in) :: regressors(:, :) !! Regression design matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      type(arfima_transfer_t), intent(in) :: transfers(:) !! Transfers.
+      real(dp), intent(in) :: transfer_regressors(:, :) !! Transfer regressors.
       real(dp), allocatable :: effect(:), response(:)
       integer :: i
 
@@ -3379,11 +3454,12 @@ contains
 
    pure function diagnostics_from_likelihood(series, likelihood, parameter_count, &
       max_lag, regression_residuals) result(out)
-      ! Assemble fitted values and numerical innovation diagnostics.
-      real(dp), intent(in) :: series(:)
-      type(arfima_likelihood_t), intent(in) :: likelihood
-      integer, intent(in) :: parameter_count, max_lag
-      real(dp), intent(in), optional :: regression_residuals(:)
+      !! Assemble fitted values and numerical innovation diagnostics.
+      real(dp), intent(in) :: series(:) !! Time-series observations.
+      type(arfima_likelihood_t), intent(in) :: likelihood !! Likelihood.
+      integer, intent(in) :: parameter_count !! Number of parameter.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
+      real(dp), intent(in), optional :: regression_residuals(:) !! Regression residuals.
       type(arfima_diagnostics_t) :: out
       real(dp), allocatable :: squared(:)
       real(dp) :: statistic, squared_statistic, probability
@@ -3437,7 +3513,7 @@ contains
             0.5_dp*squared_statistic)
          out%squared_ljung_box_p_value(i) = max(0.0_dp, min(1.0_dp, probability))
       end do
-      out%qq_sample = sorted_real(out%standardized_residuals)
+      out%qq_sample = sorted(out%standardized_residuals)
       allocate(out%qq_theoretical(n))
       do i = 1, n
          if (n <= 10) then
@@ -3450,9 +3526,9 @@ contains
    end function diagnostics_from_likelihood
 
    pure function centered_acf(values, max_lag) result(correlation)
-      ! Compute biased sample autocorrelations after centering.
-      real(dp), intent(in) :: values(:)
-      integer, intent(in) :: max_lag
+      !! Compute biased sample autocorrelations after centering.
+      real(dp), intent(in) :: values(:) !! Input values.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: correlation(:)
       real(dp), allocatable :: centered(:)
       real(dp) :: denominator
@@ -3473,53 +3549,9 @@ contains
       end do
    end function centered_acf
 
-   pure function sorted_real(values) result(sorted)
-      ! Return real values in ascending order using insertion sort.
-      real(dp), intent(in) :: values(:)
-      real(dp), allocatable :: sorted(:)
-      real(dp) :: value
-      integer :: i, j
-
-      sorted = values
-      do i = 2, size(sorted)
-         value = sorted(i)
-         j = i - 1
-         do while (j >= 1)
-            if (sorted(j) <= value) exit
-            sorted(j + 1) = sorted(j)
-            j = j - 1
-         end do
-         sorted(j + 1) = value
-      end do
-   end function sorted_real
-
-   pure function covariance_to_correlation(covariance) result(correlation)
-      ! Standardize a covariance matrix while guarding zero variances.
-      real(dp), intent(in) :: covariance(:, :)
-      real(dp), allocatable :: correlation(:, :)
-      real(dp) :: scale
-      integer :: i, j, n
-
-      n = size(covariance, 1)
-      if (size(covariance, 2) /= n) then
-         allocate(correlation(0, 0))
-         return
-      end if
-      allocate(correlation(n, n))
-      correlation = 0.0_dp
-      do j = 1, n
-         do i = 1, n
-            scale = covariance(i, i)*covariance(j, j)
-            if (scale > 0.0_dp) then
-               correlation(i, j) = covariance(i, j)/sqrt(scale)
-            end if
-         end do
-      end do
-   end function covariance_to_correlation
-
    pure function operating_parameter_jacobian(fit) result(jacobian)
-      ! Differentiate operating parameters with respect to optimizer coordinates.
-      type(arfima_fit_t), intent(in) :: fit
+      !! Differentiate operating parameters with respect to optimizer coordinates.
+      type(arfima_fit_t), intent(in) :: fit !! Previously fitted model.
       real(dp), allocatable :: jacobian(:, :)
       type(arfima_model_t) :: lower_model, upper_model
       real(dp), allocatable :: lower(:), upper(:), point(:)
@@ -3547,9 +3579,10 @@ contains
 
    pure function coefficient_lag_polynomial(coefficients, period, max_lag) &
       result(polynomial)
-      ! Form one minus a coefficient polynomial at a selected lag spacing.
-      real(dp), intent(in) :: coefficients(:)
-      integer, intent(in) :: period, max_lag
+      !! Form one minus a coefficient polynomial at a selected lag spacing.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
+      integer, intent(in) :: period !! Seasonal period.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp), allocatable :: polynomial(:)
       integer :: i
 
@@ -3563,9 +3596,12 @@ contains
 
    pure function component_acvf(ar, theta, long_memory_type, parameter, &
       max_lag) result(out)
-      ! Combine one long-memory covariance with one ARMA covariance.
-      real(dp), intent(in) :: ar(:), theta(:), parameter
-      integer, intent(in) :: long_memory_type, max_lag
+      !! Combine one long-memory covariance with one ARMA covariance.
+      real(dp), intent(in) :: ar(:) !! Autoregressive coefficients.
+      real(dp), intent(in) :: theta(:) !! Theta.
+      real(dp), intent(in) :: parameter !! Parameter.
+      integer, intent(in) :: long_memory_type !! Long memory type.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       type(arfima_acvf_t) :: out
       type(arfima_acvf_t) :: long_memory
       type(itsmr_arma_model_t) :: arma_model
@@ -3613,8 +3649,8 @@ contains
    end function component_acvf
 
    pure logical function valid_model(model) result(valid)
-      ! Check dimensions and scalar domains of an ARFIMA model.
-      type(arfima_model_t), intent(in) :: model
+      !! Check dimensions and scalar domains of an ARFIMA model.
+      type(arfima_model_t), intent(in) :: model !! Model specification.
 
       valid = allocated(model%ar) .and. allocated(model%theta) .and. &
          allocated(model%seasonal_ar) .and. allocated(model%seasonal_theta)
@@ -3643,8 +3679,8 @@ contains
    end function valid_model
 
    pure logical function stable_coefficients(coefficients) result(stable)
-      ! Test an AR-form polynomial through its partial autocorrelations.
-      real(dp), intent(in) :: coefficients(:)
+      !! Test an AR-form polynomial through its partial autocorrelations.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
       real(dp) :: partial(size(coefficients))
 
       if (size(coefficients) == 0) then
@@ -3656,9 +3692,9 @@ contains
    end function stable_coefficients
 
    pure logical function valid_long_memory(long_memory_type, parameter) result(valid)
-      ! Check one generalized long-memory parameter.
-      integer, intent(in) :: long_memory_type
-      real(dp), intent(in) :: parameter
+      !! Check one generalized long-memory parameter.
+      integer, intent(in) :: long_memory_type !! Long memory type.
+      real(dp), intent(in) :: parameter !! Parameter.
 
       valid = ieee_is_finite(parameter)
       if (.not. valid) return
@@ -3677,8 +3713,8 @@ contains
    end function valid_long_memory
 
    pure integer function next_power_of_two(value) result(power)
-      ! Return the smallest power of two not below a nonnegative integer.
-      integer, intent(in) :: value
+      !! Return the smallest power of two not below a nonnegative integer.
+      integer, intent(in) :: value !! Input value.
 
       power = 1
       do while (power < value)
@@ -3686,25 +3722,11 @@ contains
       end do
    end function next_power_of_two
 
-   pure function polynomial_product_truncated(first, second, max_lag) result(product)
-      ! Multiply two lag polynomials through max_lag.
-      real(dp), intent(in) :: first(0:), second(0:)
-      integer, intent(in) :: max_lag
-      real(dp) :: product(0:max_lag)
-      integer :: i, j
-
-      product = 0.0_dp
-      do i = 0, min(max_lag, ubound(first, 1))
-         do j = 0, min(max_lag - i, ubound(second, 1))
-            product(i + j) = product(i + j) + first(i)*second(j)
-         end do
-      end do
-   end function polynomial_product_truncated
-
    pure function symmetric_covariance_product(first, second, max_lag) result(product)
-      ! Reproduce arfima's circular convolution of symmetric covariances.
-      real(dp), intent(in) :: first(0:), second(0:)
-      integer, intent(in) :: max_lag
+      !! Reproduce arfima's circular convolution of symmetric covariances.
+      real(dp), intent(in) :: first(0:) !! First operand.
+      real(dp), intent(in) :: second(0:) !! Second operand.
+      integer, intent(in) :: max_lag !! Maximum lag to consider.
       real(dp) :: product(0:max_lag)
       integer :: i, lag, limit, sequence_length, target, second_index
 
@@ -3726,9 +3748,9 @@ contains
    end function symmetric_covariance_product
 
    pure real(dp) function borwein_zeta(value, terms) result(zeta_value)
-      ! Approximate the Riemann zeta function using Borwein's finite sum.
-      real(dp), intent(in) :: value
-      integer, intent(in) :: terms
+      !! Approximate the Riemann zeta function using Borwein's finite sum.
+      real(dp), intent(in) :: value !! Input value.
+      integer, intent(in) :: terms !! Terms.
       real(dp), allocatable :: coefficient(:)
       real(dp) :: term
       integer :: k

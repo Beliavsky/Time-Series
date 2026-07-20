@@ -3,7 +3,7 @@
 program test_mar
    use kind_mod, only: dp
    use mar_mod
-   use time_series_random_mod, only: set_random_seed
+   use random_mod, only: set_random_seed
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
    implicit none
 
@@ -16,7 +16,9 @@ program test_mar
    real(dp) :: intercept(2), ar(2, 2, 1), innovations(5, 2)
    real(dp) :: covariance(2, 2), pca_data(12, 3)
    complex(dp) :: expected_root
-   integer :: row
+   character(len=80) :: display_line
+   logical :: found_observations
+   integer :: row, display_unit, read_status
 
    x = reshape([ &
       1.0_dp, 1.3_dp, 1.1_dp, 0.8_dp, 0.6_dp, 0.5_dp, &
@@ -76,6 +78,15 @@ program test_mar
    simulation = mar_simulate_from_innovations(intercept, ar, innovations, 2)
    call check(simulation%info == 0, 'deterministic simulation status')
    call check(size(simulation%series, 1) == 3, 'simulation burn-in size')
+   call check(simulation%burnin == 2, 'simulation retained burn-in')
+   call check(maxval(abs(simulation%intercept - intercept)) < 1.0e-14_dp, &
+      'simulation retained intercept')
+   call check(maxval(abs(simulation%ar - ar)) < 1.0e-14_dp, &
+      'simulation retained AR coefficients')
+   call check(.not. simulation%random_innovations, &
+      'supplied innovation source')
+   call check(.not. allocated(simulation%innovation_covariance), &
+      'supplied innovation covariance unavailable')
    call check(maxval(abs(simulation%series(:, 1) - 0.4_dp)) < 1.0e-13_dp, &
       'first stationary mean')
    call check(maxval(abs(simulation%series(:, 2) - 0.4_dp/0.75_dp)) < &
@@ -104,15 +115,32 @@ program test_mar
       'Gaussian simulation shape')
    call check(all(ieee_is_finite(random_simulation%series)), &
       'Gaussian simulation finite')
+   call check(random_simulation%random_innovations, &
+      'random innovation source')
+   call check(maxval(abs(random_simulation%innovation_covariance - covariance)) < &
+      1.0e-14_dp, 'simulation retained covariance')
+
+   open(newunit=display_unit, status='scratch', action='readwrite')
+   call display(random_simulation, unit=display_unit, print_obs=.true.)
+   rewind(display_unit)
+   found_observations = .false.
+   do
+      read(display_unit, '(a)', iostat=read_status) display_line
+      if (read_status /= 0) exit
+      if (trim(display_line) == 'Simulated observations:') &
+         found_observations = .true.
+   end do
+   close(display_unit)
+   call check(found_observations, 'simulation display observations')
 
    print '(a)', 'mAr tests passed'
 
 contains
 
    subroutine check(condition, message)
-      ! Stop the test program when a condition fails.
-      logical, intent(in) :: condition
-      character(len=*), intent(in) :: message
+      !! Stop the test program when a condition fails.
+      logical, intent(in) :: condition !! Flag controlling condition.
+      character(len=*), intent(in) :: message !! Message.
 
       if (.not. condition) then
          print '(a)', 'FAILED: '//trim(message)

@@ -1,0 +1,7 @@
+BigVAR is distributed under the GNU General Public License, version 2 or later.
+
+The Fortran translation in bigvar.f90 is derived from BigVAR 1.1.5:
+https://github.com/cran/BigVAR
+
+Copyright remains with the BigVAR authors. See the upstream package for the
+complete GNU General Public License terms.

@@ -4,14 +4,14 @@
 module bsts_mod
    use kind_mod, only: dp
    use kfas_mod, only: ssm_model_t, kfs_filter_t, kfs_filter
-   use time_series_linalg_mod, only: invert_matrix, inverse_logdet, symmetrize, &
+   use linalg_mod, only: invert_matrix, inverse_logdet, symmetrize, &
       symmetric_eigen, cholesky_lower
-   use time_series_random_mod, only: random_gamma, &
+   use random_mod, only: random_gamma, &
       random_standard_normal, random_uniform, multivariate_normal_from_standard
-   use time_series_stats_mod, only: normal_quantile
-   use time_series_calendar_mod, only: date_t, date_valid, date_day_number, &
+   use stats_mod, only: normal_quantile, quantile
+   use calendar_mod, only: date_t, date_valid, date_day_number, &
       date_from_day_number, date_day_of_week, date_days_in_month, date_easter
-   use time_series_calendar_mod, only: operator(+), operator(-), operator(==), &
+   use calendar_mod, only: operator(+), operator(-), operator(==), &
       operator(<)
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite, ieee_value, &
       ieee_quiet_nan
@@ -357,8 +357,8 @@ module bsts_mod
 contains
 
    pure logical function bsts_no_duplicates_numeric(timestamps) result(valid)
-      ! Report whether numeric timestamps contain no repeated values.
-      real(dp), intent(in) :: timestamps(:)
+      !! Report whether numeric timestamps contain no repeated values.
+      real(dp), intent(in) :: timestamps(:) !! Timestamps.
       integer :: left, right
 
       valid = all(ieee_is_finite(timestamps))
@@ -374,8 +374,8 @@ contains
    end function bsts_no_duplicates_numeric
 
    pure logical function bsts_no_duplicates_date(timestamps) result(valid)
-      ! Report whether date timestamps contain no repeated values.
-      type(date_t), intent(in) :: timestamps(:)
+      !! Report whether date timestamps contain no repeated values.
+      type(date_t), intent(in) :: timestamps(:) !! Timestamps.
       integer :: left, right
 
       valid = all(date_valid(timestamps))
@@ -391,8 +391,8 @@ contains
    end function bsts_no_duplicates_date
 
    pure logical function bsts_no_gaps_numeric(timestamps) result(valid)
-      ! Detect numeric gaps at least 1.8 times the smallest increment.
-      real(dp), intent(in) :: timestamps(:)
+      !! Detect numeric gaps at least 1.8 times the smallest increment.
+      real(dp), intent(in) :: timestamps(:) !! Timestamps.
       real(dp), allocatable :: unique(:)
       real(dp) :: minimum
 
@@ -411,8 +411,8 @@ contains
    end function bsts_no_gaps_numeric
 
    pure logical function bsts_no_gaps_date(timestamps) result(valid)
-      ! Detect date gaps at least 1.8 times the smallest increment.
-      type(date_t), intent(in) :: timestamps(:)
+      !! Detect date gaps at least 1.8 times the smallest increment.
+      type(date_t), intent(in) :: timestamps(:) !! Timestamps.
       integer, allocatable :: days(:)
       real(dp), allocatable :: numeric(:)
       integer :: index
@@ -430,24 +430,24 @@ contains
    end function bsts_no_gaps_date
 
    pure logical function bsts_is_regular_numeric(timestamps) result(valid)
-      ! Report whether numeric timestamps have no duplicates or gaps.
-      real(dp), intent(in) :: timestamps(:)
+      !! Report whether numeric timestamps have no duplicates or gaps.
+      real(dp), intent(in) :: timestamps(:) !! Timestamps.
 
       valid = bsts_no_duplicates_numeric(timestamps) .and. &
          bsts_no_gaps_numeric(timestamps)
    end function bsts_is_regular_numeric
 
    pure logical function bsts_is_regular_date(timestamps) result(valid)
-      ! Report whether date timestamps have no duplicates or gaps.
-      type(date_t), intent(in) :: timestamps(:)
+      !! Report whether date timestamps have no duplicates or gaps.
+      type(date_t), intent(in) :: timestamps(:) !! Timestamps.
 
       valid = bsts_no_duplicates_date(timestamps) .and. &
          bsts_no_gaps_date(timestamps)
    end function bsts_is_regular_date
 
    pure function bsts_regularize_numeric_timestamps(timestamps) result(out)
-      ! Expand numeric timestamps to their smallest regular grid.
-      real(dp), intent(in) :: timestamps(:)
+      !! Expand numeric timestamps to their smallest regular grid.
+      real(dp), intent(in) :: timestamps(:) !! Timestamps.
       type(bsts_numeric_timestamps_t) :: out
       real(dp), allocatable :: unique(:)
       real(dp) :: increment, position, tolerance
@@ -485,8 +485,8 @@ contains
    end function bsts_regularize_numeric_timestamps
 
    pure function bsts_regularize_date_timestamps(timestamps) result(out)
-      ! Expand Gregorian dates on a daily, weekly, monthly, quarterly, or yearly grid.
-      type(date_t), intent(in) :: timestamps(:)
+      !! Expand Gregorian dates on a daily, weekly, monthly, quarterly, or yearly grid.
+      type(date_t), intent(in) :: timestamps(:) !! Timestamps.
       type(bsts_date_timestamps_t) :: out
       integer, allocatable :: unique_days(:), deltas(:)
       type(date_t) :: first, candidate
@@ -565,9 +565,10 @@ contains
    end function bsts_regularize_date_timestamps
 
    pure function bsts_long_to_wide(response, series_id, timestamps) result(out)
-      ! Reshape integer-labelled long observations into a wide matrix.
-      real(dp), intent(in) :: response(:)
-      integer, intent(in) :: series_id(:), timestamps(:)
+      !! Reshape integer-labelled long observations into a wide matrix.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      integer, intent(in) :: series_id(:) !! Series identifier.
+      integer, intent(in) :: timestamps(:) !! Timestamps.
       type(bsts_wide_series_t) :: out
       logical, allocatable :: seen(:, :)
       integer :: observation, time, series
@@ -597,10 +598,11 @@ contains
 
    pure function bsts_wide_to_long(values, timestamps, series_id, &
       remove_missing) result(out)
-      ! Reshape a wide matrix into integer-labelled long observations.
-      real(dp), intent(in) :: values(:, :)
-      integer, intent(in) :: timestamps(:), series_id(:)
-      logical, intent(in), optional :: remove_missing
+      !! Reshape a wide matrix into integer-labelled long observations.
+      real(dp), intent(in) :: values(:, :) !! Input values.
+      integer, intent(in) :: timestamps(:) !! Timestamps.
+      integer, intent(in) :: series_id(:) !! Series identifier.
+      logical, intent(in), optional :: remove_missing !! Flag controlling remove missing.
       type(bsts_long_series_t) :: out
       logical :: omit
       integer :: total, time, series, destination
@@ -629,10 +631,12 @@ contains
 
    pure function aggregate_time_series_vector(fine_series, contains_end, &
       membership_fraction, trim_left, trim_right) result(aggregate)
-      ! Aggregate a fine-scale vector using Harvey boundary fractions.
-      real(dp), intent(in) :: fine_series(:), membership_fraction(:)
-      logical, intent(in) :: contains_end(:)
-      logical, intent(in), optional :: trim_left, trim_right
+      !! Aggregate a fine-scale vector using Harvey boundary fractions.
+      real(dp), intent(in) :: fine_series(:) !! Fine series.
+      real(dp), intent(in) :: membership_fraction(:) !! Membership fraction.
+      logical, intent(in) :: contains_end(:) !! Flag controlling contains end.
+      logical, intent(in), optional :: trim_left !! Flag controlling trim left.
+      logical, intent(in), optional :: trim_right !! Flag controlling trim right.
       real(dp), allocatable :: aggregate(:), work(:)
       real(dp) :: accumulated
       logical :: left, right, has_remainder
@@ -681,10 +685,12 @@ contains
 
    pure function aggregate_time_series_matrix(fine_series, contains_end, &
       membership_fraction, trim_left, trim_right) result(aggregate)
-      ! Aggregate each column of a fine-scale time-by-series matrix.
-      real(dp), intent(in) :: fine_series(:, :), membership_fraction(:)
-      logical, intent(in) :: contains_end(:)
-      logical, intent(in), optional :: trim_left, trim_right
+      !! Aggregate each column of a fine-scale time-by-series matrix.
+      real(dp), intent(in) :: fine_series(:, :) !! Fine series.
+      real(dp), intent(in) :: membership_fraction(:) !! Membership fraction.
+      logical, intent(in) :: contains_end(:) !! Flag controlling contains end.
+      logical, intent(in), optional :: trim_left !! Flag controlling trim left.
+      logical, intent(in), optional :: trim_right !! Flag controlling trim right.
       real(dp), allocatable :: aggregate(:, :), column(:)
       integer :: series
 
@@ -727,16 +733,17 @@ contains
 
    pure elemental integer function bsts_month_distance(date, origin) &
       result(distance)
-      ! Return the signed calendar-month distance from an origin date.
-      type(date_t), intent(in) :: date, origin
+      !! Return the signed calendar-month distance from an origin date.
+      type(date_t), intent(in) :: date !! Date.
+      type(date_t), intent(in) :: origin !! Origin.
 
       distance = 12*(date%year - origin%year) + date%month - origin%month
    end function bsts_month_distance
 
    pure elemental logical function bsts_week_ends_month(week_ending) &
       result(ends_month)
-      ! Report whether a seven-day interval contains a month end.
-      type(date_t), intent(in) :: week_ending
+      !! Report whether a seven-day interval contains a month end.
+      type(date_t), intent(in) :: week_ending !! Week ending.
       type(date_t) :: first_day, following_day
 
       first_day = week_ending - 6
@@ -747,8 +754,8 @@ contains
 
    pure elemental logical function bsts_week_ends_quarter(week_ending) &
       result(ends_quarter)
-      ! Report whether a seven-day interval contains a quarter end.
-      type(date_t), intent(in) :: week_ending
+      !! Report whether a seven-day interval contains a quarter end.
+      type(date_t), intent(in) :: week_ending !! Week ending.
       type(date_t) :: first_day, following_day
       integer :: first_quarter, following_quarter
 
@@ -761,8 +768,8 @@ contains
 
    pure elemental real(dp) function bsts_fraction_initial_month(week_ending) &
       result(fraction)
-      ! Return the fraction of a week in the month containing its first day.
-      type(date_t), intent(in) :: week_ending
+      !! Return the fraction of a week in the month containing its first day.
+      type(date_t), intent(in) :: week_ending !! Week ending.
       type(date_t) :: first_day
 
       first_day = week_ending - 6
@@ -776,8 +783,9 @@ contains
 
    pure function bsts_match_week_to_month(week_ending, origin_month) &
       result(index)
-      ! Map week-ending dates to one-based months containing each first day.
-      type(date_t), intent(in) :: week_ending(:), origin_month
+      !! Map week-ending dates to one-based months containing each first day.
+      type(date_t), intent(in) :: week_ending(:) !! Week ending.
+      type(date_t), intent(in) :: origin_month !! Origin month.
       integer :: index(size(week_ending))
       integer :: week
 
@@ -789,11 +797,12 @@ contains
 
    pure function bsts_aggregate_weeks_to_months(weekly, week_ending, &
       membership_fraction, trim_left, trim_right) result(out)
-      ! Aggregate weekly time-by-series observations to calendar months.
-      real(dp), intent(in) :: weekly(:, :)
-      type(date_t), intent(in) :: week_ending(:)
-      real(dp), intent(in), optional :: membership_fraction(:)
-      logical, intent(in), optional :: trim_left, trim_right
+      !! Aggregate weekly time-by-series observations to calendar months.
+      real(dp), intent(in) :: weekly(:, :) !! Weekly.
+      type(date_t), intent(in) :: week_ending(:) !! Week ending.
+      real(dp), intent(in), optional :: membership_fraction(:) !! Membership fraction.
+      logical, intent(in), optional :: trim_left !! Flag controlling trim left.
+      logical, intent(in), optional :: trim_right !! Flag controlling trim right.
       type(bsts_monthly_series_t) :: out
       real(dp), allocatable :: fraction(:)
       logical, allocatable :: ends(:)
@@ -847,9 +856,12 @@ contains
 
    pure function bsts_fixed_date_holiday(month, day, days_before, days_after, &
       name) result(holiday)
-      ! Define a holiday occurring on a fixed month and day each year.
-      integer, intent(in) :: month, day, days_before, days_after
-      character(*), intent(in), optional :: name
+      !! Define a holiday occurring on a fixed month and day each year.
+      integer, intent(in) :: month !! Month.
+      integer, intent(in) :: day !! Day.
+      integer, intent(in) :: days_before !! Days before.
+      integer, intent(in) :: days_after !! Days after.
+      character(*), intent(in), optional :: name !! Name.
       type(bsts_holiday_t) :: holiday
 
       holiday%kind = bsts_holiday_fixed
@@ -864,9 +876,13 @@ contains
 
    pure function bsts_nth_weekday_holiday(month, weekday, week_number, &
       days_before, days_after, name) result(holiday)
-      ! Define the nth ISO weekday in a month as a holiday anchor.
-      integer, intent(in) :: month, weekday, week_number, days_before, days_after
-      character(*), intent(in), optional :: name
+      !! Define the nth ISO weekday in a month as a holiday anchor.
+      integer, intent(in) :: month !! Month.
+      integer, intent(in) :: weekday !! Weekday.
+      integer, intent(in) :: week_number !! Week number.
+      integer, intent(in) :: days_before !! Days before.
+      integer, intent(in) :: days_after !! Days after.
+      character(*), intent(in), optional :: name !! Name.
       type(bsts_holiday_t) :: holiday
       type(date_t) :: anchor
 
@@ -885,9 +901,12 @@ contains
 
    pure function bsts_last_weekday_holiday(month, weekday, days_before, &
       days_after, name) result(holiday)
-      ! Define the final ISO weekday in a month as a holiday anchor.
-      integer, intent(in) :: month, weekday, days_before, days_after
-      character(*), intent(in), optional :: name
+      !! Define the final ISO weekday in a month as a holiday anchor.
+      integer, intent(in) :: month !! Month.
+      integer, intent(in) :: weekday !! Weekday.
+      integer, intent(in) :: days_before !! Days before.
+      integer, intent(in) :: days_after !! Days after.
+      character(*), intent(in), optional :: name !! Name.
       type(bsts_holiday_t) :: holiday
 
       holiday%kind = bsts_holiday_last_weekday
@@ -902,9 +921,10 @@ contains
 
    pure function bsts_date_range_holiday(range_start, range_end, name) &
       result(holiday)
-      ! Define irregular nonoverlapping holiday influence intervals.
-      type(date_t), intent(in) :: range_start(:), range_end(:)
-      character(*), intent(in), optional :: name
+      !! Define irregular nonoverlapping holiday influence intervals.
+      type(date_t), intent(in) :: range_start(:) !! Range start.
+      type(date_t), intent(in) :: range_end(:) !! Range end.
+      character(*), intent(in), optional :: name !! Name.
       type(bsts_holiday_t) :: holiday
       integer :: occurrence
 
@@ -932,9 +952,10 @@ contains
 
    pure function bsts_named_holiday(name, days_before, days_after) &
       result(holiday)
-      ! Define one of the recurring named holidays supported by bsts.
-      character(*), intent(in) :: name
-      integer, intent(in) :: days_before, days_after
+      !! Define one of the recurring named holidays supported by bsts.
+      character(*), intent(in) :: name !! Name.
+      integer, intent(in) :: days_before !! Days before.
+      integer, intent(in) :: days_after !! Days after.
       type(bsts_holiday_t) :: holiday
 
       holiday%kind = bsts_holiday_named
@@ -946,8 +967,8 @@ contains
    end function bsts_named_holiday
 
    pure function bsts_holiday_width(holiday) result(width)
-      ! Return the maximum number of relative days in a holiday window.
-      type(bsts_holiday_t), intent(in) :: holiday
+      !! Return the maximum number of relative days in a holiday window.
+      type(bsts_holiday_t), intent(in) :: holiday !! Holiday.
       integer :: width, occurrence
 
       width = 0
@@ -965,9 +986,9 @@ contains
    end function bsts_holiday_width
 
    pure elemental function bsts_holiday_position(holiday, date) result(position)
-      ! Return the one-based relative holiday day, or zero outside its window.
-      type(bsts_holiday_t), intent(in) :: holiday
-      type(date_t), intent(in) :: date
+      !! Return the one-based relative holiday day, or zero outside its window.
+      type(bsts_holiday_t), intent(in) :: holiday !! Holiday.
+      type(date_t), intent(in) :: date !! Date.
       integer :: position
       type(date_t) :: anchor
       integer :: year, difference, occurrence
@@ -1003,10 +1024,10 @@ contains
 
    pure function bsts_holiday_design(first_date, observations, holidays) &
       result(design)
-      ! Build a sparse daily design matrix for concatenated holiday windows.
-      type(date_t), intent(in) :: first_date
-      integer, intent(in) :: observations
-      type(bsts_holiday_t), intent(in) :: holidays(:)
+      !! Build a sparse daily design matrix for concatenated holiday windows.
+      type(date_t), intent(in) :: first_date !! First date.
+      integer, intent(in) :: observations !! Observed time-series values.
+      type(bsts_holiday_t), intent(in) :: holidays(:) !! Holidays.
       real(dp), allocatable :: design(:, :)
       type(date_t) :: date
       integer, allocatable :: offset(:)
@@ -1042,9 +1063,9 @@ contains
    end function bsts_holiday_design
 
    pure function holiday_anchor_date(holiday, year) result(anchor)
-      ! Resolve a recurring holiday definition to its anchor date in one year.
-      type(bsts_holiday_t), intent(in) :: holiday
-      integer, intent(in) :: year
+      !! Resolve a recurring holiday definition to its anchor date in one year.
+      type(bsts_holiday_t), intent(in) :: holiday !! Holiday.
+      integer, intent(in) :: year !! Year.
       type(date_t) :: anchor, first, last
       integer :: day, offset
 
@@ -1071,9 +1092,9 @@ contains
    end function holiday_anchor_date
 
    pure function named_holiday_anchor(name, year) result(anchor)
-      ! Resolve a canonical bsts named holiday for one calendar year.
-      character(*), intent(in) :: name
-      integer, intent(in) :: year
+      !! Resolve a canonical bsts named holiday for one calendar year.
+      character(*), intent(in) :: name !! Name.
+      integer, intent(in) :: year !! Year.
       type(date_t) :: anchor
       type(bsts_holiday_t) :: rule
 
@@ -1132,14 +1153,19 @@ contains
       observation_variance, level_variance, observation_prior_shape, &
       observation_prior_rate, level_prior_shape, level_prior_rate, burn, &
       state_normal_draws, gamma_draws) result(out)
-      ! Draw a local-level posterior using supplied normal and gamma variates.
-      real(dp), intent(in) :: y(:), initial_mean, initial_variance
-      real(dp), intent(in) :: observation_variance, level_variance
-      real(dp), intent(in) :: observation_prior_shape, observation_prior_rate
-      real(dp), intent(in) :: level_prior_shape, level_prior_rate
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: gamma_draws(:, :)
+      !! Draw a local-level posterior using supplied normal and gamma variates.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean !! Initial state mean.
+      real(dp), intent(in) :: initial_variance !! Initial variance.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: level_variance !! Level variance.
+      real(dp), intent(in) :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in) :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in) :: level_prior_shape !! Level prior shape.
+      real(dp), intent(in) :: level_prior_rate !! Level prior rate.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
       type(bsts_mcmc_t) :: out
       real(dp) :: transition(1, 1), observation(1)
       real(dp) :: state_variances(1), state_shapes(1), state_rates(1)
@@ -1160,15 +1186,18 @@ contains
       initial_variance, observation_variance, level_variance, &
       observation_prior_shape, observation_prior_rate, level_prior_shape, &
       level_prior_rate) result(out)
-      ! Sample the local-level posterior using the shared random stream.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: iterations
-      integer, intent(in), optional :: burn
-      real(dp), intent(in), optional :: initial_mean, initial_variance
-      real(dp), intent(in), optional :: observation_variance, level_variance
-      real(dp), intent(in), optional :: observation_prior_shape
-      real(dp), intent(in), optional :: observation_prior_rate
-      real(dp), intent(in), optional :: level_prior_shape, level_prior_rate
+      !! Sample the local-level posterior using the shared random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: initial_mean !! Initial state mean.
+      real(dp), intent(in), optional :: initial_variance !! Initial variance.
+      real(dp), intent(in), optional :: observation_variance !! Observation-error variance.
+      real(dp), intent(in), optional :: level_variance !! Level variance.
+      real(dp), intent(in), optional :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in), optional :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in), optional :: level_prior_shape !! Level prior shape.
+      real(dp), intent(in), optional :: level_prior_rate !! Level prior rate.
       type(bsts_mcmc_t) :: out
       real(dp), allocatable :: normal_draws(:, :, :), gamma_draws(:, :)
       real(dp) :: mean0, variance0, observation0, level0
@@ -1228,14 +1257,19 @@ contains
       initial_covariance, observation_variance, component_variance, &
       observation_prior_shape, observation_prior_rate, component_prior_shape, &
       component_prior_rate, burn, state_normal_draws, gamma_draws) result(out)
-      ! Draw a local-linear-trend posterior from supplied random variates.
-      real(dp), intent(in) :: y(:), initial_mean(2), initial_covariance(2, 2)
-      real(dp), intent(in) :: observation_variance, component_variance(2)
-      real(dp), intent(in) :: observation_prior_shape, observation_prior_rate
-      real(dp), intent(in) :: component_prior_shape(2), component_prior_rate(2)
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: gamma_draws(:, :)
+      !! Draw a local-linear-trend posterior from supplied random variates.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(2) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(2, 2) !! Initial state covariance matrix.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: component_variance(2) !! Component variance.
+      real(dp), intent(in) :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in) :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in) :: component_prior_shape(2) !! Component prior shape.
+      real(dp), intent(in) :: component_prior_rate(2) !! Component prior rate.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
       type(bsts_mcmc_t) :: out
       real(dp) :: transition(2, 2), observation(2)
 
@@ -1252,18 +1286,18 @@ contains
       initial_covariance, observation_variance, component_variance, &
       observation_prior_shape, observation_prior_rate, component_prior_shape, &
       component_prior_rate) result(out)
-      ! Sample a local-linear-trend posterior using the shared random stream.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: iterations
-      integer, intent(in), optional :: burn
-      real(dp), intent(in), optional :: initial_mean(2)
-      real(dp), intent(in), optional :: initial_covariance(2, 2)
-      real(dp), intent(in), optional :: observation_variance
-      real(dp), intent(in), optional :: component_variance(2)
-      real(dp), intent(in), optional :: observation_prior_shape
-      real(dp), intent(in), optional :: observation_prior_rate
-      real(dp), intent(in), optional :: component_prior_shape(2)
-      real(dp), intent(in), optional :: component_prior_rate(2)
+      !! Sample a local-linear-trend posterior using the shared random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: initial_mean(2) !! Initial state mean.
+      real(dp), intent(in), optional :: initial_covariance(2, 2) !! Initial state covariance matrix.
+      real(dp), intent(in), optional :: observation_variance !! Observation-error variance.
+      real(dp), intent(in), optional :: component_variance(2) !! Component variance.
+      real(dp), intent(in), optional :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in), optional :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in), optional :: component_prior_shape(2) !! Component prior shape.
+      real(dp), intent(in), optional :: component_prior_rate(2) !! Component prior rate.
       type(bsts_mcmc_t) :: out
       real(dp), allocatable :: normal_draws(:, :, :), gamma_draws(:, :)
       real(dp) :: mean0(2), covariance0(2, 2), observation0
@@ -1331,22 +1365,28 @@ contains
       state_normal_draws, weight_normal_draws, weight_uniform_draws, &
       variance_gamma_draws, degrees_normal_draws, degrees_uniform_draws) &
       result(out)
-      ! Sample a Student-t local-linear trend from supplied random streams.
-      real(dp), intent(in) :: y(:), initial_mean(2), initial_covariance(2, 2)
-      real(dp), intent(in) :: observation_variance, component_variance(2)
-      real(dp), intent(in) :: initial_degrees_of_freedom(2)
-      real(dp), intent(in) :: observation_prior_shape, observation_prior_rate
-      real(dp), intent(in) :: component_prior_shape(2), component_prior_rate(2)
-      real(dp), intent(in) :: degrees_lower(2), degrees_upper(2)
-      real(dp), intent(in) :: degrees_proposal_sd(2)
-      integer, intent(in) :: burn
-      logical, intent(in) :: save_weights
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: weight_normal_draws(:, :, :, :)
-      real(dp), intent(in) :: weight_uniform_draws(:, :, :, :)
-      real(dp), intent(in) :: variance_gamma_draws(:, :)
-      real(dp), intent(in) :: degrees_normal_draws(:, :)
-      real(dp), intent(in) :: degrees_uniform_draws(:, :)
+      !! Sample a Student-t local-linear trend from supplied random streams.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(2) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(2, 2) !! Initial state covariance matrix.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: component_variance(2) !! Component variance.
+      real(dp), intent(in) :: initial_degrees_of_freedom(2) !! Initial degrees of freedom.
+      real(dp), intent(in) :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in) :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in) :: component_prior_shape(2) !! Component prior shape.
+      real(dp), intent(in) :: component_prior_rate(2) !! Component prior rate.
+      real(dp), intent(in) :: degrees_lower(2) !! Degrees lower.
+      real(dp), intent(in) :: degrees_upper(2) !! Degrees upper.
+      real(dp), intent(in) :: degrees_proposal_sd(2) !! Degrees proposal standard deviation.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      logical, intent(in) :: save_weights !! Flag controlling save weights.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: weight_normal_draws(:, :, :, :) !! Weight normal simulation draws.
+      real(dp), intent(in) :: weight_uniform_draws(:, :, :, :) !! Weight uniform simulation draws.
+      real(dp), intent(in) :: variance_gamma_draws(:, :) !! Variance gamma simulation draws.
+      real(dp), intent(in) :: degrees_normal_draws(:, :) !! Degrees normal simulation draws.
+      real(dp), intent(in) :: degrees_uniform_draws(:, :) !! Degrees uniform simulation draws.
       type(bsts_mcmc_t) :: out
       type(ssm_model_t) :: model
       real(dp), allocatable :: path(:, :), disturbance(:, :)
@@ -1489,14 +1529,16 @@ contains
    function bsts_student_local_linear_trend(y, iterations, burn, save_weights, &
       proposal_attempts, initial_degrees_of_freedom, degrees_lower, &
       degrees_upper, degrees_proposal_sd) result(out)
-      ! Sample a Student-t local-linear trend using the random stream.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: iterations
-      integer, intent(in), optional :: burn, proposal_attempts
-      logical, intent(in), optional :: save_weights
-      real(dp), intent(in), optional :: initial_degrees_of_freedom(2)
-      real(dp), intent(in), optional :: degrees_lower(2), degrees_upper(2)
-      real(dp), intent(in), optional :: degrees_proposal_sd(2)
+      !! Sample a Student-t local-linear trend using the random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      integer, intent(in), optional :: proposal_attempts !! Proposal attempts.
+      logical, intent(in), optional :: save_weights !! Flag controlling save weights.
+      real(dp), intent(in), optional :: initial_degrees_of_freedom(2) !! Initial degrees of freedom.
+      real(dp), intent(in), optional :: degrees_lower(2) !! Degrees lower.
+      real(dp), intent(in), optional :: degrees_upper(2) !! Degrees upper.
+      real(dp), intent(in), optional :: degrees_proposal_sd(2) !! Degrees proposal standard deviation.
       type(bsts_mcmc_t) :: out
       real(dp), allocatable :: state_normals(:, :, :)
       real(dp), allocatable :: weight_normals(:, :, :, :)
@@ -1578,11 +1620,11 @@ contains
 
    pure function bsts_student_trend_predict_draws(fit, horizon, &
       state_student_draws, observation_normal_draws) result(out)
-      ! Forecast a Student local-linear trend from supplied standardized draws.
-      type(bsts_mcmc_t), intent(in) :: fit
-      integer, intent(in) :: horizon
-      real(dp), intent(in) :: state_student_draws(:, :, :)
-      real(dp), intent(in) :: observation_normal_draws(:, :)
+      !! Forecast a Student local-linear trend from supplied standardized draws.
+      type(bsts_mcmc_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in) :: state_student_draws(:, :, :) !! State student draws.
+      real(dp), intent(in) :: observation_normal_draws(:, :) !! Observation normal draws.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: state(:), sorted(:)
       integer :: retained, draw, source, step
@@ -1628,15 +1670,15 @@ contains
          end if
          sorted = out%draws(step, :)
          call insertion_sort(sorted)
-         out%lower(step) = empirical_quantile(sorted, 0.025_dp)
-         out%upper(step) = empirical_quantile(sorted, 0.975_dp)
+         out%lower(step) = quantile(sorted, 0.025_dp)
+         out%upper(step) = quantile(sorted, 0.975_dp)
       end do
    end function bsts_student_trend_predict_draws
 
    function bsts_student_trend_predict(fit, horizon) result(out)
-      ! Forecast a Student local-linear trend using the random stream.
-      type(bsts_mcmc_t), intent(in) :: fit
-      integer, intent(in) :: horizon
+      !! Forecast a Student local-linear trend using the random stream.
+      type(bsts_mcmc_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: state_draws(:, :, :), observation_draws(:, :)
       real(dp) :: chi_square
@@ -1677,19 +1719,29 @@ contains
       slope_mean_prior_variance, slope_ar_prior_mean, slope_ar_prior_variance, &
       force_stationary, force_positive, burn, state_normal_draws, gamma_draws, &
       parameter_normal_draws, slope_ar_uniform_draws) result(out)
-      ! Draw a semilocal trend posterior from supplied independent variates.
-      real(dp), intent(in) :: y(:), initial_mean(2), initial_covariance(2, 2)
-      real(dp), intent(in) :: observation_variance, component_variance(2)
-      real(dp), intent(in) :: slope_mean, slope_ar, observation_prior_shape
-      real(dp), intent(in) :: observation_prior_rate, component_prior_shape(2)
-      real(dp), intent(in) :: component_prior_rate(2), slope_mean_prior_mean
-      real(dp), intent(in) :: slope_mean_prior_variance, slope_ar_prior_mean
-      real(dp), intent(in) :: slope_ar_prior_variance
-      logical, intent(in) :: force_stationary, force_positive
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: state_normal_draws(:, :, :), gamma_draws(:, :)
-      real(dp), intent(in) :: parameter_normal_draws(:, :)
-      real(dp), intent(in) :: slope_ar_uniform_draws(:)
+      !! Draw a semilocal trend posterior from supplied independent variates.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(2) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(2, 2) !! Initial state covariance matrix.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: component_variance(2) !! Component variance.
+      real(dp), intent(in) :: slope_mean !! Slope mean.
+      real(dp), intent(in) :: slope_ar !! Slope autoregressive.
+      real(dp), intent(in) :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in) :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in) :: component_prior_shape(2) !! Component prior shape.
+      real(dp), intent(in) :: component_prior_rate(2) !! Component prior rate.
+      real(dp), intent(in) :: slope_mean_prior_mean !! Slope mean prior mean.
+      real(dp), intent(in) :: slope_mean_prior_variance !! Slope mean prior variance.
+      real(dp), intent(in) :: slope_ar_prior_mean !! Slope autoregressive prior mean.
+      real(dp), intent(in) :: slope_ar_prior_variance !! Slope autoregressive prior variance.
+      logical, intent(in) :: force_stationary !! Flag controlling force stationary.
+      logical, intent(in) :: force_positive !! Flag controlling force positive.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
+      real(dp), intent(in) :: parameter_normal_draws(:, :) !! Parameter normal simulation draws.
+      real(dp), intent(in) :: slope_ar_uniform_draws(:) !! Slope autoregressive uniform simulation draws.
       type(bsts_mcmc_t) :: out
       type(ssm_model_t) :: model
       real(dp), allocatable :: adjusted_y(:), centered_path(:, :), path(:, :)
@@ -1838,24 +1890,26 @@ contains
       component_prior_shape, component_prior_rate, slope_mean_prior_mean, &
       slope_mean_prior_variance, slope_ar_prior_mean, slope_ar_prior_variance, &
       force_stationary, force_positive) result(out)
-      ! Sample a semilocal trend posterior using the shared random stream.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: iterations
-      integer, intent(in), optional :: burn
-      real(dp), intent(in), optional :: initial_mean(2)
-      real(dp), intent(in), optional :: initial_covariance(2, 2)
-      real(dp), intent(in), optional :: observation_variance
-      real(dp), intent(in), optional :: component_variance(2)
-      real(dp), intent(in), optional :: slope_mean, slope_ar
-      real(dp), intent(in), optional :: observation_prior_shape
-      real(dp), intent(in), optional :: observation_prior_rate
-      real(dp), intent(in), optional :: component_prior_shape(2)
-      real(dp), intent(in), optional :: component_prior_rate(2)
-      real(dp), intent(in), optional :: slope_mean_prior_mean
-      real(dp), intent(in), optional :: slope_mean_prior_variance
-      real(dp), intent(in), optional :: slope_ar_prior_mean
-      real(dp), intent(in), optional :: slope_ar_prior_variance
-      logical, intent(in), optional :: force_stationary, force_positive
+      !! Sample a semilocal trend posterior using the shared random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: initial_mean(2) !! Initial state mean.
+      real(dp), intent(in), optional :: initial_covariance(2, 2) !! Initial state covariance matrix.
+      real(dp), intent(in), optional :: observation_variance !! Observation-error variance.
+      real(dp), intent(in), optional :: component_variance(2) !! Component variance.
+      real(dp), intent(in), optional :: slope_mean !! Slope mean.
+      real(dp), intent(in), optional :: slope_ar !! Slope autoregressive.
+      real(dp), intent(in), optional :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in), optional :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in), optional :: component_prior_shape(2) !! Component prior shape.
+      real(dp), intent(in), optional :: component_prior_rate(2) !! Component prior rate.
+      real(dp), intent(in), optional :: slope_mean_prior_mean !! Slope mean prior mean.
+      real(dp), intent(in), optional :: slope_mean_prior_variance !! Slope mean prior variance.
+      real(dp), intent(in), optional :: slope_ar_prior_mean !! Slope autoregressive prior mean.
+      real(dp), intent(in), optional :: slope_ar_prior_variance !! Slope autoregressive prior variance.
+      logical, intent(in), optional :: force_stationary !! Flag controlling force stationary.
+      logical, intent(in), optional :: force_positive !! Flag controlling force positive.
       type(bsts_mcmc_t) :: out
       real(dp), allocatable :: state_draws(:, :, :), gamma_draws(:, :)
       real(dp), allocatable :: parameter_draws(:, :), uniform_draws(:)
@@ -1947,15 +2001,20 @@ contains
       initial_variance, observation_variance, seasonal_variance, &
       observation_prior_shape, observation_prior_rate, seasonal_prior_shape, &
       seasonal_prior_rate, burn, state_normal_draws, gamma_draws) result(out)
-      ! Draw a sum-to-zero seasonal posterior from supplied random variates.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: nseasons, season_duration, burn
-      real(dp), intent(in) :: initial_variance, observation_variance
-      real(dp), intent(in) :: seasonal_variance, observation_prior_shape
-      real(dp), intent(in) :: observation_prior_rate, seasonal_prior_shape
-      real(dp), intent(in) :: seasonal_prior_rate
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: gamma_draws(:, :)
+      !! Draw a sum-to-zero seasonal posterior from supplied random variates.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: nseasons !! Nseasons.
+      integer, intent(in) :: season_duration !! Season duration.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: initial_variance !! Initial variance.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: seasonal_variance !! Seasonal variance.
+      real(dp), intent(in) :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in) :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in) :: seasonal_prior_shape !! Seasonal prior shape.
+      real(dp), intent(in) :: seasonal_prior_rate !! Seasonal prior rate.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
       type(bsts_mcmc_t) :: out
       type(ssm_model_t) :: model
       real(dp), allocatable :: path(:, :), initial_mean(:)
@@ -2052,15 +2111,19 @@ contains
       initial_variance, observation_variance, seasonal_variance, &
       observation_prior_shape, observation_prior_rate, seasonal_prior_shape, &
       seasonal_prior_rate) result(out)
-      ! Sample a bsts seasonal posterior using the shared random stream.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: nseasons, iterations
-      integer, intent(in), optional :: season_duration, burn
-      real(dp), intent(in), optional :: initial_variance, observation_variance
-      real(dp), intent(in), optional :: seasonal_variance
-      real(dp), intent(in), optional :: observation_prior_shape
-      real(dp), intent(in), optional :: observation_prior_rate
-      real(dp), intent(in), optional :: seasonal_prior_shape, seasonal_prior_rate
+      !! Sample a bsts seasonal posterior using the shared random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: nseasons !! Nseasons.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: season_duration !! Season duration.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: initial_variance !! Initial variance.
+      real(dp), intent(in), optional :: observation_variance !! Observation-error variance.
+      real(dp), intent(in), optional :: seasonal_variance !! Seasonal variance.
+      real(dp), intent(in), optional :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in), optional :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in), optional :: seasonal_prior_shape !! Seasonal prior shape.
+      real(dp), intent(in), optional :: seasonal_prior_rate !! Seasonal prior rate.
       type(bsts_mcmc_t) :: out
       real(dp), allocatable :: normal_draws(:, :, :), gamma_draws(:, :)
       real(dp) :: initial0, observation0, seasonal0, observation_shape
@@ -2120,15 +2183,20 @@ contains
       initial_covariance, observation_variance, monthly_variance, &
       observation_prior_shape, observation_prior_rate, monthly_prior_shape, &
       monthly_prior_rate, burn, state_normal_draws, gamma_draws) result(out)
-      ! Sample a calendar-driven monthly annual cycle from supplied draws.
-      real(dp), intent(in) :: y(:), initial_mean(11)
-      type(date_t), intent(in) :: first_date
-      real(dp), intent(in) :: initial_covariance(11, 11)
-      real(dp), intent(in) :: observation_variance, monthly_variance
-      real(dp), intent(in) :: observation_prior_shape, observation_prior_rate
-      real(dp), intent(in) :: monthly_prior_shape, monthly_prior_rate
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: state_normal_draws(:, :, :), gamma_draws(:, :)
+      !! Sample a calendar-driven monthly annual cycle from supplied draws.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(11) !! Initial state mean.
+      type(date_t), intent(in) :: first_date !! First date.
+      real(dp), intent(in) :: initial_covariance(11, 11) !! Initial state covariance matrix.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: monthly_variance !! Monthly variance.
+      real(dp), intent(in) :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in) :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in) :: monthly_prior_shape !! Monthly prior shape.
+      real(dp), intent(in) :: monthly_prior_rate !! Monthly prior rate.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
       type(bsts_mcmc_t) :: out
       type(ssm_model_t) :: model
       type(date_t) :: current_date, next_date
@@ -2239,16 +2307,18 @@ contains
       initial_variance, observation_variance, monthly_variance, &
       observation_prior_shape, observation_prior_rate, monthly_prior_shape, &
       monthly_prior_rate) result(out)
-      ! Sample a monthly annual cycle using the shared random stream.
-      real(dp), intent(in) :: y(:)
-      type(date_t), intent(in) :: first_date
-      integer, intent(in) :: iterations
-      integer, intent(in), optional :: burn
-      real(dp), intent(in), optional :: initial_variance, observation_variance
-      real(dp), intent(in), optional :: monthly_variance
-      real(dp), intent(in), optional :: observation_prior_shape
-      real(dp), intent(in), optional :: observation_prior_rate
-      real(dp), intent(in), optional :: monthly_prior_shape, monthly_prior_rate
+      !! Sample a monthly annual cycle using the shared random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      type(date_t), intent(in) :: first_date !! First date.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: initial_variance !! Initial variance.
+      real(dp), intent(in), optional :: observation_variance !! Observation-error variance.
+      real(dp), intent(in), optional :: monthly_variance !! Monthly variance.
+      real(dp), intent(in), optional :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in), optional :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in), optional :: monthly_prior_shape !! Monthly prior shape.
+      real(dp), intent(in), optional :: monthly_prior_rate !! Monthly prior rate.
       type(bsts_mcmc_t) :: out
       real(dp), allocatable :: normal_draws(:, :, :), gamma_draws(:, :)
       real(dp) :: mean0(11), covariance0(11, 11), series_variance
@@ -2320,11 +2390,11 @@ contains
 
    pure function bsts_monthly_predict_draws(fit, horizon, state_normal_draws, &
       observation_normal_draws) result(out)
-      ! Forecast a monthly annual cycle from supplied normal draws.
-      type(bsts_mcmc_t), intent(in) :: fit
-      integer, intent(in) :: horizon
-      real(dp), intent(in) :: state_normal_draws(:, :)
-      real(dp), intent(in) :: observation_normal_draws(:, :)
+      !! Forecast a monthly annual cycle from supplied normal draws.
+      type(bsts_mcmc_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in) :: state_normal_draws(:, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: observation_normal_draws(:, :) !! Observation normal draws.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: state(:), sorted(:)
       real(dp) :: transition(11, 11)
@@ -2383,15 +2453,15 @@ contains
          end if
          sorted = out%draws(step, :)
          call insertion_sort(sorted)
-         out%lower(step) = empirical_quantile(sorted, 0.025_dp)
-         out%upper(step) = empirical_quantile(sorted, 0.975_dp)
+         out%lower(step) = quantile(sorted, 0.025_dp)
+         out%upper(step) = quantile(sorted, 0.975_dp)
       end do
    end function bsts_monthly_predict_draws
 
    function bsts_monthly_predict(fit, horizon) result(out)
-      ! Forecast a monthly annual cycle using the shared random stream.
-      type(bsts_mcmc_t), intent(in) :: fit
-      integer, intent(in) :: horizon
+      !! Forecast a monthly annual cycle using the shared random stream.
+      type(bsts_mcmc_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: state_normals(:, :), observation_normals(:, :)
       integer :: retained, draw, step
@@ -2421,15 +2491,21 @@ contains
       initial_mean, initial_covariance, observation_variance, holiday_variance, &
       observation_prior_shape, observation_prior_rate, holiday_prior_shape, &
       holiday_prior_rate, burn, state_normal_draws, gamma_draws) result(out)
-      ! Sample a random-walk holiday effect from supplied random draws.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      type(date_t), intent(in) :: first_date
-      type(bsts_holiday_t), intent(in) :: holiday
-      real(dp), intent(in) :: observation_variance, holiday_variance
-      real(dp), intent(in) :: observation_prior_shape, observation_prior_rate
-      real(dp), intent(in) :: holiday_prior_shape, holiday_prior_rate
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: state_normal_draws(:, :, :), gamma_draws(:, :)
+      !! Sample a random-walk holiday effect from supplied random draws.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      type(date_t), intent(in) :: first_date !! First date.
+      type(bsts_holiday_t), intent(in) :: holiday !! Holiday.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: holiday_variance !! Holiday variance.
+      real(dp), intent(in) :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in) :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in) :: holiday_prior_shape !! Holiday prior shape.
+      real(dp), intent(in) :: holiday_prior_rate !! Holiday prior rate.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
       type(bsts_mcmc_t) :: out
       type(ssm_model_t) :: model
       type(date_t) :: current_date, next_date
@@ -2547,17 +2623,19 @@ contains
       initial_variance, observation_variance, holiday_variance, &
       observation_prior_shape, observation_prior_rate, holiday_prior_shape, &
       holiday_prior_rate) result(out)
-      ! Sample a random-walk holiday effect using the random stream.
-      real(dp), intent(in) :: y(:)
-      type(date_t), intent(in) :: first_date
-      type(bsts_holiday_t), intent(in) :: holiday
-      integer, intent(in) :: iterations
-      integer, intent(in), optional :: burn
-      real(dp), intent(in), optional :: initial_variance, observation_variance
-      real(dp), intent(in), optional :: holiday_variance
-      real(dp), intent(in), optional :: observation_prior_shape
-      real(dp), intent(in), optional :: observation_prior_rate
-      real(dp), intent(in), optional :: holiday_prior_shape, holiday_prior_rate
+      !! Sample a random-walk holiday effect using the random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      type(date_t), intent(in) :: first_date !! First date.
+      type(bsts_holiday_t), intent(in) :: holiday !! Holiday.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: initial_variance !! Initial variance.
+      real(dp), intent(in), optional :: observation_variance !! Observation-error variance.
+      real(dp), intent(in), optional :: holiday_variance !! Holiday variance.
+      real(dp), intent(in), optional :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in), optional :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in), optional :: holiday_prior_shape !! Holiday prior shape.
+      real(dp), intent(in), optional :: holiday_prior_rate !! Holiday prior rate.
       type(bsts_mcmc_t) :: out
       real(dp), allocatable :: mean0(:), covariance0(:, :)
       real(dp), allocatable :: normal_draws(:, :, :), gamma_draws(:, :)
@@ -2633,11 +2711,11 @@ contains
 
    pure function bsts_holiday_predict_draws(fit, horizon, state_normal_draws, &
       observation_normal_draws) result(out)
-      ! Forecast a random-walk holiday effect from supplied normal draws.
-      type(bsts_mcmc_t), intent(in) :: fit
-      integer, intent(in) :: horizon
-      real(dp), intent(in) :: state_normal_draws(:, :)
-      real(dp), intent(in) :: observation_normal_draws(:, :)
+      !! Forecast a random-walk holiday effect from supplied normal draws.
+      type(bsts_mcmc_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in) :: state_normal_draws(:, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: observation_normal_draws(:, :) !! Observation normal draws.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: state(:), sorted(:)
       type(date_t) :: current_date, next_date
@@ -2695,15 +2773,15 @@ contains
          end if
          sorted = out%draws(step, :)
          call insertion_sort(sorted)
-         out%lower(step) = empirical_quantile(sorted, 0.025_dp)
-         out%upper(step) = empirical_quantile(sorted, 0.975_dp)
+         out%lower(step) = quantile(sorted, 0.025_dp)
+         out%upper(step) = quantile(sorted, 0.975_dp)
       end do
    end function bsts_holiday_predict_draws
 
    function bsts_holiday_predict(fit, horizon) result(out)
-      ! Forecast a random-walk holiday effect using the random stream.
-      type(bsts_mcmc_t), intent(in) :: fit
-      integer, intent(in) :: horizon
+      !! Forecast a random-walk holiday effect using the random stream.
+      type(bsts_mcmc_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: state_normals(:, :), observation_normals(:, :)
       integer :: retained, draw, step
@@ -2733,15 +2811,19 @@ contains
       coefficient_prior_mean, coefficient_prior_variance, residual_variance, &
       residual_prior_shape, residual_prior_rate, burn, coefficient_normal_draws, &
       gamma_draws, offset_draws) result(out)
-      ! Sample fixed holiday-pattern regression from supplied random draws.
-      real(dp), intent(in) :: y(:), coefficient_prior_mean
-      type(date_t), intent(in) :: first_date
-      type(bsts_holiday_t), intent(in) :: holidays(:)
-      real(dp), intent(in) :: coefficient_prior_variance, residual_variance
-      real(dp), intent(in) :: residual_prior_shape, residual_prior_rate
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: coefficient_normal_draws(:, :), gamma_draws(:)
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Sample fixed holiday-pattern regression from supplied random draws.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: coefficient_prior_mean !! Coefficient prior mean.
+      type(date_t), intent(in) :: first_date !! First date.
+      type(bsts_holiday_t), intent(in) :: holidays(:) !! Holidays.
+      real(dp), intent(in) :: coefficient_prior_variance !! Coefficient prior variance.
+      real(dp), intent(in) :: residual_variance !! Residual variance.
+      real(dp), intent(in) :: residual_prior_shape !! Residual prior shape.
+      real(dp), intent(in) :: residual_prior_rate !! Residual prior rate.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: coefficient_normal_draws(:, :) !! Coefficient normal simulation draws.
+      real(dp), intent(in) :: gamma_draws(:) !! Gamma simulation draws.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_holiday_regression_t) :: out
       real(dp), allocatable :: design(:, :), observed_design(:, :)
       real(dp), allocatable :: observed_y(:), working_y(:), precision(:, :)
@@ -2834,17 +2916,18 @@ contains
    function bsts_regression_holiday(y, first_date, holidays, iterations, burn, &
       coefficient_prior_mean, coefficient_prior_variance, residual_variance, &
       residual_prior_shape, residual_prior_rate, offset_draws) result(out)
-      ! Sample fixed holiday-pattern regression using the random stream.
-      real(dp), intent(in) :: y(:)
-      type(date_t), intent(in) :: first_date
-      type(bsts_holiday_t), intent(in) :: holidays(:)
-      integer, intent(in) :: iterations
-      integer, intent(in), optional :: burn
-      real(dp), intent(in), optional :: coefficient_prior_mean
-      real(dp), intent(in), optional :: coefficient_prior_variance
-      real(dp), intent(in), optional :: residual_variance
-      real(dp), intent(in), optional :: residual_prior_shape, residual_prior_rate
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Sample fixed holiday-pattern regression using the random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      type(date_t), intent(in) :: first_date !! First date.
+      type(bsts_holiday_t), intent(in) :: holidays(:) !! Holidays.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: coefficient_prior_mean !! Coefficient prior mean.
+      real(dp), intent(in), optional :: coefficient_prior_variance !! Coefficient prior variance.
+      real(dp), intent(in), optional :: residual_variance !! Residual variance.
+      real(dp), intent(in), optional :: residual_prior_shape !! Residual prior shape.
+      real(dp), intent(in), optional :: residual_prior_rate !! Residual prior rate.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_holiday_regression_t) :: out
       real(dp), allocatable :: design(:, :), normals(:, :), gammas(:)
       real(dp) :: series_variance, mean0, coefficient_variance0
@@ -2907,22 +2990,24 @@ contains
       residual_variance, residual_prior_shape, residual_prior_rate, burn, &
       coefficient_normal_draws, mean_normal_draws, wishart_normal_draws, &
       wishart_gamma_draws, residual_gamma_draws, offset_draws) result(out)
-      ! Sample hierarchical holiday regression from supplied random draws.
-      real(dp), intent(in) :: y(:), coefficient_mean_prior(:)
-      type(date_t), intent(in) :: first_date
-      type(bsts_holiday_t), intent(in) :: holidays(:)
-      real(dp), intent(in) :: coefficient_mean_prior_covariance(:, :)
-      real(dp), intent(in) :: coefficient_variance_prior_df
-      real(dp), intent(in) :: coefficient_variance_prior_scale(:, :)
-      real(dp), intent(in) :: residual_variance, residual_prior_shape
-      real(dp), intent(in) :: residual_prior_rate
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: coefficient_normal_draws(:, :)
-      real(dp), intent(in) :: mean_normal_draws(:, :)
-      real(dp), intent(in) :: wishart_normal_draws(:, :, :)
-      real(dp), intent(in) :: wishart_gamma_draws(:, :)
-      real(dp), intent(in) :: residual_gamma_draws(:)
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Sample hierarchical holiday regression from supplied random draws.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: coefficient_mean_prior(:) !! Coefficient mean prior.
+      type(date_t), intent(in) :: first_date !! First date.
+      type(bsts_holiday_t), intent(in) :: holidays(:) !! Holidays.
+      real(dp), intent(in) :: coefficient_mean_prior_covariance(:, :) !! Coefficient mean prior covariance matrix.
+      real(dp), intent(in) :: coefficient_variance_prior_df !! Coefficient variance prior degrees of freedom.
+      real(dp), intent(in) :: coefficient_variance_prior_scale(:, :) !! Coefficient variance prior scale.
+      real(dp), intent(in) :: residual_variance !! Residual variance.
+      real(dp), intent(in) :: residual_prior_shape !! Residual prior shape.
+      real(dp), intent(in) :: residual_prior_rate !! Residual prior rate.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: coefficient_normal_draws(:, :) !! Coefficient normal simulation draws.
+      real(dp), intent(in) :: mean_normal_draws(:, :) !! Mean normal simulation draws.
+      real(dp), intent(in) :: wishart_normal_draws(:, :, :) !! Wishart normal simulation draws.
+      real(dp), intent(in) :: wishart_gamma_draws(:, :) !! Wishart gamma simulation draws.
+      real(dp), intent(in) :: residual_gamma_draws(:) !! Residual gamma simulation draws.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_holiday_regression_t) :: out
       real(dp), allocatable :: design(:, :), observed_design(:, :)
       real(dp), allocatable :: observed_y(:), working_y(:)
@@ -3101,19 +3186,20 @@ contains
       coefficient_mean_prior_covariance, coefficient_variance_prior_df, &
       coefficient_variance_prior_scale, residual_variance, &
       residual_prior_shape, residual_prior_rate, offset_draws) result(out)
-      ! Sample hierarchical holiday regression using the random stream.
-      real(dp), intent(in) :: y(:)
-      type(date_t), intent(in) :: first_date
-      type(bsts_holiday_t), intent(in) :: holidays(:)
-      integer, intent(in) :: iterations
-      integer, intent(in), optional :: burn
-      real(dp), intent(in), optional :: coefficient_mean_prior(:)
-      real(dp), intent(in), optional :: coefficient_mean_prior_covariance(:, :)
-      real(dp), intent(in), optional :: coefficient_variance_prior_df
-      real(dp), intent(in), optional :: coefficient_variance_prior_scale(:, :)
-      real(dp), intent(in), optional :: residual_variance
-      real(dp), intent(in), optional :: residual_prior_shape, residual_prior_rate
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Sample hierarchical holiday regression using the random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      type(date_t), intent(in) :: first_date !! First date.
+      type(bsts_holiday_t), intent(in) :: holidays(:) !! Holidays.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: coefficient_mean_prior(:) !! Coefficient mean prior.
+      real(dp), intent(in), optional :: coefficient_mean_prior_covariance(:, :) !! Coefficient mean prior covariance matrix.
+      real(dp), intent(in), optional :: coefficient_variance_prior_df !! Coefficient variance prior degrees of freedom.
+      real(dp), intent(in), optional :: coefficient_variance_prior_scale(:, :) !! Coefficient variance prior scale.
+      real(dp), intent(in), optional :: residual_variance !! Residual variance.
+      real(dp), intent(in), optional :: residual_prior_shape !! Residual prior shape.
+      real(dp), intent(in), optional :: residual_prior_rate !! Residual prior rate.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_holiday_regression_t) :: out
       real(dp), allocatable :: mean0(:), mean_covariance0(:, :), scale0(:, :)
       real(dp), allocatable :: coefficient_normals(:, :), mean_normals(:, :)
@@ -3218,10 +3304,10 @@ contains
 
    pure function bsts_regression_holiday_predict_draws(fit, horizon, &
       observation_normal_draws) result(out)
-      ! Forecast fixed holiday effects from supplied observation normals.
-      type(bsts_holiday_regression_t), intent(in) :: fit
-      integer, intent(in) :: horizon
-      real(dp), intent(in) :: observation_normal_draws(:, :)
+      !! Forecast fixed holiday effects from supplied observation normals.
+      type(bsts_holiday_regression_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in) :: observation_normal_draws(:, :) !! Observation normal draws.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: design(:, :), sorted(:)
       type(date_t) :: first_future
@@ -3263,15 +3349,15 @@ contains
          end if
          sorted = out%draws(step, :)
          call insertion_sort(sorted)
-         out%lower(step) = empirical_quantile(sorted, 0.025_dp)
-         out%upper(step) = empirical_quantile(sorted, 0.975_dp)
+         out%lower(step) = quantile(sorted, 0.025_dp)
+         out%upper(step) = quantile(sorted, 0.975_dp)
       end do
    end function bsts_regression_holiday_predict_draws
 
    function bsts_regression_holiday_predict(fit, horizon) result(out)
-      ! Forecast fixed holiday effects using the random stream.
-      type(bsts_holiday_regression_t), intent(in) :: fit
-      integer, intent(in) :: horizon
+      !! Forecast fixed holiday effects using the random stream.
+      type(bsts_holiday_regression_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: normals(:, :)
       integer :: retained, draw, step
@@ -3316,57 +3402,62 @@ contains
       seasonal_state_normal_draws, seasonal_gamma_draws, &
       enable_series_state, enable_trend_state, &
       enable_seasonal_state) result(out)
-      ! Sample a shared multivariate local-level model from supplied draws.
-      real(dp), intent(in) :: response(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), initial_loadings(:, :)
-      real(dp), intent(in) :: loading_prior_mean(:, :)
-      real(dp), intent(in) :: loading_prior_variance(:, :)
-      real(dp), intent(in) :: observation_variance(:), factor_variance(:)
-      real(dp), intent(in) :: observation_prior_shape(:)
-      real(dp), intent(in) :: observation_prior_rate(:)
-      real(dp), intent(in) :: factor_prior_shape(:), factor_prior_rate(:)
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: loading_normal_draws(:, :, :)
-      real(dp), intent(in) :: gamma_draws(:, :)
-      real(dp), intent(in), optional :: offset_draws(:, :, :)
-      real(dp), intent(in), optional :: prior_inclusion_probability(:, :)
-      logical, intent(in), optional :: initial_inclusion(:, :)
-      real(dp), intent(in), optional :: inclusion_uniform_draws(:, :, :)
-      integer, intent(in), optional :: maximum_flips
-      real(dp), intent(in), optional :: regression_predictors(:, :, :)
-      real(dp), intent(in), optional :: regression_prior_mean(:, :)
-      real(dp), intent(in), optional :: regression_prior_covariance(:, :, :)
-      real(dp), intent(in), optional :: regression_prior_inclusion_probability(:, :)
-      logical, intent(in), optional :: initial_regression_inclusion(:, :)
-      real(dp), intent(in), optional :: regression_normal_draws(:, :, :)
-      real(dp), intent(in), optional :: regression_uniform_draws(:, :, :)
-      integer, intent(in), optional :: regression_maximum_model_size
-      integer, intent(in), optional :: regression_maximum_flips
-      real(dp), intent(in), optional :: series_initial_mean(:)
-      real(dp), intent(in), optional :: series_initial_variance(:)
-      real(dp), intent(in), optional :: series_variance(:)
-      real(dp), intent(in), optional :: series_prior_shape(:)
-      real(dp), intent(in), optional :: series_prior_rate(:)
-      real(dp), intent(in), optional :: series_state_normal_draws(:, :, :)
-      real(dp), intent(in), optional :: series_gamma_draws(:, :)
-      real(dp), intent(in), optional :: trend_initial_mean(:, :)
-      real(dp), intent(in), optional :: trend_initial_covariance(:, :, :)
-      real(dp), intent(in), optional :: trend_variance(:, :)
-      real(dp), intent(in), optional :: trend_prior_shape(:, :)
-      real(dp), intent(in), optional :: trend_prior_rate(:, :)
-      real(dp), intent(in), optional :: trend_state_normal_draws(:, :, :, :)
-      real(dp), intent(in), optional :: trend_gamma_draws(:, :, :)
-      integer, intent(in), optional :: seasonal_nseasons, seasonal_duration
-      real(dp), intent(in), optional :: seasonal_initial_variance(:)
-      real(dp), intent(in), optional :: seasonal_variance(:)
-      real(dp), intent(in), optional :: seasonal_prior_shape(:)
-      real(dp), intent(in), optional :: seasonal_prior_rate(:)
-      real(dp), intent(in), optional :: seasonal_state_normal_draws(:, :, :, :)
-      real(dp), intent(in), optional :: seasonal_gamma_draws(:, :)
-      logical, intent(in), optional :: enable_series_state
-      logical, intent(in), optional :: enable_trend_state
-      logical, intent(in), optional :: enable_seasonal_state
+      !! Sample a shared multivariate local-level model from supplied draws.
+      real(dp), intent(in) :: response(:, :) !! Response observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_loadings(:, :) !! Initial loadings.
+      real(dp), intent(in) :: loading_prior_mean(:, :) !! Loading prior mean.
+      real(dp), intent(in) :: loading_prior_variance(:, :) !! Loading prior variance.
+      real(dp), intent(in) :: observation_variance(:) !! Observation-error variance.
+      real(dp), intent(in) :: factor_variance(:) !! Factor variance.
+      real(dp), intent(in) :: observation_prior_shape(:) !! Observation prior shape.
+      real(dp), intent(in) :: observation_prior_rate(:) !! Observation prior rate.
+      real(dp), intent(in) :: factor_prior_shape(:) !! Factor prior shape.
+      real(dp), intent(in) :: factor_prior_rate(:) !! Factor prior rate.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: loading_normal_draws(:, :, :) !! Loading normal simulation draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
+      real(dp), intent(in), optional :: offset_draws(:, :, :) !! Offset simulation draws.
+      real(dp), intent(in), optional :: prior_inclusion_probability(:, :) !! Prior inclusion probability.
+      logical, intent(in), optional :: initial_inclusion(:, :) !! Initial inclusion.
+      real(dp), intent(in), optional :: inclusion_uniform_draws(:, :, :) !! Inclusion uniform simulation draws.
+      integer, intent(in), optional :: maximum_flips !! Maximum flips.
+      real(dp), intent(in), optional :: regression_predictors(:, :, :) !! Regression predictors.
+      real(dp), intent(in), optional :: regression_prior_mean(:, :) !! Regression prior mean.
+      real(dp), intent(in), optional :: regression_prior_covariance(:, :, :) !! Regression prior covariance matrix.
+      real(dp), intent(in), optional :: regression_prior_inclusion_probability(:, :) !! Regression prior inclusion probability.
+      logical, intent(in), optional :: initial_regression_inclusion(:, :) !! Initial regression inclusion.
+      real(dp), intent(in), optional :: regression_normal_draws(:, :, :) !! Regression normal simulation draws.
+      real(dp), intent(in), optional :: regression_uniform_draws(:, :, :) !! Regression uniform simulation draws.
+      integer, intent(in), optional :: regression_maximum_model_size !! Regression maximum model size.
+      integer, intent(in), optional :: regression_maximum_flips !! Regression maximum flips.
+      real(dp), intent(in), optional :: series_initial_mean(:) !! Series initial mean.
+      real(dp), intent(in), optional :: series_initial_variance(:) !! Series initial variance.
+      real(dp), intent(in), optional :: series_variance(:) !! Series variance.
+      real(dp), intent(in), optional :: series_prior_shape(:) !! Series prior shape.
+      real(dp), intent(in), optional :: series_prior_rate(:) !! Series prior rate.
+      real(dp), intent(in), optional :: series_state_normal_draws(:, :, :) !! Series state normal simulation draws.
+      real(dp), intent(in), optional :: series_gamma_draws(:, :) !! Series gamma simulation draws.
+      real(dp), intent(in), optional :: trend_initial_mean(:, :) !! Trend initial mean.
+      real(dp), intent(in), optional :: trend_initial_covariance(:, :, :) !! Trend initial covariance matrix.
+      real(dp), intent(in), optional :: trend_variance(:, :) !! Trend variance.
+      real(dp), intent(in), optional :: trend_prior_shape(:, :) !! Trend prior shape.
+      real(dp), intent(in), optional :: trend_prior_rate(:, :) !! Trend prior rate.
+      real(dp), intent(in), optional :: trend_state_normal_draws(:, :, :, :) !! Trend state normal simulation draws.
+      real(dp), intent(in), optional :: trend_gamma_draws(:, :, :) !! Trend gamma simulation draws.
+      integer, intent(in), optional :: seasonal_nseasons !! Seasonal nseasons.
+      integer, intent(in), optional :: seasonal_duration !! Seasonal duration.
+      real(dp), intent(in), optional :: seasonal_initial_variance(:) !! Seasonal initial variance.
+      real(dp), intent(in), optional :: seasonal_variance(:) !! Seasonal variance.
+      real(dp), intent(in), optional :: seasonal_prior_shape(:) !! Seasonal prior shape.
+      real(dp), intent(in), optional :: seasonal_prior_rate(:) !! Seasonal prior rate.
+      real(dp), intent(in), optional :: seasonal_state_normal_draws(:, :, :, :) !! Seasonal state normal simulation draws.
+      real(dp), intent(in), optional :: seasonal_gamma_draws(:, :) !! Seasonal gamma simulation draws.
+      logical, intent(in), optional :: enable_series_state !! Flag controlling enable series state.
+      logical, intent(in), optional :: enable_trend_state !! Flag controlling enable trend state.
+      logical, intent(in), optional :: enable_seasonal_state !! Flag controlling enable seasonal state.
       type(bsts_shared_local_level_t) :: out
       type(ssm_model_t) :: model
       real(dp), allocatable :: path(:, :), loadings(:, :)
@@ -4434,15 +4525,16 @@ contains
    function bsts_shared_local_level(response, nfactors, iterations, burn, &
       offset_draws, prior_inclusion_probability, initial_inclusion, &
       maximum_flips, select_loadings) result(out)
-      ! Sample a shared multivariate local-level model using the random stream.
-      real(dp), intent(in) :: response(:, :)
-      integer, intent(in) :: nfactors, iterations
-      integer, intent(in), optional :: burn
-      real(dp), intent(in), optional :: offset_draws(:, :, :)
-      real(dp), intent(in), optional :: prior_inclusion_probability(:, :)
-      logical, intent(in), optional :: initial_inclusion(:, :)
-      integer, intent(in), optional :: maximum_flips
-      logical, intent(in), optional :: select_loadings
+      !! Sample a shared multivariate local-level model using the random stream.
+      real(dp), intent(in) :: response(:, :) !! Response observations.
+      integer, intent(in) :: nfactors !! Nfactors.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: offset_draws(:, :, :) !! Offset simulation draws.
+      real(dp), intent(in), optional :: prior_inclusion_probability(:, :) !! Prior inclusion probability.
+      logical, intent(in), optional :: initial_inclusion(:, :) !! Initial inclusion.
+      integer, intent(in), optional :: maximum_flips !! Maximum flips.
+      logical, intent(in), optional :: select_loadings !! Flag controlling select loadings.
       type(bsts_shared_local_level_t) :: out
       real(dp), allocatable :: initial_mean(:), initial_covariance(:, :)
       real(dp), allocatable :: initial_loadings(:, :), loading_mean(:, :)
@@ -4588,11 +4680,11 @@ contains
 
    pure function bsts_shared_local_level_predict_draws(fit, horizon, &
       state_normal_draws, observation_normal_draws) result(out)
-      ! Forecast shared local levels from supplied independent normal draws.
-      type(bsts_shared_local_level_t), intent(in) :: fit
-      integer, intent(in) :: horizon
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: observation_normal_draws(:, :, :)
+      !! Forecast shared local levels from supplied independent normal draws.
+      type(bsts_shared_local_level_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: observation_normal_draws(:, :, :) !! Observation normal draws.
       type(bsts_multivariate_prediction_t) :: out
       real(dp), allocatable :: state(:), sorted(:)
       integer :: factors, series_count, retained, draw, source, step, series
@@ -4646,16 +4738,16 @@ contains
             end if
             sorted = out%draws(series, step, :)
             call insertion_sort(sorted)
-            out%lower(series, step) = empirical_quantile(sorted, 0.025_dp)
-            out%upper(series, step) = empirical_quantile(sorted, 0.975_dp)
+            out%lower(series, step) = quantile(sorted, 0.025_dp)
+            out%upper(series, step) = quantile(sorted, 0.975_dp)
          end do
       end do
    end function bsts_shared_local_level_predict_draws
 
    function bsts_shared_local_level_predict(fit, horizon) result(out)
-      ! Forecast shared local levels using the shared random stream.
-      type(bsts_shared_local_level_t), intent(in) :: fit
-      integer, intent(in) :: horizon
+      !! Forecast shared local levels using the shared random stream.
+      type(bsts_shared_local_level_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(bsts_multivariate_prediction_t) :: out
       real(dp), allocatable :: state_normals(:, :, :)
       real(dp), allocatable :: observation_normals(:, :, :)
@@ -4708,51 +4800,58 @@ contains
       seasonal_state_normal_draws, seasonal_gamma_draws, &
       enable_series_state, enable_trend_state, &
       enable_seasonal_state) result(out)
-      ! Sample joint factors, regressions, and series-specific states.
-      real(dp), intent(in) :: response(:, :), regression_predictors(:, :, :)
-      real(dp), intent(in) :: regression_prior_mean(:, :)
-      real(dp), intent(in) :: regression_prior_covariance(:, :, :)
-      real(dp), intent(in) :: initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: initial_loadings(:, :), loading_prior_mean(:, :)
-      real(dp), intent(in) :: loading_prior_variance(:, :)
-      real(dp), intent(in) :: observation_variance(:), factor_variance(:)
-      real(dp), intent(in) :: observation_prior_shape(:)
-      real(dp), intent(in) :: observation_prior_rate(:)
-      real(dp), intent(in) :: factor_prior_shape(:), factor_prior_rate(:)
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: loading_normal_draws(:, :, :)
-      real(dp), intent(in) :: gamma_draws(:, :)
-      real(dp), intent(in), optional :: offset_draws(:, :, :)
-      real(dp), intent(in), optional :: regression_prior_inclusion_probability(:, :)
-      logical, intent(in), optional :: initial_regression_inclusion(:, :)
-      real(dp), intent(in), optional :: regression_normal_draws(:, :, :)
-      real(dp), intent(in), optional :: regression_uniform_draws(:, :, :)
-      integer, intent(in), optional :: maximum_model_size, maximum_flips
-      real(dp), intent(in), optional :: series_initial_mean(:)
-      real(dp), intent(in), optional :: series_initial_variance(:)
-      real(dp), intent(in), optional :: series_variance(:)
-      real(dp), intent(in), optional :: series_prior_shape(:)
-      real(dp), intent(in), optional :: series_prior_rate(:)
-      real(dp), intent(in), optional :: series_state_normal_draws(:, :, :)
-      real(dp), intent(in), optional :: series_gamma_draws(:, :)
-      real(dp), intent(in), optional :: trend_initial_mean(:, :)
-      real(dp), intent(in), optional :: trend_initial_covariance(:, :, :)
-      real(dp), intent(in), optional :: trend_variance(:, :)
-      real(dp), intent(in), optional :: trend_prior_shape(:, :)
-      real(dp), intent(in), optional :: trend_prior_rate(:, :)
-      real(dp), intent(in), optional :: trend_state_normal_draws(:, :, :, :)
-      real(dp), intent(in), optional :: trend_gamma_draws(:, :, :)
-      integer, intent(in), optional :: seasonal_nseasons, seasonal_duration
-      real(dp), intent(in), optional :: seasonal_initial_variance(:)
-      real(dp), intent(in), optional :: seasonal_variance(:)
-      real(dp), intent(in), optional :: seasonal_prior_shape(:)
-      real(dp), intent(in), optional :: seasonal_prior_rate(:)
-      real(dp), intent(in), optional :: seasonal_state_normal_draws(:, :, :, :)
-      real(dp), intent(in), optional :: seasonal_gamma_draws(:, :)
-      logical, intent(in), optional :: enable_series_state
-      logical, intent(in), optional :: enable_trend_state
-      logical, intent(in), optional :: enable_seasonal_state
+      !! Sample joint factors, regressions, and series-specific states.
+      real(dp), intent(in) :: response(:, :) !! Response observations.
+      real(dp), intent(in) :: regression_predictors(:, :, :) !! Regression predictors.
+      real(dp), intent(in) :: regression_prior_mean(:, :) !! Regression prior mean.
+      real(dp), intent(in) :: regression_prior_covariance(:, :, :) !! Regression prior covariance matrix.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_loadings(:, :) !! Initial loadings.
+      real(dp), intent(in) :: loading_prior_mean(:, :) !! Loading prior mean.
+      real(dp), intent(in) :: loading_prior_variance(:, :) !! Loading prior variance.
+      real(dp), intent(in) :: observation_variance(:) !! Observation-error variance.
+      real(dp), intent(in) :: factor_variance(:) !! Factor variance.
+      real(dp), intent(in) :: observation_prior_shape(:) !! Observation prior shape.
+      real(dp), intent(in) :: observation_prior_rate(:) !! Observation prior rate.
+      real(dp), intent(in) :: factor_prior_shape(:) !! Factor prior shape.
+      real(dp), intent(in) :: factor_prior_rate(:) !! Factor prior rate.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: loading_normal_draws(:, :, :) !! Loading normal simulation draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
+      real(dp), intent(in), optional :: offset_draws(:, :, :) !! Offset simulation draws.
+      real(dp), intent(in), optional :: regression_prior_inclusion_probability(:, :) !! Regression prior inclusion probability.
+      logical, intent(in), optional :: initial_regression_inclusion(:, :) !! Initial regression inclusion.
+      real(dp), intent(in), optional :: regression_normal_draws(:, :, :) !! Regression normal simulation draws.
+      real(dp), intent(in), optional :: regression_uniform_draws(:, :, :) !! Regression uniform simulation draws.
+      integer, intent(in), optional :: maximum_model_size !! Maximum model size.
+      integer, intent(in), optional :: maximum_flips !! Maximum flips.
+      real(dp), intent(in), optional :: series_initial_mean(:) !! Series initial mean.
+      real(dp), intent(in), optional :: series_initial_variance(:) !! Series initial variance.
+      real(dp), intent(in), optional :: series_variance(:) !! Series variance.
+      real(dp), intent(in), optional :: series_prior_shape(:) !! Series prior shape.
+      real(dp), intent(in), optional :: series_prior_rate(:) !! Series prior rate.
+      real(dp), intent(in), optional :: series_state_normal_draws(:, :, :) !! Series state normal simulation draws.
+      real(dp), intent(in), optional :: series_gamma_draws(:, :) !! Series gamma simulation draws.
+      real(dp), intent(in), optional :: trend_initial_mean(:, :) !! Trend initial mean.
+      real(dp), intent(in), optional :: trend_initial_covariance(:, :, :) !! Trend initial covariance matrix.
+      real(dp), intent(in), optional :: trend_variance(:, :) !! Trend variance.
+      real(dp), intent(in), optional :: trend_prior_shape(:, :) !! Trend prior shape.
+      real(dp), intent(in), optional :: trend_prior_rate(:, :) !! Trend prior rate.
+      real(dp), intent(in), optional :: trend_state_normal_draws(:, :, :, :) !! Trend state normal simulation draws.
+      real(dp), intent(in), optional :: trend_gamma_draws(:, :, :) !! Trend gamma simulation draws.
+      integer, intent(in), optional :: seasonal_nseasons !! Seasonal nseasons.
+      integer, intent(in), optional :: seasonal_duration !! Seasonal duration.
+      real(dp), intent(in), optional :: seasonal_initial_variance(:) !! Seasonal initial variance.
+      real(dp), intent(in), optional :: seasonal_variance(:) !! Seasonal variance.
+      real(dp), intent(in), optional :: seasonal_prior_shape(:) !! Seasonal prior shape.
+      real(dp), intent(in), optional :: seasonal_prior_rate(:) !! Seasonal prior rate.
+      real(dp), intent(in), optional :: seasonal_state_normal_draws(:, :, :, :) !! Seasonal state normal simulation draws.
+      real(dp), intent(in), optional :: seasonal_gamma_draws(:, :) !! Seasonal gamma simulation draws.
+      logical, intent(in), optional :: enable_series_state !! Flag controlling enable series state.
+      logical, intent(in), optional :: enable_trend_state !! Flag controlling enable trend state.
+      logical, intent(in), optional :: enable_seasonal_state !! Flag controlling enable seasonal state.
       type(bsts_shared_local_level_t) :: out
 
       if (present(offset_draws)) then
@@ -4847,17 +4946,22 @@ contains
       initial_regression_inclusion, maximum_model_size, maximum_flips, &
       select_regression, series_local_level, series_local_linear_trend, &
       series_nseasons, series_season_duration) result(out)
-      ! Sample multivariate BSTS with optional series-specific states.
-      real(dp), intent(in) :: response(:, :), regression_predictors(:, :, :)
-      integer, intent(in) :: nfactors, iterations
-      integer, intent(in), optional :: burn
-      real(dp), intent(in), optional :: offset_draws(:, :, :)
-      real(dp), intent(in), optional :: regression_prior_inclusion_probability(:, :)
-      logical, intent(in), optional :: initial_regression_inclusion(:, :)
-      integer, intent(in), optional :: maximum_model_size, maximum_flips
-      logical, intent(in), optional :: select_regression, series_local_level
-      logical, intent(in), optional :: series_local_linear_trend
-      integer, intent(in), optional :: series_nseasons, series_season_duration
+      !! Sample multivariate BSTS with optional series-specific states.
+      real(dp), intent(in) :: response(:, :) !! Response observations.
+      real(dp), intent(in) :: regression_predictors(:, :, :) !! Regression predictors.
+      integer, intent(in) :: nfactors !! Nfactors.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: offset_draws(:, :, :) !! Offset simulation draws.
+      real(dp), intent(in), optional :: regression_prior_inclusion_probability(:, :) !! Regression prior inclusion probability.
+      logical, intent(in), optional :: initial_regression_inclusion(:, :) !! Initial regression inclusion.
+      integer, intent(in), optional :: maximum_model_size !! Maximum model size.
+      integer, intent(in), optional :: maximum_flips !! Maximum flips.
+      logical, intent(in), optional :: select_regression !! Flag controlling select regression.
+      logical, intent(in), optional :: series_local_level !! Flag controlling series local level.
+      logical, intent(in), optional :: series_local_linear_trend !! Flag controlling series local linear trend.
+      integer, intent(in), optional :: series_nseasons !! Series nseasons.
+      integer, intent(in), optional :: series_season_duration !! Series season duration.
       type(bsts_shared_local_level_t) :: out
       real(dp), allocatable :: regression_mean(:, :)
       real(dp), allocatable :: regression_covariance(:, :, :)
@@ -5158,14 +5262,14 @@ contains
       state_normal_draws, observation_normal_draws, &
       series_state_normal_draws, trend_state_normal_draws, &
       seasonal_state_normal_draws) result(out)
-      ! Forecast shared, regression, and series-specific state contributions.
-      type(bsts_shared_local_level_t), intent(in) :: fit
-      real(dp), intent(in) :: future_predictors(:, :, :)
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: observation_normal_draws(:, :, :)
-      real(dp), intent(in), optional :: series_state_normal_draws(:, :, :)
-      real(dp), intent(in), optional :: trend_state_normal_draws(:, :, :, :)
-      real(dp), intent(in), optional :: seasonal_state_normal_draws(:, :, :, :)
+      !! Forecast shared, regression, and series-specific state contributions.
+      type(bsts_shared_local_level_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_predictors(:, :, :) !! Future predictors.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: observation_normal_draws(:, :, :) !! Observation normal draws.
+      real(dp), intent(in), optional :: series_state_normal_draws(:, :, :) !! Series state normal simulation draws.
+      real(dp), intent(in), optional :: trend_state_normal_draws(:, :, :, :) !! Trend state normal simulation draws.
+      real(dp), intent(in), optional :: seasonal_state_normal_draws(:, :, :, :) !! Seasonal state normal simulation draws.
       type(bsts_multivariate_prediction_t) :: out
       real(dp), allocatable :: sorted(:)
       integer :: horizon, predictors_count, series_count, retained
@@ -5296,16 +5400,16 @@ contains
             end if
             sorted = out%draws(series, step, :)
             call insertion_sort(sorted)
-            out%lower(series, step) = empirical_quantile(sorted, 0.025_dp)
-            out%upper(series, step) = empirical_quantile(sorted, 0.975_dp)
+            out%lower(series, step) = quantile(sorted, 0.025_dp)
+            out%upper(series, step) = quantile(sorted, 0.975_dp)
          end do
       end do
    end function bsts_mbsts_predict_draws
 
    function bsts_mbsts_predict(fit, future_predictors) result(out)
-      ! Forecast multivariate BSTS regression using the shared random stream.
-      type(bsts_shared_local_level_t), intent(in) :: fit
-      real(dp), intent(in) :: future_predictors(:, :, :)
+      !! Forecast multivariate BSTS regression using the shared random stream.
+      type(bsts_shared_local_level_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_predictors(:, :, :) !! Future predictors.
       type(bsts_multivariate_prediction_t) :: out
       real(dp), allocatable :: state_normals(:, :, :)
       real(dp), allocatable :: observation_normals(:, :, :)
@@ -5401,15 +5505,21 @@ contains
       initial_covariance, observation_variance, trig_variance, &
       observation_prior_shape, observation_prior_rate, trig_prior_shape, &
       trig_prior_rate, burn, state_normal_draws, gamma_draws) result(out)
-      ! Draw a harmonic trigonometric posterior from supplied random variates.
-      real(dp), intent(in) :: y(:), period, frequencies(:), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), observation_variance
-      real(dp), intent(in) :: trig_variance, observation_prior_shape
-      real(dp), intent(in) :: observation_prior_rate, trig_prior_shape
-      real(dp), intent(in) :: trig_prior_rate
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: gamma_draws(:, :)
+      !! Draw a harmonic trigonometric posterior from supplied random variates.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: period !! Seasonal period.
+      real(dp), intent(in) :: frequencies(:) !! Frequencies.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: trig_variance !! Trig variance.
+      real(dp), intent(in) :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in) :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in) :: trig_prior_shape !! Trig prior shape.
+      real(dp), intent(in) :: trig_prior_rate !! Trig prior rate.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
       type(bsts_mcmc_t) :: out
       type(ssm_model_t) :: model
       real(dp), allocatable :: path(:, :), transition(:, :), state_scale(:)
@@ -5492,16 +5602,20 @@ contains
       initial_mean, initial_covariance, observation_variance, trig_variance, &
       observation_prior_shape, observation_prior_rate, trig_prior_shape, &
       trig_prior_rate) result(out)
-      ! Sample a harmonic trigonometric posterior using the shared random stream.
-      real(dp), intent(in) :: y(:), period, frequencies(:)
-      integer, intent(in) :: iterations
-      integer, intent(in), optional :: burn
-      real(dp), intent(in), optional :: initial_mean(:)
-      real(dp), intent(in), optional :: initial_covariance(:, :)
-      real(dp), intent(in), optional :: observation_variance, trig_variance
-      real(dp), intent(in), optional :: observation_prior_shape
-      real(dp), intent(in), optional :: observation_prior_rate
-      real(dp), intent(in), optional :: trig_prior_shape, trig_prior_rate
+      !! Sample a harmonic trigonometric posterior using the shared random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: period !! Seasonal period.
+      real(dp), intent(in) :: frequencies(:) !! Frequencies.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in), optional :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in), optional :: observation_variance !! Observation-error variance.
+      real(dp), intent(in), optional :: trig_variance !! Trig variance.
+      real(dp), intent(in), optional :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in), optional :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in), optional :: trig_prior_shape !! Trig prior shape.
+      real(dp), intent(in), optional :: trig_prior_rate !! Trig prior rate.
       type(bsts_mcmc_t) :: out
       real(dp), allocatable :: mean0(:), covariance0(:, :)
       real(dp), allocatable :: normal_draws(:, :, :), gamma_draws(:, :)
@@ -5579,17 +5693,23 @@ contains
       variance_prior_rate, initial_variance, initial_inclusion, &
       maximum_model_size, maximum_flips, burn, coefficient_normal_draws, &
       inclusion_uniform_draws, gamma_draws, offset_draws) result(out)
-      ! Sample static Gaussian spike-and-slab regression from supplied draws.
-      real(dp), intent(in) :: response(:), predictors(:, :), slab_mean(:)
-      real(dp), intent(in) :: slab_covariance(:, :)
-      real(dp), intent(in) :: prior_inclusion_probability(:)
-      real(dp), intent(in) :: variance_prior_shape, variance_prior_rate
-      real(dp), intent(in) :: initial_variance
-      logical, intent(in) :: initial_inclusion(:)
-      integer, intent(in) :: maximum_model_size, maximum_flips, burn
-      real(dp), intent(in) :: coefficient_normal_draws(:, :)
-      real(dp), intent(in) :: inclusion_uniform_draws(:, :), gamma_draws(:)
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Sample static Gaussian spike-and-slab regression from supplied draws.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      real(dp), intent(in) :: slab_mean(:) !! Slab mean.
+      real(dp), intent(in) :: slab_covariance(:, :) !! Slab covariance matrix.
+      real(dp), intent(in) :: prior_inclusion_probability(:) !! Prior inclusion probability.
+      real(dp), intent(in) :: variance_prior_shape !! Variance prior shape.
+      real(dp), intent(in) :: variance_prior_rate !! Variance prior rate.
+      real(dp), intent(in) :: initial_variance !! Initial variance.
+      logical, intent(in) :: initial_inclusion(:) !! Initial inclusion.
+      integer, intent(in) :: maximum_model_size !! Maximum model size.
+      integer, intent(in) :: maximum_flips !! Maximum flips.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: coefficient_normal_draws(:, :) !! Coefficient normal simulation draws.
+      real(dp), intent(in) :: inclusion_uniform_draws(:, :) !! Inclusion uniform simulation draws.
+      real(dp), intent(in) :: gamma_draws(:) !! Gamma simulation draws.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_spike_slab_t) :: out
       real(dp), allocatable :: observed_x(:, :), observed_y(:), working_y(:)
       real(dp), allocatable :: posterior_mean(:), posterior_covariance(:, :)
@@ -5738,17 +5858,22 @@ contains
       expected_model_size, variance_prior_shape, variance_prior_rate, &
       initial_variance, initial_inclusion, maximum_model_size, maximum_flips, &
       offset_draws) result(out)
-      ! Sample static spike-and-slab regression using the shared random stream.
-      real(dp), intent(in) :: response(:), predictors(:, :)
-      integer, intent(in) :: iterations
-      integer, intent(in), optional :: burn, maximum_model_size, maximum_flips
-      real(dp), intent(in), optional :: slab_mean(:), slab_covariance(:, :)
-      real(dp), intent(in), optional :: prior_inclusion_probability(:)
-      real(dp), intent(in), optional :: expected_model_size
-      real(dp), intent(in), optional :: variance_prior_shape, variance_prior_rate
-      real(dp), intent(in), optional :: initial_variance
-      logical, intent(in), optional :: initial_inclusion(:)
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Sample static spike-and-slab regression using the shared random stream.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      integer, intent(in), optional :: maximum_model_size !! Maximum model size.
+      integer, intent(in), optional :: maximum_flips !! Maximum flips.
+      real(dp), intent(in), optional :: slab_mean(:) !! Slab mean.
+      real(dp), intent(in), optional :: slab_covariance(:, :) !! Slab covariance matrix.
+      real(dp), intent(in), optional :: prior_inclusion_probability(:) !! Prior inclusion probability.
+      real(dp), intent(in), optional :: expected_model_size !! Expected model size.
+      real(dp), intent(in), optional :: variance_prior_shape !! Variance prior shape.
+      real(dp), intent(in), optional :: variance_prior_rate !! Variance prior rate.
+      real(dp), intent(in), optional :: initial_variance !! Initial variance.
+      logical, intent(in), optional :: initial_inclusion(:) !! Initial inclusion.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_spike_slab_t) :: out
       real(dp), allocatable :: mean0(:), covariance0(:, :), inclusion0(:)
       real(dp), allocatable :: normal_draws(:, :), uniform_draws(:, :)
@@ -5858,10 +5983,10 @@ contains
 
    pure function bsts_regression_predict_draws(fit, future_predictors, &
       observation_normal_draws) result(out)
-      ! Form static-regression posterior predictions from supplied normals.
-      type(bsts_spike_slab_t), intent(in) :: fit
-      real(dp), intent(in) :: future_predictors(:, :)
-      real(dp), intent(in) :: observation_normal_draws(:, :)
+      !! Form static-regression posterior predictions from supplied normals.
+      type(bsts_spike_slab_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_predictors(:, :) !! Future predictors.
+      real(dp), intent(in) :: observation_normal_draws(:, :) !! Observation normal draws.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: sorted(:)
       integer :: horizon, retained, draw, source, step
@@ -5900,15 +6025,15 @@ contains
          end if
          sorted = out%draws(step, :)
          call insertion_sort(sorted)
-         out%lower(step) = empirical_quantile(sorted, 0.025_dp)
-         out%upper(step) = empirical_quantile(sorted, 0.975_dp)
+         out%lower(step) = quantile(sorted, 0.025_dp)
+         out%upper(step) = quantile(sorted, 0.975_dp)
       end do
    end function bsts_regression_predict_draws
 
    function bsts_regression_predict(fit, future_predictors) result(out)
-      ! Simulate static-regression predictions using the shared random stream.
-      type(bsts_spike_slab_t), intent(in) :: fit
-      real(dp), intent(in) :: future_predictors(:, :)
+      !! Simulate static-regression predictions using the shared random stream.
+      type(bsts_spike_slab_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_predictors(:, :) !! Future predictors.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: normal_draws(:, :)
       integer :: retained, draw, step
@@ -5933,11 +6058,12 @@ contains
 
    pure function bsts_structural_prediction_errors(fit, response, &
       initial_mean, initial_covariance, standardize) result(out)
-      ! Compute Gaussian filtering errors for retained structural draws.
-      type(bsts_mcmc_t), intent(in) :: fit
-      real(dp), intent(in) :: response(:), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :)
-      logical, intent(in), optional :: standardize
+      !! Compute Gaussian filtering errors for retained structural draws.
+      type(bsts_mcmc_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      logical, intent(in), optional :: standardize !! Flag controlling standardize.
       type(bsts_prediction_errors_t) :: out
       type(ssm_model_t) :: model
       type(kfs_filter_t) :: filtered
@@ -5995,10 +6121,11 @@ contains
 
    pure function bsts_regression_prediction_errors(fit, response, predictors, &
       standardize) result(out)
-      ! Compute posterior Gaussian errors for static regression draws.
-      type(bsts_spike_slab_t), intent(in) :: fit
-      real(dp), intent(in) :: response(:), predictors(:, :)
-      logical, intent(in), optional :: standardize
+      !! Compute posterior Gaussian errors for static regression draws.
+      type(bsts_spike_slab_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      logical, intent(in), optional :: standardize !! Flag controlling standardize.
       type(bsts_prediction_errors_t) :: out
       logical :: scaled
       real(dp) :: missing_value
@@ -6042,11 +6169,12 @@ contains
 
    function bsts_local_level_holdout_errors(response, cutpoint, iterations, &
       burn, standardize) result(out)
-      ! Refit a local-level model on a prefix and filter the holdout data.
-      real(dp), intent(in) :: response(:)
-      integer, intent(in) :: cutpoint, iterations
-      integer, intent(in), optional :: burn
-      logical, intent(in), optional :: standardize
+      !! Refit a local-level model on a prefix and filter the holdout data.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      integer, intent(in) :: cutpoint !! Cutpoint.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      logical, intent(in), optional :: standardize !! Flag controlling standardize.
       type(bsts_prediction_errors_t) :: out
       type(bsts_mcmc_t) :: fit
       real(dp) :: initial_mean, initial_variance
@@ -6076,9 +6204,9 @@ contains
    end function bsts_local_level_holdout_errors
 
    pure function bsts_compare_prediction_errors(errors, start_index) result(out)
-      ! Rank compatible models by posterior mean prediction-error losses.
-      type(bsts_prediction_errors_t), intent(in) :: errors(:)
-      integer, intent(in), optional :: start_index
+      !! Rank compatible models by posterior mean prediction-error losses.
+      type(bsts_prediction_errors_t), intent(in) :: errors(:) !! Errors.
+      integer, intent(in), optional :: start_index !! Index of start.
       type(bsts_model_comparison_t) :: out
       logical, allocatable :: finite(:)
       real(dp) :: cumulative
@@ -6141,13 +6269,17 @@ contains
       prior_variance, observation_variance, observation_prior_shape, &
       observation_prior_rate, burn, intercept_normal_draws, gamma_draws, &
       offset_draws) result(out)
-      ! Sample a constant Gaussian state from supplied random variates.
-      real(dp), intent(in) :: response(:), prior_mean, prior_variance
-      real(dp), intent(in) :: observation_variance
-      real(dp), intent(in) :: observation_prior_shape, observation_prior_rate
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: intercept_normal_draws(:), gamma_draws(:)
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Sample a constant Gaussian state from supplied random variates.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: prior_mean !! Prior mean.
+      real(dp), intent(in) :: prior_variance !! Prior variance.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in) :: observation_prior_rate !! Observation prior rate.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: intercept_normal_draws(:) !! Intercept normal simulation draws.
+      real(dp), intent(in) :: gamma_draws(:) !! Gamma simulation draws.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_static_intercept_t) :: out
       real(dp), allocatable :: working(:)
       real(dp) :: variance, posterior_variance, posterior_mean, residual_sum
@@ -6207,15 +6339,16 @@ contains
    function bsts_static_intercept(response, iterations, burn, prior_mean, &
       prior_variance, observation_variance, observation_prior_shape, &
       observation_prior_rate, offset_draws) result(out)
-      ! Sample a constant Gaussian state using the shared random stream.
-      real(dp), intent(in) :: response(:)
-      integer, intent(in) :: iterations
-      integer, intent(in), optional :: burn
-      real(dp), intent(in), optional :: prior_mean, prior_variance
-      real(dp), intent(in), optional :: observation_variance
-      real(dp), intent(in), optional :: observation_prior_shape
-      real(dp), intent(in), optional :: observation_prior_rate
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Sample a constant Gaussian state using the shared random stream.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: prior_mean !! Prior mean.
+      real(dp), intent(in), optional :: prior_variance !! Prior variance.
+      real(dp), intent(in), optional :: observation_variance !! Observation-error variance.
+      real(dp), intent(in), optional :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in), optional :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_static_intercept_t) :: out
       real(dp), allocatable :: normals(:), gammas(:)
       real(dp) :: mean0, prior0, observation0, shape0, rate0, series_variance
@@ -6261,10 +6394,10 @@ contains
 
    pure function bsts_static_intercept_predict_draws(fit, future_offset, &
       observation_normal_draws) result(out)
-      ! Forecast a constant state from supplied observation-normal draws.
-      type(bsts_static_intercept_t), intent(in) :: fit
-      real(dp), intent(in) :: future_offset(:)
-      real(dp), intent(in) :: observation_normal_draws(:, :)
+      !! Forecast a constant state from supplied observation-normal draws.
+      type(bsts_static_intercept_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_offset(:) !! Future offset.
+      real(dp), intent(in) :: observation_normal_draws(:, :) !! Observation normal draws.
       type(bsts_prediction_t) :: out
       integer :: horizon, retained, draw, source
 
@@ -6289,9 +6422,9 @@ contains
    end function bsts_static_intercept_predict_draws
 
    function bsts_static_intercept_predict(fit, future_offset) result(out)
-      ! Forecast a constant state using the shared random stream.
-      type(bsts_static_intercept_t), intent(in) :: fit
-      real(dp), intent(in) :: future_offset(:)
+      !! Forecast a constant state using the shared random stream.
+      type(bsts_static_intercept_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_offset(:) !! Future offset.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: normals(:, :)
       integer :: retained, draw, time
@@ -6322,21 +6455,29 @@ contains
       initial_inclusion, maximum_model_size, maximum_flips, burn, &
       state_normal_draws, coefficient_normal_draws, inclusion_uniform_draws, &
       gamma_draws) result(out)
-      ! Sample dynamic-intercept regression from supplied random variates.
-      real(dp), intent(in) :: response(:), predictors(:, :)
-      integer, intent(in) :: time_index(:)
-      real(dp), intent(in) :: initial_level_mean, initial_level_variance
-      real(dp), intent(in) :: observation_variance, level_variance
-      real(dp), intent(in) :: slab_mean(:), slab_covariance(:, :)
-      real(dp), intent(in) :: prior_inclusion_probability(:)
-      real(dp), intent(in) :: observation_prior_shape, observation_prior_rate
-      real(dp), intent(in) :: level_prior_shape, level_prior_rate
-      logical, intent(in) :: initial_inclusion(:)
-      integer, intent(in) :: maximum_model_size, maximum_flips, burn
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: coefficient_normal_draws(:, :)
-      real(dp), intent(in) :: inclusion_uniform_draws(:, :)
-      real(dp), intent(in) :: gamma_draws(:, :)
+      !! Sample dynamic-intercept regression from supplied random variates.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      integer, intent(in) :: time_index(:) !! Index of time.
+      real(dp), intent(in) :: initial_level_mean !! Initial level mean.
+      real(dp), intent(in) :: initial_level_variance !! Initial level variance.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: level_variance !! Level variance.
+      real(dp), intent(in) :: slab_mean(:) !! Slab mean.
+      real(dp), intent(in) :: slab_covariance(:, :) !! Slab covariance matrix.
+      real(dp), intent(in) :: prior_inclusion_probability(:) !! Prior inclusion probability.
+      real(dp), intent(in) :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in) :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in) :: level_prior_shape !! Level prior shape.
+      real(dp), intent(in) :: level_prior_rate !! Level prior rate.
+      logical, intent(in) :: initial_inclusion(:) !! Initial inclusion.
+      integer, intent(in) :: maximum_model_size !! Maximum model size.
+      integer, intent(in) :: maximum_flips !! Maximum flips.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: coefficient_normal_draws(:, :) !! Coefficient normal simulation draws.
+      real(dp), intent(in) :: inclusion_uniform_draws(:, :) !! Inclusion uniform simulation draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
       type(bsts_dirm_t) :: out
       type(ssm_model_t) :: model
       real(dp), allocatable :: observed_y(:), observed_x(:, :), working_y(:)
@@ -6540,19 +6681,27 @@ contains
       observation_prior_shape, observation_prior_rate, level_prior_shape, &
       level_prior_rate, initial_inclusion, maximum_model_size, maximum_flips) &
       result(out)
-      ! Sample dynamic-intercept regression using the shared random stream.
-      real(dp), intent(in) :: response(:), predictors(:, :)
-      integer, intent(in) :: time_index(:), iterations
-      integer, intent(in), optional :: burn, maximum_model_size, maximum_flips
-      real(dp), intent(in), optional :: initial_level_mean, initial_level_variance
-      real(dp), intent(in), optional :: observation_variance, level_variance
-      real(dp), intent(in), optional :: slab_mean(:), slab_covariance(:, :)
-      real(dp), intent(in), optional :: prior_inclusion_probability(:)
-      real(dp), intent(in), optional :: expected_model_size
-      real(dp), intent(in), optional :: observation_prior_shape
-      real(dp), intent(in), optional :: observation_prior_rate
-      real(dp), intent(in), optional :: level_prior_shape, level_prior_rate
-      logical, intent(in), optional :: initial_inclusion(:)
+      !! Sample dynamic-intercept regression using the shared random stream.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      integer, intent(in) :: time_index(:) !! Index of time.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      integer, intent(in), optional :: maximum_model_size !! Maximum model size.
+      integer, intent(in), optional :: maximum_flips !! Maximum flips.
+      real(dp), intent(in), optional :: initial_level_mean !! Initial level mean.
+      real(dp), intent(in), optional :: initial_level_variance !! Initial level variance.
+      real(dp), intent(in), optional :: observation_variance !! Observation-error variance.
+      real(dp), intent(in), optional :: level_variance !! Level variance.
+      real(dp), intent(in), optional :: slab_mean(:) !! Slab mean.
+      real(dp), intent(in), optional :: slab_covariance(:, :) !! Slab covariance matrix.
+      real(dp), intent(in), optional :: prior_inclusion_probability(:) !! Prior inclusion probability.
+      real(dp), intent(in), optional :: expected_model_size !! Expected model size.
+      real(dp), intent(in), optional :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in), optional :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in), optional :: level_prior_shape !! Level prior shape.
+      real(dp), intent(in), optional :: level_prior_rate !! Level prior rate.
+      logical, intent(in), optional :: initial_inclusion(:) !! Initial inclusion.
       type(bsts_dirm_t) :: out
       real(dp), allocatable :: mean0(:), covariance0(:, :), inclusion0(:)
       real(dp), allocatable :: state_normals(:, :, :), coefficient_normals(:, :)
@@ -6688,12 +6837,12 @@ contains
 
    pure function bsts_dirm_predict_draws(fit, future_predictors, &
       future_time_index, state_normal_draws, observation_normal_draws) result(out)
-      ! Forecast grouped dynamic-intercept observations from supplied draws.
-      type(bsts_dirm_t), intent(in) :: fit
-      real(dp), intent(in) :: future_predictors(:, :)
-      integer, intent(in) :: future_time_index(:)
-      real(dp), intent(in) :: state_normal_draws(:, :)
-      real(dp), intent(in) :: observation_normal_draws(:, :)
+      !! Forecast grouped dynamic-intercept observations from supplied draws.
+      type(bsts_dirm_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_predictors(:, :) !! Future predictors.
+      integer, intent(in) :: future_time_index(:) !! Future time index.
+      real(dp), intent(in) :: state_normal_draws(:, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: observation_normal_draws(:, :) !! Observation normal draws.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: sorted(:)
       real(dp) :: level
@@ -6748,17 +6897,17 @@ contains
          end if
          sorted = out%draws(row, :)
          call insertion_sort(sorted)
-         out%lower(row) = empirical_quantile(sorted, 0.025_dp)
-         out%upper(row) = empirical_quantile(sorted, 0.975_dp)
+         out%lower(row) = quantile(sorted, 0.025_dp)
+         out%upper(row) = quantile(sorted, 0.975_dp)
       end do
    end function bsts_dirm_predict_draws
 
    function bsts_dirm_predict(fit, future_predictors, future_time_index) &
       result(out)
-      ! Forecast grouped dynamic-intercept observations using random draws.
-      type(bsts_dirm_t), intent(in) :: fit
-      real(dp), intent(in) :: future_predictors(:, :)
-      integer, intent(in) :: future_time_index(:)
+      !! Forecast grouped dynamic-intercept observations using random draws.
+      type(bsts_dirm_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_predictors(:, :) !! Future predictors.
+      integer, intent(in) :: future_time_index(:) !! Future time index.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: state_normals(:, :), observation_normals(:, :)
       integer :: retained, time_points, draw, row
@@ -6797,24 +6946,32 @@ contains
       initial_inclusion, maximum_model_size, maximum_flips, burn, &
       latent_normal_draws, state_normal_draws, coefficient_normal_draws, &
       inclusion_uniform_draws, gamma_draws) result(out)
-      ! Sample a local-level mixed-frequency model from supplied variates.
-      real(dp), intent(in) :: coarse_response(:), predictors(:, :)
-      integer, intent(in) :: coarse_index(:)
-      real(dp), intent(in) :: membership_fraction(:)
-      logical, intent(in) :: contains_end(:)
-      real(dp), intent(in) :: initial_level_mean, initial_level_variance
-      real(dp), intent(in) :: observation_variance, level_variance
-      real(dp), intent(in) :: slab_mean(:), slab_covariance(:, :)
-      real(dp), intent(in) :: prior_inclusion_probability(:)
-      real(dp), intent(in) :: observation_prior_shape, observation_prior_rate
-      real(dp), intent(in) :: level_prior_shape, level_prior_rate
-      logical, intent(in) :: initial_inclusion(:)
-      integer, intent(in) :: maximum_model_size, maximum_flips, burn
-      real(dp), intent(in) :: latent_normal_draws(:, :)
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: coefficient_normal_draws(:, :)
-      real(dp), intent(in) :: inclusion_uniform_draws(:, :)
-      real(dp), intent(in) :: gamma_draws(:, :)
+      !! Sample a local-level mixed-frequency model from supplied variates.
+      real(dp), intent(in) :: coarse_response(:) !! Coarse response.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      integer, intent(in) :: coarse_index(:) !! Index of coarse.
+      real(dp), intent(in) :: membership_fraction(:) !! Membership fraction.
+      logical, intent(in) :: contains_end(:) !! Flag controlling contains end.
+      real(dp), intent(in) :: initial_level_mean !! Initial level mean.
+      real(dp), intent(in) :: initial_level_variance !! Initial level variance.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: level_variance !! Level variance.
+      real(dp), intent(in) :: slab_mean(:) !! Slab mean.
+      real(dp), intent(in) :: slab_covariance(:, :) !! Slab covariance matrix.
+      real(dp), intent(in) :: prior_inclusion_probability(:) !! Prior inclusion probability.
+      real(dp), intent(in) :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in) :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in) :: level_prior_shape !! Level prior shape.
+      real(dp), intent(in) :: level_prior_rate !! Level prior rate.
+      logical, intent(in) :: initial_inclusion(:) !! Initial inclusion.
+      integer, intent(in) :: maximum_model_size !! Maximum model size.
+      integer, intent(in) :: maximum_flips !! Maximum flips.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: latent_normal_draws(:, :) !! Latent normal simulation draws.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: coefficient_normal_draws(:, :) !! Coefficient normal simulation draws.
+      real(dp), intent(in) :: inclusion_uniform_draws(:, :) !! Inclusion uniform simulation draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
       type(bsts_mixed_t) :: out
       type(bsts_spike_slab_t) :: regression
       type(ssm_model_t) :: model
@@ -6981,21 +7138,29 @@ contains
       expected_model_size, observation_prior_shape, observation_prior_rate, &
       level_prior_shape, level_prior_rate, initial_inclusion, &
       maximum_model_size, maximum_flips) result(out)
-      ! Sample a local-level mixed-frequency model using random variates.
-      real(dp), intent(in) :: coarse_response(:), predictors(:, :)
-      integer, intent(in) :: coarse_index(:), iterations
-      real(dp), intent(in) :: membership_fraction(:)
-      logical, intent(in) :: contains_end(:)
-      integer, intent(in), optional :: burn, maximum_model_size, maximum_flips
-      real(dp), intent(in), optional :: initial_level_mean, initial_level_variance
-      real(dp), intent(in), optional :: observation_variance, level_variance
-      real(dp), intent(in), optional :: slab_mean(:), slab_covariance(:, :)
-      real(dp), intent(in), optional :: prior_inclusion_probability(:)
-      real(dp), intent(in), optional :: expected_model_size
-      real(dp), intent(in), optional :: observation_prior_shape
-      real(dp), intent(in), optional :: observation_prior_rate
-      real(dp), intent(in), optional :: level_prior_shape, level_prior_rate
-      logical, intent(in), optional :: initial_inclusion(:)
+      !! Sample a local-level mixed-frequency model using random variates.
+      real(dp), intent(in) :: coarse_response(:) !! Coarse response.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      integer, intent(in) :: coarse_index(:) !! Index of coarse.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      real(dp), intent(in) :: membership_fraction(:) !! Membership fraction.
+      logical, intent(in) :: contains_end(:) !! Flag controlling contains end.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      integer, intent(in), optional :: maximum_model_size !! Maximum model size.
+      integer, intent(in), optional :: maximum_flips !! Maximum flips.
+      real(dp), intent(in), optional :: initial_level_mean !! Initial level mean.
+      real(dp), intent(in), optional :: initial_level_variance !! Initial level variance.
+      real(dp), intent(in), optional :: observation_variance !! Observation-error variance.
+      real(dp), intent(in), optional :: level_variance !! Level variance.
+      real(dp), intent(in), optional :: slab_mean(:) !! Slab mean.
+      real(dp), intent(in), optional :: slab_covariance(:, :) !! Slab covariance matrix.
+      real(dp), intent(in), optional :: prior_inclusion_probability(:) !! Prior inclusion probability.
+      real(dp), intent(in), optional :: expected_model_size !! Expected model size.
+      real(dp), intent(in), optional :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in), optional :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in), optional :: level_prior_shape !! Level prior shape.
+      real(dp), intent(in), optional :: level_prior_rate !! Level prior rate.
+      logical, intent(in), optional :: initial_inclusion(:) !! Initial inclusion.
       type(bsts_mixed_t) :: out
       real(dp), allocatable :: mean0(:), covariance0(:, :), inclusion0(:)
       real(dp), allocatable :: latent_normals(:, :), state_normals(:, :, :)
@@ -7135,26 +7300,35 @@ contains
       initial_inclusion, maximum_model_size, maximum_flips, burn, &
       latent_normal_draws, structural_normal_draws, coefficient_normal_draws, &
       inclusion_uniform_draws, gamma_draws) result(out)
-      ! Sample a mixed-frequency trend-seasonal model from supplied variates.
-      real(dp), intent(in) :: coarse_response(:), predictors(:, :)
-      integer, intent(in) :: coarse_index(:), nseasons, duration
-      real(dp), intent(in) :: membership_fraction(:)
-      logical, intent(in) :: contains_end(:)
-      real(dp), intent(in) :: initial_trend_mean(2)
-      real(dp), intent(in) :: initial_trend_covariance(2, 2)
-      real(dp), intent(in) :: seasonal_initial_variance
-      real(dp), intent(in) :: observation_variance
-      real(dp), intent(in) :: component_variance(3)
-      real(dp), intent(in) :: slab_mean(:), slab_covariance(:, :)
-      real(dp), intent(in) :: prior_inclusion_probability(:)
-      real(dp), intent(in) :: observation_prior_shape, observation_prior_rate
-      real(dp), intent(in) :: component_prior_shape(3), component_prior_rate(3)
-      logical, intent(in) :: initial_inclusion(:)
-      integer, intent(in) :: maximum_model_size, maximum_flips, burn
-      real(dp), intent(in) :: latent_normal_draws(:, :)
-      real(dp), intent(in) :: structural_normal_draws(:, :, :)
-      real(dp), intent(in) :: coefficient_normal_draws(:, :)
-      real(dp), intent(in) :: inclusion_uniform_draws(:, :), gamma_draws(:, :)
+      !! Sample a mixed-frequency trend-seasonal model from supplied variates.
+      real(dp), intent(in) :: coarse_response(:) !! Coarse response.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      integer, intent(in) :: coarse_index(:) !! Index of coarse.
+      integer, intent(in) :: nseasons !! Nseasons.
+      integer, intent(in) :: duration !! Duration.
+      real(dp), intent(in) :: membership_fraction(:) !! Membership fraction.
+      logical, intent(in) :: contains_end(:) !! Flag controlling contains end.
+      real(dp), intent(in) :: initial_trend_mean(2) !! Initial trend mean.
+      real(dp), intent(in) :: initial_trend_covariance(2, 2) !! Initial trend covariance.
+      real(dp), intent(in) :: seasonal_initial_variance !! Seasonal initial variance.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: component_variance(3) !! Component variance.
+      real(dp), intent(in) :: slab_mean(:) !! Slab mean.
+      real(dp), intent(in) :: slab_covariance(:, :) !! Slab covariance matrix.
+      real(dp), intent(in) :: prior_inclusion_probability(:) !! Prior inclusion probability.
+      real(dp), intent(in) :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in) :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in) :: component_prior_shape(3) !! Component prior shape.
+      real(dp), intent(in) :: component_prior_rate(3) !! Component prior rate.
+      logical, intent(in) :: initial_inclusion(:) !! Initial inclusion.
+      integer, intent(in) :: maximum_model_size !! Maximum model size.
+      integer, intent(in) :: maximum_flips !! Maximum flips.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: latent_normal_draws(:, :) !! Latent normal simulation draws.
+      real(dp), intent(in) :: structural_normal_draws(:, :, :) !! Structural normal simulation draws.
+      real(dp), intent(in) :: coefficient_normal_draws(:, :) !! Coefficient normal simulation draws.
+      real(dp), intent(in) :: inclusion_uniform_draws(:, :) !! Inclusion uniform simulation draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
       type(bsts_mixed_t) :: out
       type(bsts_spike_slab_t) :: regression
       type(ssm_model_t) :: model
@@ -7343,14 +7517,20 @@ contains
       coarse_index, membership_fraction, contains_end, nseasons, duration, &
       iterations, burn, prior_inclusion_probability, expected_model_size, &
       maximum_model_size, maximum_flips) result(out)
-      ! Sample a mixed-frequency trend-seasonal model using random variates.
-      real(dp), intent(in) :: coarse_response(:), predictors(:, :)
-      integer, intent(in) :: coarse_index(:), nseasons, duration, iterations
-      real(dp), intent(in) :: membership_fraction(:)
-      logical, intent(in) :: contains_end(:)
-      integer, intent(in), optional :: burn, maximum_model_size, maximum_flips
-      real(dp), intent(in), optional :: prior_inclusion_probability(:)
-      real(dp), intent(in), optional :: expected_model_size
+      !! Sample a mixed-frequency trend-seasonal model using random variates.
+      real(dp), intent(in) :: coarse_response(:) !! Coarse response.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      integer, intent(in) :: coarse_index(:) !! Index of coarse.
+      integer, intent(in) :: nseasons !! Nseasons.
+      integer, intent(in) :: duration !! Duration.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      real(dp), intent(in) :: membership_fraction(:) !! Membership fraction.
+      logical, intent(in) :: contains_end(:) !! Flag controlling contains end.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      integer, intent(in), optional :: maximum_model_size !! Maximum model size.
+      integer, intent(in), optional :: maximum_flips !! Maximum flips.
+      real(dp), intent(in), optional :: prior_inclusion_probability(:) !! Prior inclusion probability.
+      real(dp), intent(in), optional :: expected_model_size !! Expected model size.
       type(bsts_mixed_t) :: out
       real(dp), allocatable :: inclusion(:), slab_covariance(:, :)
       real(dp), allocatable :: latent_normals(:, :), structural_normals(:, :, :)
@@ -7452,14 +7632,14 @@ contains
    pure function bsts_mixed_trend_seasonal_predict_draws(fit, &
       future_predictors, future_coarse_index, membership_fraction, contains_end, &
       structural_normal_draws, observation_normal_draws) result(out)
-      ! Forecast a mixed trend-seasonal model from supplied random variates.
-      type(bsts_mixed_t), intent(in) :: fit
-      real(dp), intent(in) :: future_predictors(:, :)
-      integer, intent(in) :: future_coarse_index(:)
-      real(dp), intent(in) :: membership_fraction(:)
-      logical, intent(in) :: contains_end(:)
-      real(dp), intent(in) :: structural_normal_draws(:, :, :)
-      real(dp), intent(in) :: observation_normal_draws(:, :)
+      !! Forecast a mixed trend-seasonal model from supplied random variates.
+      type(bsts_mixed_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_predictors(:, :) !! Future predictors.
+      integer, intent(in) :: future_coarse_index(:) !! Future coarse index.
+      real(dp), intent(in) :: membership_fraction(:) !! Membership fraction.
+      logical, intent(in) :: contains_end(:) !! Flag controlling contains end.
+      real(dp), intent(in) :: structural_normal_draws(:, :, :) !! Structural normal simulation draws.
+      real(dp), intent(in) :: observation_normal_draws(:, :) !! Observation normal draws.
       type(bsts_mixed_prediction_t) :: out
       real(dp), allocatable :: design(:, :), structural(:), next_seasonal(:)
       integer :: fine_points, coarse_points, retained, dimension
@@ -7526,12 +7706,12 @@ contains
 
    function bsts_mixed_trend_seasonal_predict(fit, future_predictors, &
       future_coarse_index, membership_fraction, contains_end) result(out)
-      ! Forecast a mixed trend-seasonal model using the shared random stream.
-      type(bsts_mixed_t), intent(in) :: fit
-      real(dp), intent(in) :: future_predictors(:, :)
-      integer, intent(in) :: future_coarse_index(:)
-      real(dp), intent(in) :: membership_fraction(:)
-      logical, intent(in) :: contains_end(:)
+      !! Forecast a mixed trend-seasonal model using the shared random stream.
+      type(bsts_mixed_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_predictors(:, :) !! Future predictors.
+      integer, intent(in) :: future_coarse_index(:) !! Future coarse index.
+      real(dp), intent(in) :: membership_fraction(:) !! Membership fraction.
+      logical, intent(in) :: contains_end(:) !! Flag controlling contains end.
       type(bsts_mixed_prediction_t) :: out
       real(dp), allocatable :: structural_normals(:, :, :)
       real(dp), allocatable :: observation_normals(:, :)
@@ -7565,14 +7745,14 @@ contains
    pure function bsts_mixed_predict_draws(fit, future_predictors, &
       future_coarse_index, membership_fraction, contains_end, &
       state_normal_draws, observation_normal_draws) result(out)
-      ! Forecast fine and aggregated mixed-frequency observations.
-      type(bsts_mixed_t), intent(in) :: fit
-      real(dp), intent(in) :: future_predictors(:, :)
-      integer, intent(in) :: future_coarse_index(:)
-      real(dp), intent(in) :: membership_fraction(:)
-      logical, intent(in) :: contains_end(:)
-      real(dp), intent(in) :: state_normal_draws(:, :)
-      real(dp), intent(in) :: observation_normal_draws(:, :)
+      !! Forecast fine and aggregated mixed-frequency observations.
+      type(bsts_mixed_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_predictors(:, :) !! Future predictors.
+      integer, intent(in) :: future_coarse_index(:) !! Future coarse index.
+      real(dp), intent(in) :: membership_fraction(:) !! Membership fraction.
+      logical, intent(in) :: contains_end(:) !! Flag controlling contains end.
+      real(dp), intent(in) :: state_normal_draws(:, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: observation_normal_draws(:, :) !! Observation normal draws.
       type(bsts_mixed_prediction_t) :: out
       real(dp), allocatable :: design(:, :)
       real(dp) :: level
@@ -7623,12 +7803,12 @@ contains
 
    function bsts_mixed_predict(fit, future_predictors, future_coarse_index, &
       membership_fraction, contains_end) result(out)
-      ! Forecast a mixed-frequency model using the shared random stream.
-      type(bsts_mixed_t), intent(in) :: fit
-      real(dp), intent(in) :: future_predictors(:, :)
-      integer, intent(in) :: future_coarse_index(:)
-      real(dp), intent(in) :: membership_fraction(:)
-      logical, intent(in) :: contains_end(:)
+      !! Forecast a mixed-frequency model using the shared random stream.
+      type(bsts_mixed_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_predictors(:, :) !! Future predictors.
+      integer, intent(in) :: future_coarse_index(:) !! Future coarse index.
+      real(dp), intent(in) :: membership_fraction(:) !! Membership fraction.
+      logical, intent(in) :: contains_end(:) !! Flag controlling contains end.
       type(bsts_mixed_prediction_t) :: out
       real(dp), allocatable :: state_normals(:, :), observation_normals(:, :)
       integer :: retained, draw, time
@@ -7660,16 +7840,22 @@ contains
       observation_prior_shape, observation_prior_rate, innovation_prior_shape, &
       innovation_prior_rate, burn, state_normal_draws, ar_normal_draws, &
       gamma_draws, offset_draws) result(out)
-      ! Sample a stationary AR(p) state component from supplied random draws.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: initial_ar_coefficients(:)
-      real(dp), intent(in) :: observation_variance, innovation_variance
-      real(dp), intent(in) :: observation_prior_shape, observation_prior_rate
-      real(dp), intent(in) :: innovation_prior_shape, innovation_prior_rate
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: ar_normal_draws(:, :, :), gamma_draws(:, :)
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Sample a stationary AR(p) state component from supplied random draws.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_ar_coefficients(:) !! Initial autoregressive coefficients.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: innovation_variance !! Innovation variance.
+      real(dp), intent(in) :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in) :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in) :: innovation_prior_shape !! Innovation prior shape.
+      real(dp), intent(in) :: innovation_prior_rate !! Innovation prior rate.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: ar_normal_draws(:, :, :) !! Autoregressive normal simulation draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_mcmc_t) :: out
       type(ssm_model_t) :: model
       real(dp), allocatable :: path(:, :), working_y(:), design(:, :)
@@ -7801,11 +7987,13 @@ contains
 
    function bsts_ar(y, lags, iterations, burn, proposal_attempts, offset_draws) &
       result(out)
-      ! Sample a stationary AR(p) state component using the random stream.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: lags, iterations
-      integer, intent(in), optional :: burn, proposal_attempts
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Sample a stationary AR(p) state component using the random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: lags !! Lags.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      integer, intent(in), optional :: proposal_attempts !! Proposal attempts.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_mcmc_t) :: out
       real(dp), allocatable :: mean0(:), covariance0(:, :), ar0(:)
       real(dp), allocatable :: state_normals(:, :, :), ar_normals(:, :, :)
@@ -7874,21 +8062,29 @@ contains
       maximum_flips, truncate_stationary, burn, state_normal_draws, &
       coefficient_normal_draws, inclusion_uniform_draws, gamma_draws, &
       offset_draws) result(out)
-      ! Sample a spike-and-slab AR state model from supplied random draws.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: initial_ar_coefficients(:)
-      logical, intent(in) :: initial_inclusion(:)
-      real(dp), intent(in) :: observation_variance, innovation_variance
-      real(dp), intent(in) :: slab_mean(:), slab_covariance(:, :)
-      real(dp), intent(in) :: prior_inclusion_probability(:)
-      real(dp), intent(in) :: observation_prior_shape, observation_prior_rate
-      real(dp), intent(in) :: innovation_prior_shape, innovation_prior_rate
-      integer, intent(in) :: maximum_flips, burn
-      logical, intent(in) :: truncate_stationary
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: coefficient_normal_draws(:, :, :)
-      real(dp), intent(in) :: inclusion_uniform_draws(:, :), gamma_draws(:, :)
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Sample a spike-and-slab AR state model from supplied random draws.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: initial_ar_coefficients(:) !! Initial autoregressive coefficients.
+      logical, intent(in) :: initial_inclusion(:) !! Initial inclusion.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: innovation_variance !! Innovation variance.
+      real(dp), intent(in) :: slab_mean(:) !! Slab mean.
+      real(dp), intent(in) :: slab_covariance(:, :) !! Slab covariance matrix.
+      real(dp), intent(in) :: prior_inclusion_probability(:) !! Prior inclusion probability.
+      real(dp), intent(in) :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in) :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in) :: innovation_prior_shape !! Innovation prior shape.
+      real(dp), intent(in) :: innovation_prior_rate !! Innovation prior rate.
+      integer, intent(in) :: maximum_flips !! Maximum flips.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      logical, intent(in) :: truncate_stationary !! Flag controlling truncate stationary.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: coefficient_normal_draws(:, :, :) !! Coefficient normal simulation draws.
+      real(dp), intent(in) :: inclusion_uniform_draws(:, :) !! Inclusion uniform simulation draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_mcmc_t) :: out
       type(ssm_model_t) :: model
       real(dp), allocatable :: path(:, :), working_y(:), design(:, :), target(:)
@@ -8105,14 +8301,18 @@ contains
    function bsts_auto_ar(y, lags, iterations, burn, maximum_flips, &
       truncate_stationary, proposal_attempts, prior_inclusion_probability, &
       slab_mean, slab_standard_deviation, offset_draws) result(out)
-      ! Sample spike-and-slab AR lag selection using the random stream.
-      real(dp), intent(in) :: y(:)
-      integer, intent(in) :: lags, iterations
-      integer, intent(in), optional :: burn, maximum_flips, proposal_attempts
-      logical, intent(in), optional :: truncate_stationary
-      real(dp), intent(in), optional :: prior_inclusion_probability(:)
-      real(dp), intent(in), optional :: slab_mean(:), slab_standard_deviation(:)
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Sample spike-and-slab AR lag selection using the random stream.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      integer, intent(in) :: lags !! Lags.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      integer, intent(in), optional :: maximum_flips !! Maximum flips.
+      integer, intent(in), optional :: proposal_attempts !! Proposal attempts.
+      logical, intent(in), optional :: truncate_stationary !! Flag controlling truncate stationary.
+      real(dp), intent(in), optional :: prior_inclusion_probability(:) !! Prior inclusion probability.
+      real(dp), intent(in), optional :: slab_mean(:) !! Slab mean.
+      real(dp), intent(in), optional :: slab_standard_deviation(:) !! Slab standard deviation.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_mcmc_t) :: out
       real(dp), allocatable :: mean0(:), covariance0(:, :), ar0(:)
       real(dp), allocatable :: inclusion0(:), slab0(:), slab_sd0(:)
@@ -8223,11 +8423,11 @@ contains
 
    pure function bsts_ar_predict_draws(fit, horizon, state_normal_draws, &
       observation_normal_draws) result(out)
-      ! Forecast a Bayesian AR state component from supplied normal draws.
-      type(bsts_mcmc_t), intent(in) :: fit
-      integer, intent(in) :: horizon
-      real(dp), intent(in) :: state_normal_draws(:, :)
-      real(dp), intent(in) :: observation_normal_draws(:, :)
+      !! Forecast a Bayesian AR state component from supplied normal draws.
+      type(bsts_mcmc_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in) :: state_normal_draws(:, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: observation_normal_draws(:, :) !! Observation normal draws.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: state(:), sorted(:)
       real(dp) :: next_state
@@ -8277,15 +8477,15 @@ contains
          end if
          sorted = out%draws(step, :)
          call insertion_sort(sorted)
-         out%lower(step) = empirical_quantile(sorted, 0.025_dp)
-         out%upper(step) = empirical_quantile(sorted, 0.975_dp)
+         out%lower(step) = quantile(sorted, 0.025_dp)
+         out%upper(step) = quantile(sorted, 0.975_dp)
       end do
    end function bsts_ar_predict_draws
 
    function bsts_ar_predict(fit, horizon) result(out)
-      ! Forecast a Bayesian AR state component using the random stream.
-      type(bsts_mcmc_t), intent(in) :: fit
-      integer, intent(in) :: horizon
+      !! Forecast a Bayesian AR state component using the random stream.
+      type(bsts_mcmc_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: state_normals(:, :), observation_normals(:, :)
       integer :: retained, draw, step
@@ -8316,16 +8516,21 @@ contains
       innovation_variance, residual_prior_shape, residual_prior_rate, &
       innovation_prior_shape, innovation_prior_rate, burn, &
       state_normal_draws, gamma_draws, offset_draws) result(out)
-      ! Sample independent random-walk coefficient variances from supplied draws.
-      real(dp), intent(in) :: response(:), predictors(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), residual_variance
-      real(dp), intent(in) :: innovation_variance(:), residual_prior_shape
-      real(dp), intent(in) :: residual_prior_rate
-      real(dp), intent(in) :: innovation_prior_shape(:)
-      real(dp), intent(in) :: innovation_prior_rate(:)
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: state_normal_draws(:, :, :), gamma_draws(:, :)
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Sample independent random-walk coefficient variances from supplied draws.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: residual_variance !! Residual variance.
+      real(dp), intent(in) :: innovation_variance(:) !! Innovation variance.
+      real(dp), intent(in) :: residual_prior_shape !! Residual prior shape.
+      real(dp), intent(in) :: residual_prior_rate !! Residual prior rate.
+      real(dp), intent(in) :: innovation_prior_shape(:) !! Innovation prior shape.
+      real(dp), intent(in) :: innovation_prior_rate(:) !! Innovation prior rate.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_dynamic_regression_t) :: out
       real(dp) :: unused_variance(size(innovation_variance))
 
@@ -8352,18 +8557,24 @@ contains
       residual_prior_rate, shrinkage_shape, initial_hierarchy_rate, &
       hierarchy_rate_prior_shape, hierarchy_rate_prior_rate, burn, &
       state_normal_draws, gamma_draws, offset_draws) result(out)
-      ! Sample a shared-rate hierarchy for random-walk coefficient variances.
-      real(dp), intent(in) :: response(:), predictors(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), residual_variance
-      real(dp), intent(in) :: scaled_innovation_variance(:)
-      real(dp), intent(in) :: predictor_variance(:), residual_prior_shape
-      real(dp), intent(in) :: residual_prior_rate, shrinkage_shape
-      real(dp), intent(in) :: initial_hierarchy_rate
-      real(dp), intent(in) :: hierarchy_rate_prior_shape
-      real(dp), intent(in) :: hierarchy_rate_prior_rate
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: state_normal_draws(:, :, :), gamma_draws(:, :)
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Sample a shared-rate hierarchy for random-walk coefficient variances.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: residual_variance !! Residual variance.
+      real(dp), intent(in) :: scaled_innovation_variance(:) !! Scaled innovation variance.
+      real(dp), intent(in) :: predictor_variance(:) !! Predictor variance.
+      real(dp), intent(in) :: residual_prior_shape !! Residual prior shape.
+      real(dp), intent(in) :: residual_prior_rate !! Residual prior rate.
+      real(dp), intent(in) :: shrinkage_shape !! Shrinkage shape.
+      real(dp), intent(in) :: initial_hierarchy_rate !! Initial hierarchy rate.
+      real(dp), intent(in) :: hierarchy_rate_prior_shape !! Hierarchy rate prior shape.
+      real(dp), intent(in) :: hierarchy_rate_prior_rate !! Hierarchy rate prior rate.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_dynamic_regression_t) :: out
       real(dp) :: actual_variance(size(scaled_innovation_variance))
       real(dp) :: unused_shape(size(scaled_innovation_variance))
@@ -8393,18 +8604,20 @@ contains
       initial_mean, initial_covariance, residual_variance, &
       innovation_variance, residual_prior_shape, residual_prior_rate, &
       innovation_prior_shape, innovation_prior_rate, offset_draws) result(out)
-      ! Sample independent dynamic-regression variances using the random stream.
-      real(dp), intent(in) :: response(:), predictors(:, :)
-      integer, intent(in) :: iterations
-      integer, intent(in), optional :: burn
-      real(dp), intent(in), optional :: initial_mean(:)
-      real(dp), intent(in), optional :: initial_covariance(:, :)
-      real(dp), intent(in), optional :: residual_variance
-      real(dp), intent(in), optional :: innovation_variance(:)
-      real(dp), intent(in), optional :: residual_prior_shape, residual_prior_rate
-      real(dp), intent(in), optional :: innovation_prior_shape(:)
-      real(dp), intent(in), optional :: innovation_prior_rate(:)
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Sample independent dynamic-regression variances using the random stream.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in), optional :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in), optional :: residual_variance !! Residual variance.
+      real(dp), intent(in), optional :: innovation_variance(:) !! Innovation variance.
+      real(dp), intent(in), optional :: residual_prior_shape !! Residual prior shape.
+      real(dp), intent(in), optional :: residual_prior_rate !! Residual prior rate.
+      real(dp), intent(in), optional :: innovation_prior_shape(:) !! Innovation prior shape.
+      real(dp), intent(in), optional :: innovation_prior_rate(:) !! Innovation prior rate.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_dynamic_regression_t) :: out
       real(dp), allocatable :: mean0(:), covariance0(:, :), variance0(:)
       real(dp), allocatable :: shape0(:), rate0(:), normals(:, :, :)
@@ -8512,14 +8725,15 @@ contains
    function bsts_dynamic_regression_hierarchical(response, predictors, &
       iterations, burn, shrinkage_shape, hierarchy_rate_prior_shape, &
       hierarchy_rate_prior_rate, offset_draws) result(out)
-      ! Sample scale-adjusted dynamic coefficients with a shared prior rate.
-      real(dp), intent(in) :: response(:), predictors(:, :)
-      integer, intent(in) :: iterations
-      integer, intent(in), optional :: burn
-      real(dp), intent(in), optional :: shrinkage_shape
-      real(dp), intent(in), optional :: hierarchy_rate_prior_shape
-      real(dp), intent(in), optional :: hierarchy_rate_prior_rate
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Sample scale-adjusted dynamic coefficients with a shared prior rate.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: shrinkage_shape !! Shrinkage shape.
+      real(dp), intent(in), optional :: hierarchy_rate_prior_shape !! Hierarchy rate prior shape.
+      real(dp), intent(in), optional :: hierarchy_rate_prior_rate !! Hierarchy rate prior rate.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_dynamic_regression_t) :: out
       real(dp), allocatable :: mean0(:), covariance0(:, :), scaled0(:)
       real(dp), allocatable :: predictor_scale(:), normals(:, :, :)
@@ -8593,11 +8807,11 @@ contains
 
    pure function bsts_dynamic_regression_predict_draws(fit, future_predictors, &
       state_normal_draws, observation_normal_draws) result(out)
-      ! Forecast dynamic regression from supplied state and observation normals.
-      type(bsts_dynamic_regression_t), intent(in) :: fit
-      real(dp), intent(in) :: future_predictors(:, :)
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: observation_normal_draws(:, :)
+      !! Forecast dynamic regression from supplied state and observation normals.
+      type(bsts_dynamic_regression_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_predictors(:, :) !! Future predictors.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: observation_normal_draws(:, :) !! Observation normal draws.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: coefficient(:), sorted(:)
       integer :: horizon, retained, variables, draw, source, step
@@ -8645,15 +8859,15 @@ contains
          end if
          sorted = out%draws(step, :)
          call insertion_sort(sorted)
-         out%lower(step) = empirical_quantile(sorted, 0.025_dp)
-         out%upper(step) = empirical_quantile(sorted, 0.975_dp)
+         out%lower(step) = quantile(sorted, 0.025_dp)
+         out%upper(step) = quantile(sorted, 0.975_dp)
       end do
    end function bsts_dynamic_regression_predict_draws
 
    function bsts_dynamic_regression_predict(fit, future_predictors) result(out)
-      ! Forecast dynamic regression using the shared random stream.
-      type(bsts_dynamic_regression_t), intent(in) :: fit
-      real(dp), intent(in) :: future_predictors(:, :)
+      !! Forecast dynamic regression using the shared random stream.
+      type(bsts_dynamic_regression_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_predictors(:, :) !! Future predictors.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: state_normals(:, :, :), observation_normals(:, :)
       integer :: variables, horizon, retained, draw, step, component
@@ -8689,23 +8903,25 @@ contains
       residual_prior_shape, residual_prior_rate, innovation_prior_shape, &
       innovation_prior_rate, burn, state_normal_draws, ar_normal_draws, &
       gamma_draws, offset_draws) result(out)
-      ! Sample AR(p) dynamic-regression paths from supplied random variates.
-      real(dp), intent(in) :: response(:), predictors(:, :)
-      integer, intent(in) :: lags
-      real(dp), intent(in) :: initial_state_mean(:)
-      real(dp), intent(in) :: initial_state_covariance(:, :)
-      real(dp), intent(in) :: initial_ar_coefficients(:, :)
-      real(dp), intent(in) :: residual_variance
-      real(dp), intent(in) :: scaled_innovation_variance(:)
-      real(dp), intent(in) :: predictor_mean_square(:)
-      real(dp), intent(in) :: residual_prior_shape, residual_prior_rate
-      real(dp), intent(in) :: innovation_prior_shape(:)
-      real(dp), intent(in) :: innovation_prior_rate(:)
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: ar_normal_draws(:, :, :, :)
-      real(dp), intent(in) :: gamma_draws(:, :)
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Sample AR(p) dynamic-regression paths from supplied random variates.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      integer, intent(in) :: lags !! Lags.
+      real(dp), intent(in) :: initial_state_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_state_covariance(:, :) !! Initial state covariance.
+      real(dp), intent(in) :: initial_ar_coefficients(:, :) !! Initial autoregressive coefficients.
+      real(dp), intent(in) :: residual_variance !! Residual variance.
+      real(dp), intent(in) :: scaled_innovation_variance(:) !! Scaled innovation variance.
+      real(dp), intent(in) :: predictor_mean_square(:) !! Predictor mean square.
+      real(dp), intent(in) :: residual_prior_shape !! Residual prior shape.
+      real(dp), intent(in) :: residual_prior_rate !! Residual prior rate.
+      real(dp), intent(in) :: innovation_prior_shape(:) !! Innovation prior shape.
+      real(dp), intent(in) :: innovation_prior_rate(:) !! Innovation prior rate.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: ar_normal_draws(:, :, :, :) !! Autoregressive normal simulation draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_dynamic_regression_t) :: out
       type(ssm_model_t) :: model
       real(dp), allocatable :: path(:, :), working_response(:)
@@ -8866,11 +9082,14 @@ contains
 
    function bsts_dynamic_regression_ar(response, predictors, lags, iterations, &
       burn, proposal_attempts, offset_draws) result(out)
-      ! Sample AR(p) dynamic regression using the shared random stream.
-      real(dp), intent(in) :: response(:), predictors(:, :)
-      integer, intent(in) :: lags, iterations
-      integer, intent(in), optional :: burn, proposal_attempts
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Sample AR(p) dynamic regression using the shared random stream.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      integer, intent(in) :: lags !! Lags.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      integer, intent(in), optional :: proposal_attempts !! Proposal attempts.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_dynamic_regression_t) :: out
       real(dp), allocatable :: mean0(:), covariance0(:, :), ar0(:, :)
       real(dp), allocatable :: scaled0(:), mean_square(:), shape0(:), rate0(:)
@@ -8947,11 +9166,11 @@ contains
 
    pure function bsts_dynamic_regression_ar_predict_draws(fit, &
       future_predictors, state_normal_draws, observation_normal_draws) result(out)
-      ! Forecast AR dynamic coefficients from supplied independent normals.
-      type(bsts_dynamic_regression_t), intent(in) :: fit
-      real(dp), intent(in) :: future_predictors(:, :)
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: observation_normal_draws(:, :)
+      !! Forecast AR dynamic coefficients from supplied independent normals.
+      type(bsts_dynamic_regression_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_predictors(:, :) !! Future predictors.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: observation_normal_draws(:, :) !! Observation normal draws.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: history(:, :), sorted(:), coefficient(:)
       integer :: variables, lags, horizon, retained, draw, source, step, lag
@@ -9013,15 +9232,15 @@ contains
          end if
          sorted = out%draws(step, :)
          call insertion_sort(sorted)
-         out%lower(step) = empirical_quantile(sorted, 0.025_dp)
-         out%upper(step) = empirical_quantile(sorted, 0.975_dp)
+         out%lower(step) = quantile(sorted, 0.025_dp)
+         out%upper(step) = quantile(sorted, 0.975_dp)
       end do
    end function bsts_dynamic_regression_ar_predict_draws
 
    function bsts_dynamic_regression_ar_predict(fit, future_predictors) result(out)
-      ! Forecast AR dynamic regression using the shared random stream.
-      type(bsts_dynamic_regression_t), intent(in) :: fit
-      real(dp), intent(in) :: future_predictors(:, :)
+      !! Forecast AR dynamic regression using the shared random stream.
+      type(bsts_dynamic_regression_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_predictors(:, :) !! Future predictors.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: state_normals(:, :, :), observation_normals(:, :)
       integer :: variables, horizon, retained, draw, step
@@ -9050,10 +9269,10 @@ contains
    end function bsts_dynamic_regression_ar_predict
 
    pure subroutine set_dynamic_ar_transition(transition, coefficients, lags)
-      ! Fill independent companion blocks for AR dynamic coefficients.
-      real(dp), intent(out) :: transition(:, :)
-      real(dp), intent(in) :: coefficients(:, :)
-      integer, intent(in) :: lags
+      !! Fill independent companion blocks for AR dynamic coefficients.
+      real(dp), intent(out) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: coefficients(:, :) !! Model coefficients.
+      integer, intent(in) :: lags !! Lags.
       integer :: component, lag, start
 
       transition = 0.0_dp
@@ -9067,9 +9286,9 @@ contains
    end subroutine set_dynamic_ar_transition
 
    pure subroutine set_ar_transition(transition, coefficients)
-      ! Fill a companion transition matrix for one AR process.
-      real(dp), intent(out) :: transition(:, :)
-      real(dp), intent(in) :: coefficients(:)
+      !! Fill a companion transition matrix for one AR process.
+      real(dp), intent(out) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
       integer :: lag
 
       transition = 0.0_dp
@@ -9080,8 +9299,8 @@ contains
    end subroutine set_ar_transition
 
    pure function ar_coefficients_stationary(coefficients) result(stationary)
-      ! Test AR stationarity through the inverse Levinson recursion.
-      real(dp), intent(in) :: coefficients(:)
+      !! Test AR stationarity through the inverse Levinson recursion.
+      real(dp), intent(in) :: coefficients(:) !! Model coefficients.
       logical :: stationary
       real(dp) :: work(size(coefficients)), previous(size(coefficients))
       real(dp) :: reflection, denominator
@@ -9107,8 +9326,8 @@ contains
    end function ar_coefficients_stationary
 
    pure function predictor_mean_squares(predictors) result(mean_square)
-      ! Compute positive predictor second moments used by AR state scaling.
-      real(dp), intent(in) :: predictors(:, :)
+      !! Compute positive predictor second moments used by AR state scaling.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
       real(dp) :: mean_square(size(predictors, 2))
       integer :: component
 
@@ -9120,9 +9339,9 @@ contains
    end function predictor_mean_squares
 
    pure function identity_block(dimension, scale) result(matrix)
-      ! Construct a scaled identity matrix.
-      integer, intent(in) :: dimension
-      real(dp), intent(in) :: scale
+      !! Construct a scaled identity matrix.
+      integer, intent(in) :: dimension !! Dimension.
+      real(dp), intent(in) :: scale !! Scale.
       real(dp) :: matrix(dimension, dimension)
       integer :: component
 
@@ -9133,8 +9352,8 @@ contains
    end function identity_block
 
    subroutine fill_vector_normals(draws)
-      ! Fill a vector with independent standard normal draws.
-      real(dp), intent(out) :: draws(:)
+      !! Fill a vector with independent standard normal draws.
+      real(dp), intent(out) :: draws(:) !! Draws.
       integer :: component
 
       do component = 1, size(draws)
@@ -9144,10 +9363,12 @@ contains
 
    pure subroutine gamma_from_proposals(shape_parameter, normal_draws, &
       uniform_draws, value, info)
-      ! Generate a unit-scale gamma draw from supplied Marsaglia proposals.
-      real(dp), intent(in) :: shape_parameter, normal_draws(:), uniform_draws(:)
-      real(dp), intent(out) :: value
-      integer, intent(out) :: info
+      !! Generate a unit-scale gamma draw from supplied Marsaglia proposals.
+      real(dp), intent(in) :: shape_parameter !! Shape parameter.
+      real(dp), intent(in) :: normal_draws(:) !! Independent standard-normal draws.
+      real(dp), intent(in) :: uniform_draws(:) !! Uniform simulation draws.
+      real(dp), intent(out) :: value !! Input value.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp) :: d, c, candidate, normal, uniform
       integer :: proposal
 
@@ -9179,8 +9400,10 @@ contains
 
    pure elemental real(dp) function reflected_value(value, lower, upper) &
       result(reflected)
-      ! Reflect a proposal into a finite interval without point masses.
-      real(dp), intent(in) :: value, lower, upper
+      !! Reflect a proposal into a finite interval without point masses.
+      real(dp), intent(in) :: value !! Input value.
+      real(dp), intent(in) :: lower !! Lower.
+      real(dp), intent(in) :: upper !! Upper.
       real(dp) :: position, width
 
       width = upper - lower
@@ -9193,8 +9416,9 @@ contains
    end function reflected_value
 
    pure function student_weight_log_density(weights, degrees) result(value)
-      ! Evaluate latent Student precision weights up to a common constant.
-      real(dp), intent(in) :: weights(:), degrees
+      !! Evaluate latent Student precision weights up to a common constant.
+      real(dp), intent(in) :: weights(:) !! Observation or objective weights.
+      real(dp), intent(in) :: degrees !! Degrees.
       real(dp) :: value, shape_parameter, rate
 
       shape_parameter = 0.5_dp*degrees
@@ -9211,21 +9435,27 @@ contains
       hierarchical, predictor_variance, shrinkage_shape, initial_hierarchy_rate, &
       hierarchy_rate_prior_shape, hierarchy_rate_prior_rate, &
       offset_draws) result(out)
-      ! Run conjugate Gibbs updates for a random-walk dynamic regression.
-      real(dp), intent(in) :: response(:), predictors(:, :), initial_mean(:)
-      real(dp), intent(in) :: initial_covariance(:, :), residual_variance
-      real(dp), intent(in) :: innovation_variance(:), residual_prior_shape
-      real(dp), intent(in) :: residual_prior_rate
-      real(dp), intent(in) :: innovation_prior_shape(:)
-      real(dp), intent(in) :: innovation_prior_rate(:)
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: state_normal_draws(:, :, :), gamma_draws(:, :)
-      logical, intent(in) :: hierarchical
-      real(dp), intent(in) :: predictor_variance(:), shrinkage_shape
-      real(dp), intent(in) :: initial_hierarchy_rate
-      real(dp), intent(in) :: hierarchy_rate_prior_shape
-      real(dp), intent(in) :: hierarchy_rate_prior_rate
-      real(dp), intent(in), optional :: offset_draws(:, :)
+      !! Run conjugate Gibbs updates for a random-walk dynamic regression.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: residual_variance !! Residual variance.
+      real(dp), intent(in) :: innovation_variance(:) !! Innovation variance.
+      real(dp), intent(in) :: residual_prior_shape !! Residual prior shape.
+      real(dp), intent(in) :: residual_prior_rate !! Residual prior rate.
+      real(dp), intent(in) :: innovation_prior_shape(:) !! Innovation prior shape.
+      real(dp), intent(in) :: innovation_prior_rate(:) !! Innovation prior rate.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
+      logical, intent(in) :: hierarchical !! Flag controlling hierarchical.
+      real(dp), intent(in) :: predictor_variance(:) !! Predictor variance.
+      real(dp), intent(in) :: shrinkage_shape !! Shrinkage shape.
+      real(dp), intent(in) :: initial_hierarchy_rate !! Initial hierarchy rate.
+      real(dp), intent(in) :: hierarchy_rate_prior_shape !! Hierarchy rate prior shape.
+      real(dp), intent(in) :: hierarchy_rate_prior_rate !! Hierarchy rate prior rate.
+      real(dp), intent(in), optional :: offset_draws(:, :) !! Offset simulation draws.
       type(bsts_dynamic_regression_t) :: out
       type(ssm_model_t) :: model
       real(dp), allocatable :: path(:, :), working_response(:)
@@ -9361,8 +9591,9 @@ contains
    end function dynamic_regression_draws_core
 
    pure function dynamic_regression_data_valid(response, predictors) result(valid)
-      ! Report whether dynamic-regression observations and predictors are usable.
-      real(dp), intent(in) :: response(:), predictors(:, :)
+      !! Report whether dynamic-regression observations and predictors are usable.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
       logical :: valid
 
       valid = size(response) >= 2 .and. size(predictors, 1) == size(response) .and. &
@@ -9371,8 +9602,8 @@ contains
    end function dynamic_regression_data_valid
 
    pure function predictor_variances(predictors) result(variances)
-      ! Compute positive sample variances used to scale dynamic coefficients.
-      real(dp), intent(in) :: predictors(:, :)
+      !! Compute positive sample variances used to scale dynamic coefficients.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
       real(dp) :: variances(size(predictors, 2)), center
       integer :: component
 
@@ -9388,15 +9619,21 @@ contains
       transition, observation, observation_variance, state_variance, &
       observation_prior_shape, observation_prior_rate, state_prior_shape, &
       state_prior_rate, burn, state_normal_draws, gamma_draws) result(out)
-      ! Run conjugate structural Gibbs updates for diagonal state disturbances.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: transition(:, :), observation(:)
-      real(dp), intent(in) :: observation_variance, state_variance(:)
-      real(dp), intent(in) :: observation_prior_shape, observation_prior_rate
-      real(dp), intent(in) :: state_prior_shape(:), state_prior_rate(:)
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: gamma_draws(:, :)
+      !! Run conjugate structural Gibbs updates for diagonal state disturbances.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: observation(:) !! Observed value or vector.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: state_variance(:) !! State variance.
+      real(dp), intent(in) :: observation_prior_shape !! Observation prior shape.
+      real(dp), intent(in) :: observation_prior_rate !! Observation prior rate.
+      real(dp), intent(in) :: state_prior_shape(:) !! State prior shape.
+      real(dp), intent(in) :: state_prior_rate(:) !! State prior rate.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
       type(bsts_mcmc_t) :: out
       type(ssm_model_t) :: model
       real(dp), allocatable :: path(:, :), previous(:), disturbance(:)
@@ -9476,10 +9713,14 @@ contains
 
    pure function seasonal_model(y, nseasons, season_duration, initial_mean, &
       initial_covariance, observation_variance, seasonal_variance) result(model)
-      ! Construct bsts's duration-aware sum-to-zero seasonal state model.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: nseasons, season_duration
-      real(dp), intent(in) :: observation_variance, seasonal_variance
+      !! Construct bsts's duration-aware sum-to-zero seasonal state model.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: nseasons !! Nseasons.
+      integer, intent(in) :: season_duration !! Season duration.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: seasonal_variance !! Seasonal variance.
       type(ssm_model_t) :: model
       real(dp), allocatable :: seasonal_transition(:, :)
       integer :: dimension, time, component
@@ -9521,8 +9762,9 @@ contains
    end function seasonal_model
 
    pure function trig_transition_matrix(period, frequencies) result(transition)
-      ! Build harmonic rotation blocks for bsts's trigonometric state model.
-      real(dp), intent(in) :: period, frequencies(:)
+      !! Build harmonic rotation blocks for bsts's trigonometric state model.
+      real(dp), intent(in) :: period !! Seasonal period.
+      real(dp), intent(in) :: frequencies(:) !! Frequencies.
       real(dp), allocatable :: transition(:, :)
       real(dp) :: angle
       integer :: component, first
@@ -9541,10 +9783,14 @@ contains
 
    pure function structural_model(y, initial_mean, initial_covariance, &
       transition, observation, observation_variance, state_variance) result(model)
-      ! Construct a time-invariant Gaussian structural state-space model.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      real(dp), intent(in) :: transition(:, :), observation(:)
-      real(dp), intent(in) :: observation_variance, state_variance(:)
+      !! Construct a time-invariant Gaussian structural state-space model.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      real(dp), intent(in) :: transition(:, :) !! State transition matrix.
+      real(dp), intent(in) :: observation(:) !! Observed value or vector.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: state_variance(:) !! State variance.
       type(ssm_model_t) :: model
       integer :: dimension, component
 
@@ -9573,10 +9819,12 @@ contains
 
    pure function structural_model_from_fit(y, fit, source, initial_mean, &
       initial_covariance) result(model)
-      ! Reconstruct a Gaussian state-space model from one posterior draw.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      type(bsts_mcmc_t), intent(in) :: fit
-      integer, intent(in) :: source
+      !! Reconstruct a Gaussian state-space model from one posterior draw.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      type(bsts_mcmc_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: source !! Source.
       type(ssm_model_t) :: model
       real(dp), allocatable :: variance(:)
       integer :: dimension, disturbances, slices, z_slices, r_slices
@@ -9643,10 +9891,13 @@ contains
 
    pure function dirm_local_level_model(y, counts, initial_mean, &
       initial_variance, observation_variance, level_variance) result(model)
-      ! Construct a local-level model for grouped Gaussian observations.
-      real(dp), intent(in) :: y(:), initial_mean, initial_variance
-      integer, intent(in) :: counts(:)
-      real(dp), intent(in) :: observation_variance, level_variance
+      !! Construct a local-level model for grouped Gaussian observations.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean !! Initial state mean.
+      real(dp), intent(in) :: initial_variance !! Initial variance.
+      integer, intent(in) :: counts(:) !! Counts.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: level_variance !! Level variance.
       type(ssm_model_t) :: model
       integer :: time
 
@@ -9672,10 +9923,14 @@ contains
    pure function mixed_trend_seasonal_model(y, nseasons, duration, &
       initial_mean, initial_covariance, observation_variance, &
       component_variance) result(model)
-      ! Construct a local-linear-trend and dummy-seasonal state model.
-      real(dp), intent(in) :: y(:), initial_mean(:), initial_covariance(:, :)
-      integer, intent(in) :: nseasons, duration
-      real(dp), intent(in) :: observation_variance, component_variance(3)
+      !! Construct a local-linear-trend and dummy-seasonal state model.
+      real(dp), intent(in) :: y(:) !! Response or time-series observations.
+      real(dp), intent(in) :: initial_mean(:) !! Initial state mean.
+      real(dp), intent(in) :: initial_covariance(:, :) !! Initial state covariance matrix.
+      integer, intent(in) :: nseasons !! Nseasons.
+      integer, intent(in) :: duration !! Duration.
+      real(dp), intent(in) :: observation_variance !! Observation-error variance.
+      real(dp), intent(in) :: component_variance(3) !! Component variance.
       type(ssm_model_t) :: model
       real(dp), allocatable :: seasonal_transition(:, :)
       integer :: dimension, seasonal_dimension, time, component
@@ -9726,8 +9981,8 @@ contains
    end function mixed_trend_seasonal_model
 
    pure logical function dirm_time_index_valid(time_index) result(valid)
-      ! Check for ordered contiguous time groups beginning at one.
-      integer, intent(in) :: time_index(:)
+      !! Check for ordered contiguous time groups beginning at one.
+      integer, intent(in) :: time_index(:) !! Index of time.
       integer :: row
 
       valid = size(time_index) > 0
@@ -9743,11 +9998,11 @@ contains
    end function dirm_time_index_valid
 
    pure subroutine state_path_from_draws(model, normal_draws, path, info)
-      ! Draw one state trajectory by backward sampling filtered KFAS moments.
-      type(ssm_model_t), intent(in) :: model
-      real(dp), intent(in) :: normal_draws(:, :)
-      real(dp), allocatable, intent(out) :: path(:, :)
-      integer, intent(out) :: info
+      !! Draw one state trajectory by backward sampling filtered KFAS moments.
+      type(ssm_model_t), intent(in) :: model !! Model specification.
+      real(dp), intent(in) :: normal_draws(:, :) !! Independent standard-normal draws.
+      real(dp), allocatable, intent(out) :: path(:, :) !! Path.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       type(kfs_filter_t) :: filtered
       real(dp), allocatable :: inverse(:, :), gain(:, :), mean(:)
       real(dp), allocatable :: covariance(:, :), transition(:, :)
@@ -9801,10 +10056,12 @@ contains
 
    pure subroutine multivariate_normal_from_psd(mean, covariance, standard, &
       draw, info)
-      ! Draw from a covariance after removing numerical negative eigenvalues.
-      real(dp), intent(in) :: mean(:), covariance(:, :), standard(:)
-      real(dp), intent(out) :: draw(:)
-      integer, intent(out) :: info
+      !! Draw from a covariance after removing numerical negative eigenvalues.
+      real(dp), intent(in) :: mean(:) !! Mean value or vector.
+      real(dp), intent(in) :: covariance(:, :) !! Covariance matrix.
+      real(dp), intent(in) :: standard(:) !! Standard.
+      real(dp), intent(out) :: draw(:) !! Draw.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: eigenvalues(:), eigenvectors(:, :)
       real(dp) :: a, b, c, root, first_value, second_value
       real(dp) :: first_vector(2), vector_norm
@@ -9856,11 +10113,11 @@ contains
 
    pure function bsts_predict_draws(fit, horizon, state_normal_draws, &
       observation_normal_draws) result(out)
-      ! Simulate posterior forecasts from supplied independent normal draws.
-      type(bsts_mcmc_t), intent(in) :: fit
-      integer, intent(in) :: horizon
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: observation_normal_draws(:, :)
+      !! Simulate posterior forecasts from supplied independent normal draws.
+      type(bsts_mcmc_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: observation_normal_draws(:, :) !! Observation normal draws.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: state(:), sorted(:)
       real(dp), allocatable :: loading(:, :), transition(:, :)
@@ -9944,15 +10201,15 @@ contains
          end if
          sorted = out%draws(step, :)
          call insertion_sort(sorted)
-         out%lower(step) = empirical_quantile(sorted, 0.025_dp)
-         out%upper(step) = empirical_quantile(sorted, 0.975_dp)
+         out%lower(step) = quantile(sorted, 0.025_dp)
+         out%upper(step) = quantile(sorted, 0.975_dp)
       end do
    end function bsts_predict_draws
 
    function bsts_predict(fit, horizon) result(out)
-      ! Simulate posterior forecasts using the shared random stream.
-      type(bsts_mcmc_t), intent(in) :: fit
-      integer, intent(in) :: horizon
+      !! Simulate posterior forecasts using the shared random stream.
+      type(bsts_mcmc_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: state_draws(:, :, :), observation_draws(:, :)
       integer :: retained, draw, step
@@ -9984,17 +10241,21 @@ contains
       seasonal_initial_variance, component_variance, component_prior_shape, &
       component_prior_rate, burn, state_normal_draws, acceptance_uniform_draws, &
       gamma_draws) result(out)
-      ! Sample binomial-logit local trend and seasonal structural states.
-      real(dp), intent(in) :: successes(:), trials(:)
-      integer, intent(in) :: nseasons, season_duration, burn
-      real(dp), intent(in) :: initial_trend_mean(2)
-      real(dp), intent(in) :: initial_trend_covariance(2, 2)
-      real(dp), intent(in) :: seasonal_initial_variance
-      real(dp), intent(in) :: component_variance(3)
-      real(dp), intent(in) :: component_prior_shape(3)
-      real(dp), intent(in) :: component_prior_rate(3)
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: acceptance_uniform_draws(:), gamma_draws(:, :)
+      !! Sample binomial-logit local trend and seasonal structural states.
+      real(dp), intent(in) :: successes(:) !! Successes.
+      real(dp), intent(in) :: trials(:) !! Trials.
+      integer, intent(in) :: nseasons !! Nseasons.
+      integer, intent(in) :: season_duration !! Season duration.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: initial_trend_mean(2) !! Initial trend mean.
+      real(dp), intent(in) :: initial_trend_covariance(2, 2) !! Initial trend covariance.
+      real(dp), intent(in) :: seasonal_initial_variance !! Seasonal initial variance.
+      real(dp), intent(in) :: component_variance(3) !! Component variance.
+      real(dp), intent(in) :: component_prior_shape(3) !! Component prior shape.
+      real(dp), intent(in) :: component_prior_rate(3) !! Component prior rate.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: acceptance_uniform_draws(:) !! Acceptance uniform simulation draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
       type(bsts_non_gaussian_t) :: out
 
       out = non_gaussian_trend_seasonal_draws(successes, trials, 1, nseasons, &
@@ -10009,17 +10270,21 @@ contains
       seasonal_initial_variance, component_variance, component_prior_shape, &
       component_prior_rate, burn, state_normal_draws, acceptance_uniform_draws, &
       gamma_draws) result(out)
-      ! Sample Poisson local trend and seasonal states with exposures.
-      real(dp), intent(in) :: counts(:), exposure(:)
-      integer, intent(in) :: nseasons, season_duration, burn
-      real(dp), intent(in) :: initial_trend_mean(2)
-      real(dp), intent(in) :: initial_trend_covariance(2, 2)
-      real(dp), intent(in) :: seasonal_initial_variance
-      real(dp), intent(in) :: component_variance(3)
-      real(dp), intent(in) :: component_prior_shape(3)
-      real(dp), intent(in) :: component_prior_rate(3)
-      real(dp), intent(in) :: state_normal_draws(:, :, :)
-      real(dp), intent(in) :: acceptance_uniform_draws(:), gamma_draws(:, :)
+      !! Sample Poisson local trend and seasonal states with exposures.
+      real(dp), intent(in) :: counts(:) !! Counts.
+      real(dp), intent(in) :: exposure(:) !! Exposure.
+      integer, intent(in) :: nseasons !! Nseasons.
+      integer, intent(in) :: season_duration !! Season duration.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: initial_trend_mean(2) !! Initial trend mean.
+      real(dp), intent(in) :: initial_trend_covariance(2, 2) !! Initial trend covariance.
+      real(dp), intent(in) :: seasonal_initial_variance !! Seasonal initial variance.
+      real(dp), intent(in) :: component_variance(3) !! Component variance.
+      real(dp), intent(in) :: component_prior_shape(3) !! Component prior shape.
+      real(dp), intent(in) :: component_prior_rate(3) !! Component prior rate.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: acceptance_uniform_draws(:) !! Acceptance uniform simulation draws.
+      real(dp), intent(in) :: gamma_draws(:, :) !! Gamma simulation draws.
       type(bsts_non_gaussian_t) :: out
 
       out = non_gaussian_trend_seasonal_draws(counts, exposure, 2, nseasons, &
@@ -10031,10 +10296,13 @@ contains
 
    function bsts_logit_trend_seasonal(successes, trials, nseasons, iterations, &
       season_duration, burn) result(out)
-      ! Sample binomial-logit trend and seasonal states using random draws.
-      real(dp), intent(in) :: successes(:), trials(:)
-      integer, intent(in) :: nseasons, iterations
-      integer, intent(in), optional :: season_duration, burn
+      !! Sample binomial-logit trend and seasonal states using random draws.
+      real(dp), intent(in) :: successes(:) !! Successes.
+      real(dp), intent(in) :: trials(:) !! Trials.
+      integer, intent(in) :: nseasons !! Nseasons.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: season_duration !! Season duration.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
       type(bsts_non_gaussian_t) :: out
 
       out = random_non_gaussian_trend_seasonal(successes, trials, 1, &
@@ -10043,10 +10311,13 @@ contains
 
    function bsts_poisson_trend_seasonal(counts, exposure, nseasons, iterations, &
       season_duration, burn) result(out)
-      ! Sample Poisson trend and seasonal states using random draws.
-      real(dp), intent(in) :: counts(:), exposure(:)
-      integer, intent(in) :: nseasons, iterations
-      integer, intent(in), optional :: season_duration, burn
+      !! Sample Poisson trend and seasonal states using random draws.
+      real(dp), intent(in) :: counts(:) !! Counts.
+      real(dp), intent(in) :: exposure(:) !! Exposure.
+      integer, intent(in) :: nseasons !! Nseasons.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: season_duration !! Season duration.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
       type(bsts_non_gaussian_t) :: out
 
       out = random_non_gaussian_trend_seasonal(counts, exposure, 2, &
@@ -10055,10 +10326,11 @@ contains
 
    pure function bsts_logit_trend_seasonal_predict_draws(fit, future_trials, &
       state_normal_draws, observation_uniform_draws) result(out)
-      ! Forecast binomial observations from trend and seasonal states.
-      type(bsts_non_gaussian_t), intent(in) :: fit
-      real(dp), intent(in) :: future_trials(:), state_normal_draws(:, :, :)
-      real(dp), intent(in) :: observation_uniform_draws(:, :)
+      !! Forecast binomial observations from trend and seasonal states.
+      type(bsts_non_gaussian_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_trials(:) !! Future trials.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: observation_uniform_draws(:, :) !! Observation uniform draws.
       type(bsts_prediction_t) :: out
 
       out = non_gaussian_trend_seasonal_predict_draws(fit, future_trials, &
@@ -10067,10 +10339,11 @@ contains
 
    pure function bsts_poisson_trend_seasonal_predict_draws(fit, future_exposure, &
       state_normal_draws, observation_uniform_draws) result(out)
-      ! Forecast Poisson observations from trend and seasonal states.
-      type(bsts_non_gaussian_t), intent(in) :: fit
-      real(dp), intent(in) :: future_exposure(:), state_normal_draws(:, :, :)
-      real(dp), intent(in) :: observation_uniform_draws(:, :)
+      !! Forecast Poisson observations from trend and seasonal states.
+      type(bsts_non_gaussian_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_exposure(:) !! Future exposure.
+      real(dp), intent(in) :: state_normal_draws(:, :, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: observation_uniform_draws(:, :) !! Observation uniform draws.
       type(bsts_prediction_t) :: out
 
       out = non_gaussian_trend_seasonal_predict_draws(fit, future_exposure, &
@@ -10084,18 +10357,31 @@ contains
       coefficient_proposal_scale, burn, state_normals, state_uniforms, &
       coefficient_normals, coefficient_uniforms, birth_normals, birth_uniforms, &
       gamma_draws) result(out)
-      ! Sample sparse binomial-logit regression with a local-level state.
-      real(dp), intent(in) :: successes(:), trials(:), predictors(:, :)
-      real(dp), intent(in) :: slab_mean(:), slab_variance(:), prior_inclusion(:)
-      logical, intent(in) :: initial_inclusion(:)
-      integer, intent(in) :: maximum_model_size, maximum_flips, burn
-      real(dp), intent(in) :: initial_mean, initial_variance, state_variance
-      real(dp), intent(in) :: state_prior_shape, state_prior_rate
-      real(dp), intent(in) :: state_proposal_scale, coefficient_proposal_scale
-      real(dp), intent(in) :: state_normals(:, :), state_uniforms(:, :)
-      real(dp), intent(in) :: coefficient_normals(:, :)
-      real(dp), intent(in) :: coefficient_uniforms(:, :), birth_normals(:, :)
-      real(dp), intent(in) :: birth_uniforms(:, :), gamma_draws(:)
+      !! Sample sparse binomial-logit regression with a local-level state.
+      real(dp), intent(in) :: successes(:) !! Successes.
+      real(dp), intent(in) :: trials(:) !! Trials.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      real(dp), intent(in) :: slab_mean(:) !! Slab mean.
+      real(dp), intent(in) :: slab_variance(:) !! Slab variance.
+      real(dp), intent(in) :: prior_inclusion(:) !! Prior inclusion.
+      logical, intent(in) :: initial_inclusion(:) !! Initial inclusion.
+      integer, intent(in) :: maximum_model_size !! Maximum model size.
+      integer, intent(in) :: maximum_flips !! Maximum flips.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: initial_mean !! Initial state mean.
+      real(dp), intent(in) :: initial_variance !! Initial variance.
+      real(dp), intent(in) :: state_variance !! State variance.
+      real(dp), intent(in) :: state_prior_shape !! State prior shape.
+      real(dp), intent(in) :: state_prior_rate !! State prior rate.
+      real(dp), intent(in) :: state_proposal_scale !! State proposal scale.
+      real(dp), intent(in) :: coefficient_proposal_scale !! Coefficient proposal scale.
+      real(dp), intent(in) :: state_normals(:, :) !! State normals.
+      real(dp), intent(in) :: state_uniforms(:, :) !! State uniforms.
+      real(dp), intent(in) :: coefficient_normals(:, :) !! Coefficient normals.
+      real(dp), intent(in) :: coefficient_uniforms(:, :) !! Coefficient uniforms.
+      real(dp), intent(in) :: birth_normals(:, :) !! Birth normals.
+      real(dp), intent(in) :: birth_uniforms(:, :) !! Birth uniforms.
+      real(dp), intent(in) :: gamma_draws(:) !! Gamma simulation draws.
       type(bsts_non_gaussian_t) :: out
 
       out = non_gaussian_regression_draws(successes, trials, predictors, 1, &
@@ -10114,18 +10400,31 @@ contains
       coefficient_proposal_scale, burn, state_normals, state_uniforms, &
       coefficient_normals, coefficient_uniforms, birth_normals, birth_uniforms, &
       gamma_draws) result(out)
-      ! Sample sparse Poisson regression with exposure and a local level.
-      real(dp), intent(in) :: counts(:), exposure(:), predictors(:, :)
-      real(dp), intent(in) :: slab_mean(:), slab_variance(:), prior_inclusion(:)
-      logical, intent(in) :: initial_inclusion(:)
-      integer, intent(in) :: maximum_model_size, maximum_flips, burn
-      real(dp), intent(in) :: initial_mean, initial_variance, state_variance
-      real(dp), intent(in) :: state_prior_shape, state_prior_rate
-      real(dp), intent(in) :: state_proposal_scale, coefficient_proposal_scale
-      real(dp), intent(in) :: state_normals(:, :), state_uniforms(:, :)
-      real(dp), intent(in) :: coefficient_normals(:, :)
-      real(dp), intent(in) :: coefficient_uniforms(:, :), birth_normals(:, :)
-      real(dp), intent(in) :: birth_uniforms(:, :), gamma_draws(:)
+      !! Sample sparse Poisson regression with exposure and a local level.
+      real(dp), intent(in) :: counts(:) !! Counts.
+      real(dp), intent(in) :: exposure(:) !! Exposure.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      real(dp), intent(in) :: slab_mean(:) !! Slab mean.
+      real(dp), intent(in) :: slab_variance(:) !! Slab variance.
+      real(dp), intent(in) :: prior_inclusion(:) !! Prior inclusion.
+      logical, intent(in) :: initial_inclusion(:) !! Initial inclusion.
+      integer, intent(in) :: maximum_model_size !! Maximum model size.
+      integer, intent(in) :: maximum_flips !! Maximum flips.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: initial_mean !! Initial state mean.
+      real(dp), intent(in) :: initial_variance !! Initial variance.
+      real(dp), intent(in) :: state_variance !! State variance.
+      real(dp), intent(in) :: state_prior_shape !! State prior shape.
+      real(dp), intent(in) :: state_prior_rate !! State prior rate.
+      real(dp), intent(in) :: state_proposal_scale !! State proposal scale.
+      real(dp), intent(in) :: coefficient_proposal_scale !! Coefficient proposal scale.
+      real(dp), intent(in) :: state_normals(:, :) !! State normals.
+      real(dp), intent(in) :: state_uniforms(:, :) !! State uniforms.
+      real(dp), intent(in) :: coefficient_normals(:, :) !! Coefficient normals.
+      real(dp), intent(in) :: coefficient_uniforms(:, :) !! Coefficient uniforms.
+      real(dp), intent(in) :: birth_normals(:, :) !! Birth normals.
+      real(dp), intent(in) :: birth_uniforms(:, :) !! Birth uniforms.
+      real(dp), intent(in) :: gamma_draws(:) !! Gamma simulation draws.
       type(bsts_non_gaussian_t) :: out
 
       out = non_gaussian_regression_draws(counts, exposure, predictors, 2, &
@@ -10140,12 +10439,16 @@ contains
    function bsts_logit_regression(successes, trials, predictors, iterations, &
       burn, prior_inclusion_probability, initial_inclusion, &
       maximum_model_size, maximum_flips) result(out)
-      ! Sample sparse binomial-logit regression using random draws.
-      real(dp), intent(in) :: successes(:), trials(:), predictors(:, :)
-      integer, intent(in) :: iterations
-      integer, intent(in), optional :: burn, maximum_model_size, maximum_flips
-      real(dp), intent(in), optional :: prior_inclusion_probability(:)
-      logical, intent(in), optional :: initial_inclusion(:)
+      !! Sample sparse binomial-logit regression using random draws.
+      real(dp), intent(in) :: successes(:) !! Successes.
+      real(dp), intent(in) :: trials(:) !! Trials.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      integer, intent(in), optional :: maximum_model_size !! Maximum model size.
+      integer, intent(in), optional :: maximum_flips !! Maximum flips.
+      real(dp), intent(in), optional :: prior_inclusion_probability(:) !! Prior inclusion probability.
+      logical, intent(in), optional :: initial_inclusion(:) !! Initial inclusion.
       type(bsts_non_gaussian_t) :: out
 
       out = random_non_gaussian_regression(successes, trials, predictors, 1, &
@@ -10156,12 +10459,16 @@ contains
    function bsts_poisson_regression(counts, exposure, predictors, iterations, &
       burn, prior_inclusion_probability, initial_inclusion, &
       maximum_model_size, maximum_flips) result(out)
-      ! Sample sparse Poisson regression with observation exposures.
-      real(dp), intent(in) :: counts(:), exposure(:), predictors(:, :)
-      integer, intent(in) :: iterations
-      integer, intent(in), optional :: burn, maximum_model_size, maximum_flips
-      real(dp), intent(in), optional :: prior_inclusion_probability(:)
-      logical, intent(in), optional :: initial_inclusion(:)
+      !! Sample sparse Poisson regression with observation exposures.
+      real(dp), intent(in) :: counts(:) !! Counts.
+      real(dp), intent(in) :: exposure(:) !! Exposure.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      integer, intent(in), optional :: maximum_model_size !! Maximum model size.
+      integer, intent(in), optional :: maximum_flips !! Maximum flips.
+      real(dp), intent(in), optional :: prior_inclusion_probability(:) !! Prior inclusion probability.
+      logical, intent(in), optional :: initial_inclusion(:) !! Initial inclusion.
       type(bsts_non_gaussian_t) :: out
 
       out = random_non_gaussian_regression(counts, exposure, predictors, 2, &
@@ -10172,11 +10479,12 @@ contains
    pure function bsts_logit_regression_predict_draws(fit, future_trials, &
       future_predictors, state_normal_draws, observation_uniform_draws) &
       result(out)
-      ! Forecast sparse binomial-logit regression from supplied draws.
-      type(bsts_non_gaussian_t), intent(in) :: fit
-      real(dp), intent(in) :: future_trials(:), future_predictors(:, :)
-      real(dp), intent(in) :: state_normal_draws(:, :)
-      real(dp), intent(in) :: observation_uniform_draws(:, :)
+      !! Forecast sparse binomial-logit regression from supplied draws.
+      type(bsts_non_gaussian_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_trials(:) !! Future trials.
+      real(dp), intent(in) :: future_predictors(:, :) !! Future predictors.
+      real(dp), intent(in) :: state_normal_draws(:, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: observation_uniform_draws(:, :) !! Observation uniform draws.
       type(bsts_prediction_t) :: out
 
       out = non_gaussian_regression_predict_draws(fit, future_trials, &
@@ -10186,11 +10494,12 @@ contains
    pure function bsts_poisson_regression_predict_draws(fit, future_exposure, &
       future_predictors, state_normal_draws, observation_uniform_draws) &
       result(out)
-      ! Forecast sparse Poisson regression with future exposures.
-      type(bsts_non_gaussian_t), intent(in) :: fit
-      real(dp), intent(in) :: future_exposure(:), future_predictors(:, :)
-      real(dp), intent(in) :: state_normal_draws(:, :)
-      real(dp), intent(in) :: observation_uniform_draws(:, :)
+      !! Forecast sparse Poisson regression with future exposures.
+      type(bsts_non_gaussian_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_exposure(:) !! Future exposure.
+      real(dp), intent(in) :: future_predictors(:, :) !! Future predictors.
+      real(dp), intent(in) :: state_normal_draws(:, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: observation_uniform_draws(:, :) !! Observation uniform draws.
       type(bsts_prediction_t) :: out
 
       out = non_gaussian_regression_predict_draws(fit, future_exposure, &
@@ -10201,14 +10510,19 @@ contains
       initial_mean, initial_variance, state_variance, state_prior_shape, &
       state_prior_rate, proposal_scale, burn, proposal_normal_draws, &
       acceptance_uniform_draws, gamma_draws) result(out)
-      ! Sample a binomial-logit local-level posterior from supplied draws.
-      real(dp), intent(in) :: successes(:), trials(:)
-      real(dp), intent(in) :: initial_mean, initial_variance, state_variance
-      real(dp), intent(in) :: state_prior_shape, state_prior_rate
-      real(dp), intent(in) :: proposal_scale
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: proposal_normal_draws(:, :)
-      real(dp), intent(in) :: acceptance_uniform_draws(:, :), gamma_draws(:)
+      !! Sample a binomial-logit local-level posterior from supplied draws.
+      real(dp), intent(in) :: successes(:) !! Successes.
+      real(dp), intent(in) :: trials(:) !! Trials.
+      real(dp), intent(in) :: initial_mean !! Initial state mean.
+      real(dp), intent(in) :: initial_variance !! Initial variance.
+      real(dp), intent(in) :: state_variance !! State variance.
+      real(dp), intent(in) :: state_prior_shape !! State prior shape.
+      real(dp), intent(in) :: state_prior_rate !! State prior rate.
+      real(dp), intent(in) :: proposal_scale !! Proposal scale.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: proposal_normal_draws(:, :) !! Proposal normal draws.
+      real(dp), intent(in) :: acceptance_uniform_draws(:, :) !! Acceptance uniform simulation draws.
+      real(dp), intent(in) :: gamma_draws(:) !! Gamma simulation draws.
       type(bsts_non_gaussian_t) :: out
 
       out = non_gaussian_local_level_draws(successes, trials, 1, &
@@ -10221,14 +10535,19 @@ contains
       initial_mean, initial_variance, state_variance, state_prior_shape, &
       state_prior_rate, proposal_scale, burn, proposal_normal_draws, &
       acceptance_uniform_draws, gamma_draws) result(out)
-      ! Sample a Poisson local-level posterior with exposure offsets.
-      real(dp), intent(in) :: counts(:), exposure(:)
-      real(dp), intent(in) :: initial_mean, initial_variance, state_variance
-      real(dp), intent(in) :: state_prior_shape, state_prior_rate
-      real(dp), intent(in) :: proposal_scale
-      integer, intent(in) :: burn
-      real(dp), intent(in) :: proposal_normal_draws(:, :)
-      real(dp), intent(in) :: acceptance_uniform_draws(:, :), gamma_draws(:)
+      !! Sample a Poisson local-level posterior with exposure offsets.
+      real(dp), intent(in) :: counts(:) !! Counts.
+      real(dp), intent(in) :: exposure(:) !! Exposure.
+      real(dp), intent(in) :: initial_mean !! Initial state mean.
+      real(dp), intent(in) :: initial_variance !! Initial variance.
+      real(dp), intent(in) :: state_variance !! State variance.
+      real(dp), intent(in) :: state_prior_shape !! State prior shape.
+      real(dp), intent(in) :: state_prior_rate !! State prior rate.
+      real(dp), intent(in) :: proposal_scale !! Proposal scale.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: proposal_normal_draws(:, :) !! Proposal normal draws.
+      real(dp), intent(in) :: acceptance_uniform_draws(:, :) !! Acceptance uniform simulation draws.
+      real(dp), intent(in) :: gamma_draws(:) !! Gamma simulation draws.
       type(bsts_non_gaussian_t) :: out
 
       out = non_gaussian_local_level_draws(counts, exposure, 2, initial_mean, &
@@ -10239,11 +10558,12 @@ contains
 
    function bsts_logit_local_level(successes, trials, iterations, burn, &
       proposal_scale) result(out)
-      ! Sample a binomial-logit local-level posterior using random draws.
-      real(dp), intent(in) :: successes(:), trials(:)
-      integer, intent(in) :: iterations
-      integer, intent(in), optional :: burn
-      real(dp), intent(in), optional :: proposal_scale
+      !! Sample a binomial-logit local-level posterior using random draws.
+      real(dp), intent(in) :: successes(:) !! Successes.
+      real(dp), intent(in) :: trials(:) !! Trials.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: proposal_scale !! Proposal scale.
       type(bsts_non_gaussian_t) :: out
       real(dp), allocatable :: normals(:, :), uniforms(:, :), gammas(:)
       real(dp) :: scale
@@ -10274,11 +10594,12 @@ contains
 
    function bsts_poisson_local_level(counts, exposure, iterations, burn, &
       proposal_scale) result(out)
-      ! Sample a Poisson local-level posterior using random draws.
-      real(dp), intent(in) :: counts(:), exposure(:)
-      integer, intent(in) :: iterations
-      integer, intent(in), optional :: burn
-      real(dp), intent(in), optional :: proposal_scale
+      !! Sample a Poisson local-level posterior using random draws.
+      real(dp), intent(in) :: counts(:) !! Counts.
+      real(dp), intent(in) :: exposure(:) !! Exposure.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in), optional :: proposal_scale !! Proposal scale.
       type(bsts_non_gaussian_t) :: out
       real(dp), allocatable :: normals(:, :), uniforms(:, :), gammas(:)
       real(dp) :: scale
@@ -10309,11 +10630,11 @@ contains
 
    pure function bsts_logit_predict_draws(fit, future_trials, &
       state_normal_draws, observation_uniform_draws) result(out)
-      ! Forecast binomial observations from supplied random draws.
-      type(bsts_non_gaussian_t), intent(in) :: fit
-      real(dp), intent(in) :: future_trials(:)
-      real(dp), intent(in) :: state_normal_draws(:, :)
-      real(dp), intent(in) :: observation_uniform_draws(:, :)
+      !! Forecast binomial observations from supplied random draws.
+      type(bsts_non_gaussian_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_trials(:) !! Future trials.
+      real(dp), intent(in) :: state_normal_draws(:, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: observation_uniform_draws(:, :) !! Observation uniform draws.
       type(bsts_prediction_t) :: out
 
       out = non_gaussian_predict_draws(fit, future_trials, &
@@ -10322,11 +10643,11 @@ contains
 
    pure function bsts_poisson_predict_draws(fit, future_exposure, &
       state_normal_draws, observation_uniform_draws) result(out)
-      ! Forecast Poisson observations with supplied future exposures.
-      type(bsts_non_gaussian_t), intent(in) :: fit
-      real(dp), intent(in) :: future_exposure(:)
-      real(dp), intent(in) :: state_normal_draws(:, :)
-      real(dp), intent(in) :: observation_uniform_draws(:, :)
+      !! Forecast Poisson observations with supplied future exposures.
+      type(bsts_non_gaussian_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_exposure(:) !! Future exposure.
+      real(dp), intent(in) :: state_normal_draws(:, :) !! Independent standard-normal state draws.
+      real(dp), intent(in) :: observation_uniform_draws(:, :) !! Observation uniform draws.
       type(bsts_prediction_t) :: out
 
       out = non_gaussian_predict_draws(fit, future_exposure, &
@@ -10334,9 +10655,9 @@ contains
    end function bsts_poisson_predict_draws
 
    function bsts_logit_predict(fit, future_trials) result(out)
-      ! Forecast binomial observations using the shared random stream.
-      type(bsts_non_gaussian_t), intent(in) :: fit
-      real(dp), intent(in) :: future_trials(:)
+      !! Forecast binomial observations using the shared random stream.
+      type(bsts_non_gaussian_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_trials(:) !! Future trials.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: normals(:, :), uniforms(:, :)
 
@@ -10350,9 +10671,9 @@ contains
    end function bsts_logit_predict
 
    function bsts_poisson_predict(fit, future_exposure) result(out)
-      ! Forecast Poisson observations using future exposure offsets.
-      type(bsts_non_gaussian_t), intent(in) :: fit
-      real(dp), intent(in) :: future_exposure(:)
+      !! Forecast Poisson observations using future exposure offsets.
+      type(bsts_non_gaussian_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_exposure(:) !! Future exposure.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: normals(:, :), uniforms(:, :)
 
@@ -10367,10 +10688,14 @@ contains
 
    function random_non_gaussian_trend_seasonal(response, scale_data, family, &
       nseasons, iterations, season_duration, burn) result(out)
-      ! Generate random streams for non-Gaussian structural states.
-      real(dp), intent(in) :: response(:), scale_data(:)
-      integer, intent(in) :: family, nseasons, iterations
-      integer, intent(in), optional :: season_duration, burn
+      !! Generate random streams for non-Gaussian structural states.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: scale_data(:) !! Scale data.
+      integer, intent(in) :: family !! Family.
+      integer, intent(in) :: nseasons !! Nseasons.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: season_duration !! Season duration.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
       type(bsts_non_gaussian_t) :: out
       real(dp), allocatable :: normals(:, :, :), uniforms(:), gammas(:, :)
       integer :: duration, discarded, dimension, iteration, time, component
@@ -10420,14 +10745,22 @@ contains
       family, nseasons, duration, initial_trend_mean, initial_trend_covariance, &
       seasonal_initial_variance, variance0, prior_shape, prior_rate, burn, &
       normals, uniforms, gammas) result(out)
-      ! Sample an exact-likelihood trend-seasonal structural posterior.
-      real(dp), intent(in) :: response(:), scale_data(:)
-      integer, intent(in) :: family, nseasons, duration, burn
-      real(dp), intent(in) :: initial_trend_mean(2)
-      real(dp), intent(in) :: initial_trend_covariance(2, 2)
-      real(dp), intent(in) :: seasonal_initial_variance
-      real(dp), intent(in) :: variance0(3), prior_shape(3), prior_rate(3)
-      real(dp), intent(in) :: normals(:, :, :), uniforms(:), gammas(:, :)
+      !! Sample an exact-likelihood trend-seasonal structural posterior.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: scale_data(:) !! Scale data.
+      integer, intent(in) :: family !! Family.
+      integer, intent(in) :: nseasons !! Nseasons.
+      integer, intent(in) :: duration !! Duration.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: initial_trend_mean(2) !! Initial trend mean.
+      real(dp), intent(in) :: initial_trend_covariance(2, 2) !! Initial trend covariance.
+      real(dp), intent(in) :: seasonal_initial_variance !! Seasonal initial variance.
+      real(dp), intent(in) :: variance0(3) !! Variance0.
+      real(dp), intent(in) :: prior_shape(3) !! Prior shape.
+      real(dp), intent(in) :: prior_rate(3) !! Prior rate.
+      real(dp), intent(in) :: normals(:, :, :) !! Independent standard-normal draws.
+      real(dp), intent(in) :: uniforms(:) !! Uniforms.
+      real(dp), intent(in) :: gammas(:, :) !! Gammas.
       type(bsts_non_gaussian_t) :: out
       real(dp), allocatable :: current(:, :), proposal(:, :)
       real(dp), allocatable :: contribution(:), proposed_contribution(:)
@@ -10538,12 +10871,17 @@ contains
    function random_non_gaussian_regression(response, scale_data, predictors, &
       family, iterations, burn, prior_inclusion_probability, initial_inclusion, &
       maximum_model_size, maximum_flips) result(out)
-      ! Generate random streams for sparse non-Gaussian regression.
-      real(dp), intent(in) :: response(:), scale_data(:), predictors(:, :)
-      integer, intent(in) :: family, iterations
-      integer, intent(in), optional :: burn, maximum_model_size, maximum_flips
-      real(dp), intent(in), optional :: prior_inclusion_probability(:)
-      logical, intent(in), optional :: initial_inclusion(:)
+      !! Generate random streams for sparse non-Gaussian regression.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: scale_data(:) !! Scale data.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      integer, intent(in) :: family !! Family.
+      integer, intent(in) :: iterations !! Number of algorithm iterations.
+      integer, intent(in), optional :: burn !! Number of initial simulation draws to discard.
+      integer, intent(in), optional :: maximum_model_size !! Maximum model size.
+      integer, intent(in), optional :: maximum_flips !! Maximum flips.
+      real(dp), intent(in), optional :: prior_inclusion_probability(:) !! Prior inclusion probability.
+      logical, intent(in), optional :: initial_inclusion(:) !! Initial inclusion.
       type(bsts_non_gaussian_t) :: out
       real(dp), allocatable :: prior(:), slab_mean(:), slab_variance(:)
       real(dp), allocatable :: state_normals(:, :), state_uniforms(:, :)
@@ -10629,18 +10967,32 @@ contains
       coefficient_proposal_scale, burn, state_normals, state_uniforms, &
       coefficient_normals, coefficient_uniforms, birth_normals, birth_uniforms, &
       gammas) result(out)
-      ! Run sparse non-Gaussian regression and local-level MCMC updates.
-      real(dp), intent(in) :: response(:), scale_data(:), predictors(:, :)
-      integer, intent(in) :: family, maximum_model_size, maximum_flips, burn
-      real(dp), intent(in) :: slab_mean(:), slab_variance(:), prior_inclusion(:)
-      logical, intent(in) :: initial_inclusion(:)
-      real(dp), intent(in) :: initial_mean, initial_variance, variance0
-      real(dp), intent(in) :: prior_shape, prior_rate, state_proposal_scale
-      real(dp), intent(in) :: coefficient_proposal_scale
-      real(dp), intent(in) :: state_normals(:, :), state_uniforms(:, :)
-      real(dp), intent(in) :: coefficient_normals(:, :)
-      real(dp), intent(in) :: coefficient_uniforms(:, :), birth_normals(:, :)
-      real(dp), intent(in) :: birth_uniforms(:, :), gammas(:)
+      !! Run sparse non-Gaussian regression and local-level MCMC updates.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: scale_data(:) !! Scale data.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      integer, intent(in) :: family !! Family.
+      integer, intent(in) :: maximum_model_size !! Maximum model size.
+      integer, intent(in) :: maximum_flips !! Maximum flips.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: slab_mean(:) !! Slab mean.
+      real(dp), intent(in) :: slab_variance(:) !! Slab variance.
+      real(dp), intent(in) :: prior_inclusion(:) !! Prior inclusion.
+      logical, intent(in) :: initial_inclusion(:) !! Initial inclusion.
+      real(dp), intent(in) :: initial_mean !! Initial state mean.
+      real(dp), intent(in) :: initial_variance !! Initial variance.
+      real(dp), intent(in) :: variance0 !! Variance0.
+      real(dp), intent(in) :: prior_shape !! Prior shape.
+      real(dp), intent(in) :: prior_rate !! Prior rate.
+      real(dp), intent(in) :: state_proposal_scale !! State proposal scale.
+      real(dp), intent(in) :: coefficient_proposal_scale !! Coefficient proposal scale.
+      real(dp), intent(in) :: state_normals(:, :) !! State normals.
+      real(dp), intent(in) :: state_uniforms(:, :) !! State uniforms.
+      real(dp), intent(in) :: coefficient_normals(:, :) !! Coefficient normals.
+      real(dp), intent(in) :: coefficient_uniforms(:, :) !! Coefficient uniforms.
+      real(dp), intent(in) :: birth_normals(:, :) !! Birth normals.
+      real(dp), intent(in) :: birth_uniforms(:, :) !! Birth uniforms.
+      real(dp), intent(in) :: gammas(:) !! Gammas.
       type(bsts_non_gaussian_t) :: out
       real(dp), allocatable :: state(:), coefficient(:), regression(:)
       logical, allocatable :: included(:)
@@ -10810,11 +11162,17 @@ contains
    pure real(dp) function local_level_regression_log_density(value, time, state, &
       regression, response, scale_data, family, initial_mean, initial_variance, &
       variance) result(density)
-      ! Evaluate a non-Gaussian local state conditional with regression.
-      real(dp), intent(in) :: value, state(:), regression(:), response(:)
-      real(dp), intent(in) :: scale_data(:), initial_mean, initial_variance
-      real(dp), intent(in) :: variance
-      integer, intent(in) :: time, family
+      !! Evaluate a non-Gaussian local state conditional with regression.
+      real(dp), intent(in) :: value !! Input value.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: regression(:) !! Regression.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: scale_data(:) !! Scale data.
+      real(dp), intent(in) :: initial_mean !! Initial state mean.
+      real(dp), intent(in) :: initial_variance !! Initial variance.
+      real(dp), intent(in) :: variance !! Variance value or matrix.
+      integer, intent(in) :: time !! Observation times.
+      integer, intent(in) :: family !! Family.
 
       density = non_gaussian_observation_log_density(response(time), &
          scale_data(time), value + regression(time), family)
@@ -10828,9 +11186,11 @@ contains
 
    pure real(dp) function non_gaussian_log_likelihood(response, scale_data, &
       predictor, family) result(value)
-      ! Sum binomial-logit or Poisson log likelihood contributions.
-      real(dp), intent(in) :: response(:), scale_data(:), predictor(:)
-      integer, intent(in) :: family
+      !! Sum binomial-logit or Poisson log likelihood contributions.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: scale_data(:) !! Scale data.
+      real(dp), intent(in) :: predictor(:) !! Predictor.
+      integer, intent(in) :: family !! Family.
       integer :: time
 
       value = 0.0_dp
@@ -10842,9 +11202,11 @@ contains
 
    pure real(dp) function non_gaussian_observation_log_density(response, &
       scale_data, predictor, family) result(value)
-      ! Evaluate one non-Gaussian observation log likelihood.
-      real(dp), intent(in) :: response, scale_data, predictor
-      integer, intent(in) :: family
+      !! Evaluate one non-Gaussian observation log likelihood.
+      real(dp), intent(in) :: response !! Response observations.
+      real(dp), intent(in) :: scale_data !! Scale data.
+      real(dp), intent(in) :: predictor !! Predictor.
+      integer, intent(in) :: family !! Family.
 
       value = 0.0_dp
       if (.not. ieee_is_finite(response)) return
@@ -10859,12 +11221,20 @@ contains
    pure function non_gaussian_local_level_draws(response, scale_data, family, &
       initial_mean, initial_variance, variance0, prior_shape, prior_rate, &
       proposal_scale, burn, normals, uniforms, gammas) result(out)
-      ! Run componentwise Metropolis updates for a non-Gaussian local level.
-      real(dp), intent(in) :: response(:), scale_data(:)
-      integer, intent(in) :: family, burn
-      real(dp), intent(in) :: initial_mean, initial_variance, variance0
-      real(dp), intent(in) :: prior_shape, prior_rate, proposal_scale
-      real(dp), intent(in) :: normals(:, :), uniforms(:, :), gammas(:)
+      !! Run componentwise Metropolis updates for a non-Gaussian local level.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: scale_data(:) !! Scale data.
+      integer, intent(in) :: family !! Family.
+      integer, intent(in) :: burn !! Number of initial simulation draws to discard.
+      real(dp), intent(in) :: initial_mean !! Initial state mean.
+      real(dp), intent(in) :: initial_variance !! Initial variance.
+      real(dp), intent(in) :: variance0 !! Variance0.
+      real(dp), intent(in) :: prior_shape !! Prior shape.
+      real(dp), intent(in) :: prior_rate !! Prior rate.
+      real(dp), intent(in) :: proposal_scale !! Proposal scale.
+      real(dp), intent(in) :: normals(:, :) !! Independent standard-normal draws.
+      real(dp), intent(in) :: uniforms(:, :) !! Uniforms.
+      real(dp), intent(in) :: gammas(:) !! Gammas.
       type(bsts_non_gaussian_t) :: out
       real(dp), allocatable :: state(:)
       real(dp) :: proposal, old_density, new_density, variance, difference_sum
@@ -10937,10 +11307,16 @@ contains
    pure real(dp) function local_level_log_density(value, time, state, &
       response, scale_data, family, initial_mean, initial_variance, variance) &
       result(density)
-      ! Evaluate one local-level full conditional up to a constant.
-      real(dp), intent(in) :: value, state(:), response(:), scale_data(:)
-      integer, intent(in) :: time, family
-      real(dp), intent(in) :: initial_mean, initial_variance, variance
+      !! Evaluate one local-level full conditional up to a constant.
+      real(dp), intent(in) :: value !! Input value.
+      real(dp), intent(in) :: state(:) !! State vector or state sequence.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: scale_data(:) !! Scale data.
+      integer, intent(in) :: time !! Observation times.
+      integer, intent(in) :: family !! Family.
+      real(dp), intent(in) :: initial_mean !! Initial state mean.
+      real(dp), intent(in) :: initial_variance !! Initial variance.
+      real(dp), intent(in) :: variance !! Variance value or matrix.
 
       density = 0.0_dp
       if (ieee_is_finite(response(time))) then
@@ -10961,8 +11337,8 @@ contains
    end function local_level_log_density
 
    pure elemental real(dp) function stable_log_one_plus_exp(value) result(ans)
-      ! Evaluate log(1 + exp(value)) without overflow.
-      real(dp), intent(in) :: value
+      !! Evaluate log(1 + exp(value)) without overflow.
+      real(dp), intent(in) :: value !! Input value.
 
       if (value > 0.0_dp) then
          ans = value + log(1.0_dp + exp(-value))
@@ -10973,10 +11349,12 @@ contains
 
    pure function non_gaussian_trend_seasonal_predict_draws(fit, future_scale, &
       normals, uniforms, family) result(out)
-      ! Forecast non-Gaussian local trend and seasonal structural states.
-      type(bsts_non_gaussian_t), intent(in) :: fit
-      real(dp), intent(in) :: future_scale(:), normals(:, :, :), uniforms(:, :)
-      integer, intent(in) :: family
+      !! Forecast non-Gaussian local trend and seasonal structural states.
+      type(bsts_non_gaussian_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_scale(:) !! Future scale.
+      real(dp), intent(in) :: normals(:, :, :) !! Independent standard-normal draws.
+      real(dp), intent(in) :: uniforms(:, :) !! Uniforms.
+      integer, intent(in) :: family !! Family.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: structural(:), next_seasonal(:), sorted(:)
       real(dp) :: predictor, mean_value
@@ -11035,18 +11413,20 @@ contains
          end if
          sorted = out%draws(step, :)
          call insertion_sort(sorted)
-         out%lower(step) = empirical_quantile(sorted, 0.025_dp)
-         out%upper(step) = empirical_quantile(sorted, 0.975_dp)
+         out%lower(step) = quantile(sorted, 0.025_dp)
+         out%upper(step) = quantile(sorted, 0.975_dp)
       end do
    end function non_gaussian_trend_seasonal_predict_draws
 
    pure function non_gaussian_regression_predict_draws(fit, future_scale, &
       future_predictors, normals, uniforms, family) result(out)
-      ! Forecast sparse non-Gaussian regression from supplied draws.
-      type(bsts_non_gaussian_t), intent(in) :: fit
-      real(dp), intent(in) :: future_scale(:), future_predictors(:, :)
-      real(dp), intent(in) :: normals(:, :), uniforms(:, :)
-      integer, intent(in) :: family
+      !! Forecast sparse non-Gaussian regression from supplied draws.
+      type(bsts_non_gaussian_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_scale(:) !! Future scale.
+      real(dp), intent(in) :: future_predictors(:, :) !! Future predictors.
+      real(dp), intent(in) :: normals(:, :) !! Independent standard-normal draws.
+      real(dp), intent(in) :: uniforms(:, :) !! Uniforms.
+      integer, intent(in) :: family !! Family.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: sorted(:)
       real(dp) :: state, predictor, mean_value
@@ -11094,17 +11474,19 @@ contains
          end if
          sorted = out%draws(step, :)
          call insertion_sort(sorted)
-         out%lower(step) = empirical_quantile(sorted, 0.025_dp)
-         out%upper(step) = empirical_quantile(sorted, 0.975_dp)
+         out%lower(step) = quantile(sorted, 0.025_dp)
+         out%upper(step) = quantile(sorted, 0.975_dp)
       end do
    end function non_gaussian_regression_predict_draws
 
    pure function non_gaussian_predict_draws(fit, future_scale, normals, &
       uniforms, family) result(out)
-      ! Forecast a non-Gaussian local-level model from supplied draws.
-      type(bsts_non_gaussian_t), intent(in) :: fit
-      real(dp), intent(in) :: future_scale(:), normals(:, :), uniforms(:, :)
-      integer, intent(in) :: family
+      !! Forecast a non-Gaussian local-level model from supplied draws.
+      type(bsts_non_gaussian_t), intent(in) :: fit !! Previously fitted model.
+      real(dp), intent(in) :: future_scale(:) !! Future scale.
+      real(dp), intent(in) :: normals(:, :) !! Independent standard-normal draws.
+      real(dp), intent(in) :: uniforms(:, :) !! Uniforms.
+      integer, intent(in) :: family !! Family.
       type(bsts_prediction_t) :: out
       real(dp), allocatable :: sorted(:)
       real(dp) :: state, mean_value
@@ -11156,16 +11538,17 @@ contains
          end if
          sorted = out%draws(step, :)
          call insertion_sort(sorted)
-         out%lower(step) = empirical_quantile(sorted, 0.025_dp)
-         out%upper(step) = empirical_quantile(sorted, 0.975_dp)
+         out%lower(step) = quantile(sorted, 0.025_dp)
+         out%upper(step) = quantile(sorted, 0.975_dp)
       end do
    end function non_gaussian_predict_draws
 
    pure integer function binomial_quantile(trials, probability, uniform) &
       result(value)
-      ! Transform a uniform draw into a binomial count.
-      integer, intent(in) :: trials
-      real(dp), intent(in) :: probability, uniform
+      !! Transform a uniform draw into a binomial count.
+      integer, intent(in) :: trials !! Trials.
+      real(dp), intent(in) :: probability !! Probability value.
+      real(dp), intent(in) :: uniform !! Uniform.
       real(dp) :: mass, cumulative
 
       if (trials <= 0 .or. probability <= 0.0_dp) then
@@ -11188,8 +11571,9 @@ contains
    end function binomial_quantile
 
    pure integer function poisson_quantile(mean_value, uniform) result(value)
-      ! Transform a uniform draw into a Poisson count.
-      real(dp), intent(in) :: mean_value, uniform
+      !! Transform a uniform draw into a Poisson count.
+      real(dp), intent(in) :: mean_value !! Mean value.
+      real(dp), intent(in) :: uniform !! Uniform.
       real(dp) :: mass, cumulative
 
       if (mean_value <= 0.0_dp) then
@@ -11211,10 +11595,11 @@ contains
    end function poisson_quantile
 
    subroutine fill_non_gaussian_forecast_draws(fit, horizon, normals, uniforms)
-      ! Generate Gaussian state and uniform observation forecast draws.
-      type(bsts_non_gaussian_t), intent(in) :: fit
-      integer, intent(in) :: horizon
-      real(dp), allocatable, intent(out) :: normals(:, :), uniforms(:, :)
+      !! Generate Gaussian state and uniform observation forecast draws.
+      type(bsts_non_gaussian_t), intent(in) :: fit !! Previously fitted model.
+      integer, intent(in) :: horizon !! Number of periods to forecast.
+      real(dp), allocatable, intent(out) :: normals(:, :) !! Independent standard-normal draws.
+      real(dp), allocatable, intent(out) :: uniforms(:, :) !! Uniforms.
       integer :: retained, draw, step
 
       if (.not. allocated(fit%state) .or. horizon < 1) return
@@ -11232,9 +11617,10 @@ contains
 
    pure function bsts_geometric_sequence(length, initial_value, &
       discount_factor) result(sequence)
-      ! Return bsts GeometricSequence values without graphics or R objects.
-      integer, intent(in) :: length
-      real(dp), intent(in), optional :: initial_value, discount_factor
+      !! Return bsts GeometricSequence values without graphics or R objects.
+      integer, intent(in) :: length !! Length.
+      real(dp), intent(in), optional :: initial_value !! Initial value.
+      real(dp), intent(in), optional :: discount_factor !! Discount factor.
       real(dp), allocatable :: sequence(:)
       real(dp) :: initial, discount
       integer :: index
@@ -11255,9 +11641,10 @@ contains
 
    pure function bsts_harvey_cumulator(fine_series, contains_end, &
       membership_fraction) result(aggregate)
-      ! Form Harvey's running partial aggregates across coarse boundaries.
-      real(dp), intent(in) :: fine_series(:), membership_fraction(:)
-      logical, intent(in) :: contains_end(:)
+      !! Form Harvey's running partial aggregates across coarse boundaries.
+      real(dp), intent(in) :: fine_series(:) !! Fine series.
+      real(dp), intent(in) :: membership_fraction(:) !! Membership fraction.
+      logical, intent(in) :: contains_end(:) !! Flag controlling contains end.
       real(dp), allocatable :: aggregate(:)
       real(dp) :: cumulator, fraction
       integer :: time
@@ -11295,10 +11682,11 @@ contains
 
    pure function mixed_frequency_design(coarse_index, membership_fraction, &
       contains_end, coarse_points) result(design)
-      ! Build the Harvey flow-aggregation matrix for fine observations.
-      integer, intent(in) :: coarse_index(:), coarse_points
-      real(dp), intent(in) :: membership_fraction(:)
-      logical, intent(in) :: contains_end(:)
+      !! Build the Harvey flow-aggregation matrix for fine observations.
+      integer, intent(in) :: coarse_index(:) !! Index of coarse.
+      integer, intent(in) :: coarse_points !! Coarse points.
+      real(dp), intent(in) :: membership_fraction(:) !! Membership fraction.
+      logical, intent(in) :: contains_end(:) !! Flag controlling contains end.
       real(dp), allocatable :: design(:, :)
       real(dp), allocatable :: accumulated(:)
       integer :: fine_points, time, coarse
@@ -11325,9 +11713,10 @@ contains
 
    pure function mixed_frequency_cumulator(fine_series, membership_fraction, &
       contains_end) result(cumulator)
-      ! Return the accumulated flow immediately before each fine observation.
-      real(dp), intent(in) :: fine_series(:), membership_fraction(:)
-      logical, intent(in) :: contains_end(:)
+      !! Return the accumulated flow immediately before each fine observation.
+      real(dp), intent(in) :: fine_series(:) !! Fine series.
+      real(dp), intent(in) :: membership_fraction(:) !! Membership fraction.
+      logical, intent(in) :: contains_end(:) !! Flag controlling contains end.
       real(dp), allocatable :: cumulator(:)
       real(dp) :: accumulated
       integer :: time
@@ -11345,8 +11734,8 @@ contains
    end function mixed_frequency_cumulator
 
    pure subroutine summarize_prediction(prediction)
-      ! Fill pointwise posterior summaries for an allocated draw matrix.
-      type(bsts_prediction_t), intent(inout) :: prediction
+      !! Fill pointwise posterior summaries for an allocated draw matrix.
+      type(bsts_prediction_t), intent(inout) :: prediction !! Prediction, updated in place.
       real(dp), allocatable :: sorted(:)
       integer :: points, draws, point
 
@@ -11365,14 +11754,14 @@ contains
          end if
          sorted = prediction%draws(point, :)
          call insertion_sort(sorted)
-         prediction%lower(point) = empirical_quantile(sorted, 0.025_dp)
-         prediction%upper(point) = empirical_quantile(sorted, 0.975_dp)
+         prediction%lower(point) = quantile(sorted, 0.025_dp)
+         prediction%upper(point) = quantile(sorted, 0.975_dp)
       end do
    end subroutine summarize_prediction
 
    pure subroutine prediction_error_summaries(errors)
-      ! Summarize posterior mean prediction errors and overall loss.
-      type(bsts_prediction_errors_t), intent(inout) :: errors
+      !! Summarize posterior mean prediction errors and overall loss.
+      type(bsts_prediction_errors_t), intent(inout) :: errors !! Errors, updated in place.
       logical, allocatable :: finite(:)
       integer :: time, count_finite
 
@@ -11396,9 +11785,9 @@ contains
    end subroutine prediction_error_summaries
 
    pure subroutine score_ranks(scores, ranks)
-      ! Assign one-based ascending ranks, preserving tied ranks.
-      real(dp), intent(in) :: scores(:)
-      integer, intent(out) :: ranks(:)
+      !! Assign one-based ascending ranks, preserving tied ranks.
+      real(dp), intent(in) :: scores(:) !! Scores.
+      integer, intent(out) :: ranks(:) !! Ranks.
       integer :: model
 
       do model = 1, size(scores)
@@ -11407,8 +11796,8 @@ contains
    end subroutine score_ranks
 
    pure function sorted_unique_real(values) result(unique)
-      ! Return sorted distinct real values.
-      real(dp), intent(in) :: values(:)
+      !! Return sorted distinct real values.
+      real(dp), intent(in) :: values(:) !! Input values.
       real(dp), allocatable :: sorted(:), unique(:)
       integer :: index, count_unique
 
@@ -11433,8 +11822,8 @@ contains
    end function sorted_unique_real
 
    pure function sorted_unique_integer(values) result(unique)
-      ! Return sorted distinct integer values.
-      integer, intent(in) :: values(:)
+      !! Return sorted distinct integer values.
+      integer, intent(in) :: values(:) !! Input values.
       integer, allocatable :: sorted(:), unique(:)
       integer :: index, position, candidate, count_unique
 
@@ -11468,8 +11857,9 @@ contains
    end function sorted_unique_integer
 
    pure integer function integer_position(values, target) result(position)
-      ! Return the one-based position of an integer in a short vector.
-      integer, intent(in) :: values(:), target
+      !! Return the one-based position of an integer in a short vector.
+      integer, intent(in) :: values(:) !! Input values.
+      integer, intent(in) :: target !! Target.
       integer :: index
 
       position = 0
@@ -11483,9 +11873,9 @@ contains
 
    pure elemental type(date_t) function add_calendar_months(value, months) &
       result(shifted)
-      ! Add calendar months while clamping the day within the target month.
-      type(date_t), intent(in) :: value
-      integer, intent(in) :: months
+      !! Add calendar months while clamping the day within the target month.
+      type(date_t), intent(in) :: value !! Input value.
+      integer, intent(in) :: months !! Months.
       integer :: total, year, month, day
 
       total = 12*value%year + value%month - 1 + months
@@ -11496,16 +11886,16 @@ contains
    end function add_calendar_months
 
    pure elemental type(date_t) function last_day_in_month(value) result(last)
-      ! Return the final Gregorian day in a date's month.
-      type(date_t), intent(in) :: value
+      !! Return the final Gregorian day in a date's month.
+      type(date_t), intent(in) :: value !! Input value.
 
       last = date_t(value%year, value%month, &
          date_days_in_month(value%year, value%month))
    end function last_day_in_month
 
    subroutine fill_standard_normals(draws)
-      ! Fill an array with independent standard-normal draws.
-      real(dp), intent(out) :: draws(:, :)
+      !! Fill an array with independent standard-normal draws.
+      real(dp), intent(out) :: draws(:, :) !! Draws.
       integer :: row, column
 
       do column = 1, size(draws, 2)
@@ -11516,8 +11906,8 @@ contains
    end subroutine fill_standard_normals
 
    pure subroutine impose_shared_loading_constraints(loadings)
-      ! Impose the lower-triangular unit-diagonal factor identification.
-      real(dp), intent(inout) :: loadings(:, :)
+      !! Impose the lower-triangular unit-diagonal factor identification.
+      real(dp), intent(inout) :: loadings(:, :) !! Loadings, updated in place.
       integer :: series, factor
 
       do series = 1, size(loadings, 1)
@@ -11529,8 +11919,8 @@ contains
    end subroutine impose_shared_loading_constraints
 
    pure subroutine impose_shared_inclusion_priors(probability)
-      ! Force identifying loading probabilities to zero or one.
-      real(dp), intent(inout) :: probability(:, :)
+      !! Force identifying loading probabilities to zero or one.
+      real(dp), intent(inout) :: probability(:, :) !! Probability value, updated in place.
       integer :: series, factor
 
       do series = 1, size(probability, 1)
@@ -11543,8 +11933,8 @@ contains
    end subroutine impose_shared_inclusion_priors
 
    pure subroutine impose_shared_inclusion_constraints(included)
-      ! Force identifying loading indicators to their fixed states.
-      logical, intent(inout) :: included(:, :)
+      !! Force identifying loading indicators to their fixed states.
+      logical, intent(inout) :: included(:, :) !! Flag controlling included, updated in place.
       integer :: series, factor
 
       do series = 1, size(included, 1)
@@ -11557,11 +11947,13 @@ contains
 
    pure subroutine inverse_wishart_from_draws(degrees_of_freedom, scale, &
       normal_draws, gamma_draws, value, info)
-      ! Transform Bartlett draws into an inverse-Wishart matrix.
-      real(dp), intent(in) :: degrees_of_freedom, scale(:, :)
-      real(dp), intent(in) :: normal_draws(:, :), gamma_draws(:)
-      real(dp), allocatable, intent(out) :: value(:, :)
-      integer, intent(out) :: info
+      !! Transform Bartlett draws into an inverse-Wishart matrix.
+      real(dp), intent(in) :: degrees_of_freedom !! Degrees of freedom.
+      real(dp), intent(in) :: scale(:, :) !! Scale.
+      real(dp), intent(in) :: normal_draws(:, :) !! Independent standard-normal draws.
+      real(dp), intent(in) :: gamma_draws(:) !! Gamma simulation draws.
+      real(dp), allocatable, intent(out) :: value(:, :) !! Input value.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: inverse_scale(:, :), scale_factor(:, :)
       real(dp), allocatable :: bartlett(:, :), factor(:, :), precision(:, :)
       integer :: dimension, row, column, status
@@ -11608,8 +12000,8 @@ contains
    end subroutine inverse_wishart_from_draws
 
    pure real(dp) function finite_sample_variance(values) result(variance)
-      ! Compute the sample variance after omitting nonfinite observations.
-      real(dp), intent(in) :: values(:)
+      !! Compute the sample variance after omitting nonfinite observations.
+      real(dp), intent(in) :: values(:) !! Input values.
       real(dp) :: mean
       integer :: count_finite
 
@@ -11625,8 +12017,8 @@ contains
    end function finite_sample_variance
 
    pure real(dp) function first_finite_value(values) result(value)
-      ! Return the first finite observation or zero when none exists.
-      real(dp), intent(in) :: values(:)
+      !! Return the first finite observation or zero when none exists.
+      real(dp), intent(in) :: values(:) !! Input values.
       integer :: index
 
       value = 0.0_dp
@@ -11639,8 +12031,8 @@ contains
    end function first_finite_value
 
    pure real(dp) function finite_endpoint_slope(values) result(slope)
-      ! Estimate the endpoint slope using the first and last finite values.
-      real(dp), intent(in) :: values(:)
+      !! Estimate the endpoint slope using the first and last finite values.
+      real(dp), intent(in) :: values(:) !! Input values.
       integer :: first, last
 
       first = 1
@@ -11661,8 +12053,8 @@ contains
    end function finite_endpoint_slope
 
    pure subroutine insertion_sort(values)
-      ! Sort a short real vector in ascending order.
-      real(dp), intent(inout) :: values(:)
+      !! Sort a short real vector in ascending order.
+      real(dp), intent(inout) :: values(:) !! Input values, updated in place.
       real(dp) :: candidate
       integer :: i, j
 
@@ -11678,31 +12070,10 @@ contains
       end do
    end subroutine insertion_sort
 
-   pure real(dp) function empirical_quantile(sorted, probability) result(value)
-      ! Interpolate an R type-7 empirical quantile from sorted observations.
-      real(dp), intent(in) :: sorted(:), probability
-      real(dp) :: position, fraction
-      integer :: lower
-
-      if (size(sorted) < 1) then
-         value = 0.0_dp
-         return
-      end if
-      position = 1.0_dp + real(size(sorted) - 1, dp)* &
-         max(0.0_dp, min(1.0_dp, probability))
-      lower = min(size(sorted), int(floor(position)))
-      fraction = position - real(lower, dp)
-      if (lower == size(sorted)) then
-         value = sorted(lower)
-      else
-         value = (1.0_dp - fraction)*sorted(lower) + &
-            fraction*sorted(lower + 1)
-      end if
-   end function empirical_quantile
-
    pure function pack_predictors(response, predictors) result(observed)
-      ! Retain predictor rows whose corresponding response is finite.
-      real(dp), intent(in) :: response(:), predictors(:, :)
+      !! Retain predictor rows whose corresponding response is finite.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
       real(dp), allocatable :: observed(:, :)
       integer :: row, destination
 
@@ -11719,16 +12090,21 @@ contains
       slab_mean, slab_covariance, inclusion_probability, variance, prior_rate, &
       log_probability, collapsed_rate, posterior_mean, posterior_covariance, &
       active, info)
-      ! Compute collapsed likelihood and active-coefficient posterior moments.
-      real(dp), intent(in) :: response(:), predictors(:, :), slab_mean(:)
-      real(dp), intent(in) :: slab_covariance(:, :), inclusion_probability(:)
-      real(dp), intent(in) :: variance, prior_rate
-      logical, intent(in) :: included(:)
-      real(dp), intent(out) :: log_probability, collapsed_rate
-      real(dp), allocatable, intent(out) :: posterior_mean(:)
-      real(dp), allocatable, intent(out) :: posterior_covariance(:, :)
-      integer, allocatable, intent(out) :: active(:)
-      integer, intent(out) :: info
+      !! Compute collapsed likelihood and active-coefficient posterior moments.
+      real(dp), intent(in) :: response(:) !! Response observations.
+      real(dp), intent(in) :: predictors(:, :) !! Predictor matrix.
+      real(dp), intent(in) :: slab_mean(:) !! Slab mean.
+      real(dp), intent(in) :: slab_covariance(:, :) !! Slab covariance matrix.
+      real(dp), intent(in) :: inclusion_probability(:) !! Inclusion probability.
+      real(dp), intent(in) :: variance !! Variance value or matrix.
+      real(dp), intent(in) :: prior_rate !! Prior rate.
+      logical, intent(in) :: included(:) !! Flag controlling included.
+      real(dp), intent(out) :: log_probability !! Log probability.
+      real(dp), intent(out) :: collapsed_rate !! Collapsed rate.
+      real(dp), allocatable, intent(out) :: posterior_mean(:) !! Posterior mean.
+      real(dp), allocatable, intent(out) :: posterior_covariance(:, :) !! Posterior covariance matrix.
+      integer, allocatable, intent(out) :: active(:) !! Active.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: design(:, :), covariance(:, :), precision(:, :)
       real(dp), allocatable :: prior_precision(:, :), prior_mean(:), score(:)
       real(dp) :: log_prior, logdet_prior, logdet_precision, sum_squares
@@ -11799,8 +12175,8 @@ contains
    end subroutine spike_slab_model_moments
 
    pure elemental real(dp) function logistic_log_odds(log_odds) result(value)
-      ! Convert log odds to probability without avoidable overflow.
-      real(dp), intent(in) :: log_odds
+      !! Convert log odds to probability without avoidable overflow.
+      real(dp), intent(in) :: log_odds !! Log odds.
 
       if (log_odds >= 0.0_dp) then
          value = 1.0_dp/(1.0_dp + exp(-min(log_odds, 700.0_dp)))
@@ -11812,8 +12188,12 @@ contains
 
    pure real(dp) function truncated_normal_draw(mean, standard_deviation, &
       lower, upper, uniform) result(value)
-      ! Transform a uniform variate into a bounded Gaussian draw.
-      real(dp), intent(in) :: mean, standard_deviation, lower, upper, uniform
+      !! Transform a uniform variate into a bounded Gaussian draw.
+      real(dp), intent(in) :: mean !! Mean value or vector.
+      real(dp), intent(in) :: standard_deviation !! Standard deviation.
+      real(dp), intent(in) :: lower !! Lower.
+      real(dp), intent(in) :: upper !! Upper.
+      real(dp), intent(in) :: uniform !! Uniform.
       real(dp) :: lower_probability, upper_probability, probability
 
       lower_probability = 0.0_dp

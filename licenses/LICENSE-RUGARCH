@@ -1,0 +1,11 @@
+The algorithms in rugarch.f90 are translated from version 1.5-6 of the R
+package rugarch, authored by Alexios Galanos with contributions from Tobias
+Kley.
+
+The upstream package is distributed under GPL-3. The translation is therefore
+distributed under GPL-3.0-only. The GNU General Public License text is
+available at https://www.gnu.org/licenses/gpl-3.0.txt.
+
+Core conditional-variance formulas are adapted from the MIT-licensed
+GARCH-BFGS project, copyright (c) 2026 Beliavsky. Its MIT license notice is
+preserved in LICENSE-GARCH-SV.

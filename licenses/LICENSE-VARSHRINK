@@ -1,0 +1,9 @@
+VARshrink Fortran translation license notice
+
+The algorithms in varshrink.f90 are translated from the VARshrink R package,
+version 0.5.0, by Namgil Lee, Heon Young Yang, and Sung-Ho Kim.
+
+The upstream DESCRIPTION licenses VARshrink under the GNU General Public
+License version 3 or later. The translated source is distributed under the
+same terms using SPDX identifier GPL-3.0-or-later. The complete GNU GPL
+version 3 text is included in licenses/LICENSE-ARIMA2.

@@ -1,0 +1,11 @@
+FCVAR Fortran translation license notice
+
+The algorithms in fcvar.f90 are translated from the FCVAR R package, version
+0.1.4, by Lealand Morin, Morten Nielsen, and Michal Popiel. Upstream source
+files retain their stated copyright notices.
+
+The upstream DESCRIPTION licenses FCVAR under the GNU General Public License,
+version 3.
+
+GNU GPL 3.0:
+https://www.gnu.org/licenses/gpl-3.0.html

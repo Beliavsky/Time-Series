@@ -3,16 +3,17 @@
 ! Fractionally cointegrated VAR algorithms translated from the GPL-3 FCVAR package.
 module fcvar_mod
    use kind_mod, only: dp
-   use time_series_fourier_mod, only: fft_transform
-   use time_series_linalg_mod, only: cholesky_lower, identity_matrix, &
-      invert_matrix, symmetric_eigen, symmetrize, general_eigenvalues
-   use time_series_linalg_mod, only: symmetric_pseudoinverse
-   use time_series_optimization_mod, only: optimization_result_t, &
+   use fourier_mod, only: fft_transform
+   use linalg_mod, only: cholesky_lower, identity_matrix, &
+      invert_matrix, symmetric_eigen, symmetrize, general_eigenvalues, kronecker_product
+   use linalg_mod, only: symmetric_pseudoinverse
+   use optimization_mod, only: optimization_result_t, &
       bfgs_minimize_fd, nelder_mead_minimize
-   use time_series_random_mod, only: random_standard_normal_matrix, random_uniform
+   use random_mod, only: random_standard_normal_matrix, random_uniform
    use time_series_diagnostics_mod, only: multivariate_white_noise_test_t, &
       multivariate_white_noise_test
-   use itsmr_mod, only: regularized_gamma_q
+   use special_functions_mod, only: regularized_gamma_q
+   use stats_mod, only: sort
    use fracdist_mod, only: fracdist_probability_t, fracdist_p_value
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite, ieee_quiet_nan, &
       ieee_value, ieee_positive_inf
@@ -240,8 +241,9 @@ module fcvar_mod
 contains
 
    pure function fcvar_fractional_difference(x, d) result(differenced)
-      ! Apply FCVAR's level-preserving fractional difference by FFT convolution.
-      real(dp), intent(in) :: x(:, :), d
+      !! Apply FCVAR's level-preserving fractional difference by FFT convolution.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
       real(dp), allocatable :: differenced(:, :)
       complex(dp), allocatable :: padded(:), weights(:), transformed(:)
       integer :: n, variables, nfft, lag, variable
@@ -274,9 +276,10 @@ contains
    end function fcvar_fractional_difference
 
    pure function fcvar_fractional_lags(x, b, order) result(lagged)
-      ! Form powers of L_b = 1 - (1-L)^b through the requested order.
-      real(dp), intent(in) :: x(:, :), b
-      integer, intent(in) :: order
+      !! Form powers of L_b = 1 - (1-L)^b through the requested order.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: b !! B.
+      integer, intent(in) :: order !! Model or polynomial order.
       real(dp), allocatable :: lagged(:, :)
       real(dp), allocatable :: previous(:, :)
       integer :: n, variables, lag
@@ -299,10 +302,12 @@ contains
    end function fcvar_fractional_lags
 
    pure function fcvar_transform(x, lag_order, d, b, options) result(out)
-      ! Construct FCVAR's Z0, Z1, Z2, and Z3 regression arrays.
-      real(dp), intent(in) :: x(:, :), d, b
-      integer, intent(in) :: lag_order
-      type(fcvar_options_t), intent(in), optional :: options
+      !! Construct FCVAR's Z0, Z1, Z2, and Z3 regression arrays.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: b !! B.
+      integer, intent(in) :: lag_order !! Model lag order.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
       type(fcvar_transform_t) :: out
       type(fcvar_options_t) :: selected
       real(dp), allocatable :: levels(:, :), work(:, :)
@@ -345,12 +350,15 @@ contains
 
    pure function fcvar_estimate_fixed(x, lag_order, rank, d, b, options, &
       level, level_initial) result(out)
-      ! Concentrate the fixed-order FCVAR likelihood, profiling a level if enabled.
-      real(dp), intent(in) :: x(:, :), d, b
-      integer, intent(in) :: lag_order, rank
-      type(fcvar_options_t), intent(in), optional :: options
-      real(dp), intent(in), optional :: level(:)
-      real(dp), intent(in), optional :: level_initial(:)
+      !! Concentrate the fixed-order FCVAR likelihood, profiling a level if enabled.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: b !! B.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      real(dp), intent(in), optional :: level(:) !! Model level or confidence level.
+      real(dp), intent(in), optional :: level_initial(:) !! Level initial.
       type(fcvar_fit_t) :: out
       type(fcvar_options_t) :: selected, profile_options
       type(optimization_result_t) :: optimized
@@ -406,8 +414,8 @@ contains
    contains
 
       pure function level_objective(candidate) result(value)
-         ! Return negative fixed-order likelihood for one level vector.
-         real(dp), intent(in) :: candidate(:)
+         !! Return negative fixed-order likelihood for one level vector.
+         real(dp), intent(in) :: candidate(:) !! Candidate.
          real(dp) :: value
          type(fcvar_fit_t) :: candidate_fit
          real(dp), allocatable :: candidate_shifted(:, :)
@@ -426,10 +434,13 @@ contains
 
    pure function fcvar_estimate_fixed_core(x, lag_order, rank, d, b, options) &
       result(out)
-      ! Concentrate the Gaussian FCVAR likelihood for already level-shifted data.
-      real(dp), intent(in) :: x(:, :), d, b
-      integer, intent(in) :: lag_order, rank
-      type(fcvar_options_t), intent(in), optional :: options
+      !! Concentrate the Gaussian FCVAR likelihood for already level-shifted data.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: b !! B.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
       type(fcvar_fit_t) :: out
       type(fcvar_options_t) :: selected
       type(fcvar_transform_t) :: transformed
@@ -607,13 +618,16 @@ contains
 
    pure function fcvar_estimate_restricted_fixed(x, lag_order, rank, d, b, &
       restrictions, options, max_iterations, tolerance) result(out)
-      ! Estimate restricted alpha and beta by the FCVAR switching algorithm.
-      real(dp), intent(in) :: x(:, :), d, b
-      integer, intent(in) :: lag_order, rank
-      type(fcvar_restrictions_t), intent(in) :: restrictions
-      type(fcvar_options_t), intent(in), optional :: options
-      integer, intent(in), optional :: max_iterations
-      real(dp), intent(in), optional :: tolerance
+      !! Estimate restricted alpha and beta by the FCVAR switching algorithm.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: b !! B.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      type(fcvar_restrictions_t), intent(in) :: restrictions !! Restrictions.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
+      real(dp), intent(in), optional :: tolerance !! Numerical convergence tolerance.
       type(fcvar_switching_estimation_t) :: out
       type(fcvar_options_t) :: selected
       type(fcvar_transform_t) :: transformed
@@ -857,10 +871,13 @@ contains
 
    pure function fcvar_log_likelihood_fixed(x, lag_order, rank, d, b, options) &
       result(log_likelihood)
-      ! Return the concentrated Gaussian log likelihood at fixed d and b.
-      real(dp), intent(in) :: x(:, :), d, b
-      integer, intent(in) :: lag_order, rank
-      type(fcvar_options_t), intent(in), optional :: options
+      !! Return the concentrated Gaussian log likelihood at fixed d and b.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: b !! B.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
       real(dp) :: log_likelihood
       type(fcvar_fit_t) :: fit
 
@@ -874,11 +891,14 @@ contains
 
    pure function fcvar_likelihood_grid(x, lag_order, rank, d_grid, b_grid, &
       options, constrain_b) result(out)
-      ! Evaluate a grid and select either its global or highest-b local maximum.
-      real(dp), intent(in) :: x(:, :), d_grid(:), b_grid(:)
-      integer, intent(in) :: lag_order, rank
-      type(fcvar_options_t), intent(in), optional :: options
-      logical, intent(in), optional :: constrain_b
+      !! Evaluate a grid and select either its global or highest-b local maximum.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: d_grid(:) !! D grid.
+      real(dp), intent(in) :: b_grid(:) !! B grid.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      logical, intent(in), optional :: constrain_b !! Flag controlling constrain b.
       type(fcvar_grid_t) :: out
       type(fcvar_options_t) :: selected
       type(fcvar_fit_t) :: fit
@@ -990,10 +1010,11 @@ contains
 
    pure subroutine fcvar_find_local_maxima(values, feasible, row_index, &
       column_index)
-      ! Locate strict maxima against every feasible neighboring grid cell.
-      real(dp), intent(in) :: values(:, :)
-      logical, intent(in) :: feasible(:, :)
-      integer, allocatable, intent(out) :: row_index(:), column_index(:)
+      !! Locate strict maxima against every feasible neighboring grid cell.
+      real(dp), intent(in) :: values(:, :) !! Input values.
+      logical, intent(in) :: feasible(:, :) !! Flag controlling feasible.
+      integer, allocatable, intent(out) :: row_index(:) !! Index of row.
+      integer, allocatable, intent(out) :: column_index(:) !! Index of column.
       logical, allocatable :: is_maximum(:, :)
       integer :: row, column, neighbor_row, neighbor_column, count_maximum
 
@@ -1036,12 +1057,16 @@ contains
 
    pure function fcvar_estimate(x, lag_order, rank, d_bounds, b_bounds, &
       options, constrain_b, grid_points, max_iterations) result(out)
-      ! Estimate d and b by grid initialization and bounded BFGS refinement.
-      real(dp), intent(in) :: x(:, :), d_bounds(2), b_bounds(2)
-      integer, intent(in) :: lag_order, rank
-      type(fcvar_options_t), intent(in), optional :: options
-      logical, intent(in), optional :: constrain_b
-      integer, intent(in), optional :: grid_points, max_iterations
+      !! Estimate d and b by grid initialization and bounded BFGS refinement.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: d_bounds(2) !! D bounds.
+      real(dp), intent(in) :: b_bounds(2) !! B bounds.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      logical, intent(in), optional :: constrain_b !! Flag controlling constrain b.
+      integer, intent(in), optional :: grid_points !! Grid points.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(fcvar_estimation_t) :: out
       type(fcvar_options_t) :: selected
       type(optimization_result_t) :: optimization
@@ -1113,8 +1138,8 @@ contains
    contains
 
       pure function objective(coordinates) result(value)
-         ! Return the negative concentrated likelihood in bounded coordinates.
-         real(dp), intent(in) :: coordinates(:)
+         !! Return the negative concentrated likelihood in bounded coordinates.
+         real(dp), intent(in) :: coordinates(:) !! Coordinates.
          real(dp) :: value, current_d, current_b, likelihood
 
          call decode_orders(coordinates, d_bounds, b_bounds, constrained, &
@@ -1132,11 +1157,13 @@ contains
 
    pure function fcvar_estimate_equal_orders(x, lag_order, rank, bounds, &
       options, grid_points) result(out)
-      ! Estimate the default FCVAR restriction d equals b on a bounded interval.
-      real(dp), intent(in) :: x(:, :), bounds(2)
-      integer, intent(in) :: lag_order, rank
-      type(fcvar_options_t), intent(in), optional :: options
-      integer, intent(in), optional :: grid_points
+      !! Estimate the default FCVAR restriction d equals b on a bounded interval.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: bounds(2) !! Bounds.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      integer, intent(in), optional :: grid_points !! Grid points.
       type(fcvar_estimation_t) :: out
       real(dp), allocatable :: grid(:)
       real(dp) :: order_value, likelihood
@@ -1184,13 +1211,16 @@ contains
 
    pure function fcvar_estimate_constrained_orders(x, lag_order, rank, bounds, &
       restrictions, options, constrain_b, grid_points, max_iterations) result(out)
-      ! Estimate fractional orders under affine equalities and inequalities.
-      real(dp), intent(in) :: x(:, :), bounds(2, 2)
-      integer, intent(in) :: lag_order, rank
-      type(fcvar_restrictions_t), intent(in) :: restrictions
-      type(fcvar_options_t), intent(in), optional :: options
-      logical, intent(in), optional :: constrain_b
-      integer, intent(in), optional :: grid_points, max_iterations
+      !! Estimate fractional orders under affine equalities and inequalities.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: bounds(2, 2) !! Bounds.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      type(fcvar_restrictions_t), intent(in) :: restrictions !! Restrictions.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      logical, intent(in), optional :: constrain_b !! Flag controlling constrain b.
+      integer, intent(in), optional :: grid_points !! Grid points.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(fcvar_order_estimation_t) :: out
       type(fcvar_options_t) :: selected
       type(optimization_result_t) :: optimized
@@ -1388,8 +1418,8 @@ contains
    contains
 
       pure function order_objective(orders) result(objective)
-         ! Return penalized negative likelihood for a candidate order pair.
-         real(dp), intent(in) :: orders(:)
+         !! Return penalized negative likelihood for a candidate order pair.
+         real(dp), intent(in) :: orders(:) !! Orders.
          real(dp) :: objective
 
          if (size(orders) /= 2 .or. .not. orders_feasible(orders, inequality, &
@@ -1405,11 +1435,12 @@ contains
 
    pure function fcvar_simulate_from_innovations(history, model, innovations, &
       options, level) result(out)
-      ! Generate an FCVAR path from supplied innovations and starting history.
-      real(dp), intent(in) :: history(:, :), innovations(:, :)
-      type(fcvar_fit_t), intent(in) :: model
-      type(fcvar_options_t), intent(in), optional :: options
-      real(dp), intent(in), optional :: level(:)
+      !! Generate an FCVAR path from supplied innovations and starting history.
+      real(dp), intent(in) :: history(:, :) !! History.
+      real(dp), intent(in) :: innovations(:, :) !! Model innovations.
+      type(fcvar_fit_t), intent(in) :: model !! Model specification.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      real(dp), intent(in), optional :: level(:) !! Model level or confidence level.
       type(fcvar_path_t) :: out
       type(fcvar_options_t) :: selected
       real(dp), allocatable :: work(:, :), y(:, :), z(:, :), term(:, :)
@@ -1505,12 +1536,12 @@ contains
 
    pure function fcvar_forecast(history, model, periods, options, level) &
       result(out)
-      ! Recursively forecast an FCVAR model with zero future innovations.
-      real(dp), intent(in) :: history(:, :)
-      type(fcvar_fit_t), intent(in) :: model
-      integer, intent(in) :: periods
-      type(fcvar_options_t), intent(in), optional :: options
-      real(dp), intent(in), optional :: level(:)
+      !! Recursively forecast an FCVAR model with zero future innovations.
+      real(dp), intent(in) :: history(:, :) !! History.
+      type(fcvar_fit_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: periods !! Periods.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      real(dp), intent(in), optional :: level(:) !! Model level or confidence level.
       type(fcvar_path_t) :: out
       real(dp), allocatable :: innovations(:, :)
 
@@ -1525,12 +1556,12 @@ contains
    end function fcvar_forecast
 
    function fcvar_simulate(history, model, periods, options, level) result(out)
-      ! Simulate FCVAR with standard-normal disturbances as in FCVARsim.
-      real(dp), intent(in) :: history(:, :)
-      type(fcvar_fit_t), intent(in) :: model
-      integer, intent(in) :: periods
-      type(fcvar_options_t), intent(in), optional :: options
-      real(dp), intent(in), optional :: level(:)
+      !! Simulate FCVAR with standard-normal disturbances as in FCVARsim.
+      real(dp), intent(in) :: history(:, :) !! History.
+      type(fcvar_fit_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: periods !! Periods.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      real(dp), intent(in), optional :: level(:) !! Model level or confidence level.
       type(fcvar_path_t) :: out
       real(dp), allocatable :: draws(:, :), innovations(:, :)
 
@@ -1547,11 +1578,13 @@ contains
 
    pure function fcvar_bootstrap_from_signs(history, model, residuals, signs, &
       options, level) result(out)
-      ! Generate FCVAR's centered-residual wild bootstrap for supplied signs.
-      real(dp), intent(in) :: history(:, :), residuals(:, :), signs(:)
-      type(fcvar_fit_t), intent(in) :: model
-      type(fcvar_options_t), intent(in), optional :: options
-      real(dp), intent(in), optional :: level(:)
+      !! Generate FCVAR's centered-residual wild bootstrap for supplied signs.
+      real(dp), intent(in) :: history(:, :) !! History.
+      real(dp), intent(in) :: residuals(:, :) !! Model residuals.
+      real(dp), intent(in) :: signs(:) !! Signs.
+      type(fcvar_fit_t), intent(in) :: model !! Model specification.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      real(dp), intent(in), optional :: level(:) !! Model level or confidence level.
       type(fcvar_path_t) :: out
       real(dp), allocatable :: centered(:, :), innovations(:, :)
       integer :: periods, variables
@@ -1575,12 +1608,13 @@ contains
 
    function fcvar_bootstrap(history, model, residuals, periods, options, &
       level) result(out)
-      ! Draw Rademacher signs and generate FCVAR's wild bootstrap path.
-      real(dp), intent(in) :: history(:, :), residuals(:, :)
-      type(fcvar_fit_t), intent(in) :: model
-      integer, intent(in) :: periods
-      type(fcvar_options_t), intent(in), optional :: options
-      real(dp), intent(in), optional :: level(:)
+      !! Draw Rademacher signs and generate FCVAR's wild bootstrap path.
+      real(dp), intent(in) :: history(:, :) !! History.
+      real(dp), intent(in) :: residuals(:, :) !! Model residuals.
+      type(fcvar_fit_t), intent(in) :: model !! Model specification.
+      integer, intent(in) :: periods !! Periods.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      real(dp), intent(in), optional :: level(:) !! Model level or confidence level.
       type(fcvar_path_t) :: out
       real(dp), allocatable :: signs(:)
       integer :: time
@@ -1604,10 +1638,11 @@ contains
    pure function fcvar_likelihood_ratio(unrestricted_log_likelihood, &
       restricted_log_likelihood, unrestricted_parameters, &
       restricted_parameters) result(out)
-      ! Test ordinary nested FCVAR restrictions by a chi-square LR statistic.
-      real(dp), intent(in) :: unrestricted_log_likelihood
-      real(dp), intent(in) :: restricted_log_likelihood
-      integer, intent(in) :: unrestricted_parameters, restricted_parameters
+      !! Test ordinary nested FCVAR restrictions by a chi-square LR statistic.
+      real(dp), intent(in) :: unrestricted_log_likelihood !! Unrestricted log likelihood.
+      real(dp), intent(in) :: restricted_log_likelihood !! Restricted log likelihood.
+      integer, intent(in) :: unrestricted_parameters !! Unrestricted parameters.
+      integer, intent(in) :: restricted_parameters !! Restricted parameters.
       type(fcvar_lr_test_t) :: out
 
       out%unrestricted_log_likelihood = unrestricted_log_likelihood
@@ -1631,10 +1666,12 @@ contains
 
    pure function fcvar_free_parameter_count(variables, lag_order, rank, &
       options, equal_orders) result(count)
-      ! Count unrestricted FCVAR parameters after rank normalization.
-      integer, intent(in) :: variables, lag_order, rank
-      type(fcvar_options_t), intent(in), optional :: options
-      logical, intent(in), optional :: equal_orders
+      !! Count unrestricted FCVAR parameters after rank normalization.
+      integer, intent(in) :: variables !! Number or indices of variables.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      logical, intent(in), optional :: equal_orders !! Flag controlling equal orders.
       integer :: count
       type(fcvar_options_t) :: selected
       logical :: equal
@@ -1657,12 +1694,15 @@ contains
 
    pure function fcvar_rank_tests(x, lag_order, bounds, options, equal_orders, &
       constrain_b, grid_points, max_iterations) result(out)
-      ! Estimate every rank and compare each with the full-rank FCVAR model.
-      real(dp), intent(in) :: x(:, :), bounds(2, 2)
-      integer, intent(in) :: lag_order
-      type(fcvar_options_t), intent(in), optional :: options
-      logical, intent(in), optional :: equal_orders, constrain_b
-      integer, intent(in), optional :: grid_points, max_iterations
+      !! Estimate every rank and compare each with the full-rank FCVAR model.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: bounds(2, 2) !! Bounds.
+      integer, intent(in) :: lag_order !! Model lag order.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      logical, intent(in), optional :: equal_orders !! Flag controlling equal orders.
+      logical, intent(in), optional :: constrain_b !! Flag controlling constrain b.
+      integer, intent(in), optional :: grid_points !! Grid points.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(fcvar_rank_tests_t) :: out
       type(fcvar_estimation_t) :: estimation
       type(fcvar_options_t) :: selected
@@ -1751,12 +1791,17 @@ contains
    pure function fcvar_lag_select(x, maximum_lag, rank, bounds, &
       diagnostic_lag, options, equal_orders, constrain_b, grid_points, &
       max_iterations) result(out)
-      ! Select the FCVAR lag order by sequential LR tests, AIC, and BIC.
-      real(dp), intent(in) :: x(:, :), bounds(2, 2)
-      integer, intent(in) :: maximum_lag, rank, diagnostic_lag
-      type(fcvar_options_t), intent(in), optional :: options
-      logical, intent(in), optional :: equal_orders, constrain_b
-      integer, intent(in), optional :: grid_points, max_iterations
+      !! Select the FCVAR lag order by sequential LR tests, AIC, and BIC.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: bounds(2, 2) !! Bounds.
+      integer, intent(in) :: maximum_lag !! Maximum lag.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      integer, intent(in) :: diagnostic_lag !! Diagnostic lag.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      logical, intent(in), optional :: equal_orders !! Flag controlling equal orders.
+      logical, intent(in), optional :: constrain_b !! Flag controlling constrain b.
+      integer, intent(in), optional :: grid_points !! Grid points.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(fcvar_lag_selection_t) :: out
       type(fcvar_estimation_t) :: estimation
       type(multivariate_white_noise_test_t) :: diagnostics
@@ -1848,12 +1893,18 @@ contains
    pure function fcvar_bootstrap_rank_from_signs(x, lag_order, null_rank, &
       alternative_rank, bounds, signs, options, equal_orders, constrain_b, &
       grid_points, max_iterations) result(out)
-      ! Bootstrap a nested FCVAR rank LR statistic using supplied wild signs.
-      real(dp), intent(in) :: x(:, :), bounds(2, 2), signs(:, :)
-      integer, intent(in) :: lag_order, null_rank, alternative_rank
-      type(fcvar_options_t), intent(in), optional :: options
-      logical, intent(in), optional :: equal_orders, constrain_b
-      integer, intent(in), optional :: grid_points, max_iterations
+      !! Bootstrap a nested FCVAR rank LR statistic using supplied wild signs.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: bounds(2, 2) !! Bounds.
+      real(dp), intent(in) :: signs(:, :) !! Signs.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: null_rank !! Null rank.
+      integer, intent(in) :: alternative_rank !! Alternative rank.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      logical, intent(in), optional :: equal_orders !! Flag controlling equal orders.
+      logical, intent(in), optional :: constrain_b !! Flag controlling constrain b.
+      integer, intent(in), optional :: grid_points !! Grid points.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(fcvar_bootstrap_rank_t) :: out
       type(fcvar_options_t) :: selected
       type(fcvar_estimation_t) :: null_estimation, alternative_estimation
@@ -1950,7 +2001,7 @@ contains
             null_estimation%fit%log_likelihood))
          deallocate(bootstrap_sample)
       end do
-      call sort_real_values(out%statistic)
+      call sort(out%statistic)
       out%exceedances = count(out%statistic > out%observed_statistic)
       out%p_value = real(out%exceedances, dp)/real(replications, dp)
    end function fcvar_bootstrap_rank_from_signs
@@ -1958,12 +2009,18 @@ contains
    function fcvar_bootstrap_rank(x, lag_order, null_rank, alternative_rank, &
       bounds, replications, options, equal_orders, constrain_b, grid_points, &
       max_iterations) result(out)
-      ! Draw shared-RNG wild signs and bootstrap a nested FCVAR rank test.
-      real(dp), intent(in) :: x(:, :), bounds(2, 2)
-      integer, intent(in) :: lag_order, null_rank, alternative_rank, replications
-      type(fcvar_options_t), intent(in), optional :: options
-      logical, intent(in), optional :: equal_orders, constrain_b
-      integer, intent(in), optional :: grid_points, max_iterations
+      !! Draw shared-RNG wild signs and bootstrap a nested FCVAR rank test.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: bounds(2, 2) !! Bounds.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: null_rank !! Null rank.
+      integer, intent(in) :: alternative_rank !! Alternative rank.
+      integer, intent(in) :: replications !! Replications.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      logical, intent(in), optional :: equal_orders !! Flag controlling equal orders.
+      logical, intent(in), optional :: constrain_b !! Flag controlling constrain b.
+      integer, intent(in), optional :: grid_points !! Grid points.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(fcvar_bootstrap_rank_t) :: out
       type(fcvar_options_t) :: selected
       real(dp), allocatable :: signs(:, :)
@@ -1990,11 +2047,16 @@ contains
 
    pure function estimate_rank_model(x, lag_order, rank, bounds, options, &
       equal_orders, constrain_b, grid_points, max_iterations) result(out)
-      ! Estimate one rank using the selected fractional-order restriction.
-      real(dp), intent(in) :: x(:, :), bounds(2, 2)
-      integer, intent(in) :: lag_order, rank, grid_points, max_iterations
-      type(fcvar_options_t), intent(in) :: options
-      logical, intent(in) :: equal_orders, constrain_b
+      !! Estimate one rank using the selected fractional-order restriction.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: bounds(2, 2) !! Bounds.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      integer, intent(in) :: grid_points !! Grid points.
+      integer, intent(in) :: max_iterations !! Maximum number of algorithm iterations.
+      type(fcvar_options_t), intent(in) :: options !! Algorithm options.
+      logical, intent(in) :: equal_orders !! Flag controlling equal orders.
+      logical, intent(in) :: constrain_b !! Flag controlling constrain b.
       type(fcvar_estimation_t) :: out
 
       if (equal_orders) then
@@ -2007,28 +2069,10 @@ contains
       end if
    end function estimate_rank_model
 
-   pure subroutine sort_real_values(values)
-      ! Sort real values into ascending order by insertion.
-      real(dp), intent(inout) :: values(:)
-      real(dp) :: selected
-      integer :: i, j
-
-      do i = 2, size(values)
-         selected = values(i)
-         j = i - 1
-         do while (j >= 1)
-            if (values(j) <= selected) exit
-            values(j + 1) = values(j)
-            j = j - 1
-         end do
-         values(j + 1) = selected
-      end do
-   end subroutine sort_real_values
-
    pure function fcvar_pack_parameters(fit, equal_orders) result(parameters)
-      ! Pack identified FCVAR mean parameters into the Hessian vector order.
-      type(fcvar_fit_t), intent(in) :: fit
-      logical, intent(in), optional :: equal_orders
+      !! Pack identified FCVAR mean parameters into the Hessian vector order.
+      type(fcvar_fit_t), intent(in) :: fit !! Previously fitted model.
+      logical, intent(in), optional :: equal_orders !! Flag controlling equal orders.
       real(dp), allocatable :: parameters(:)
       logical :: equal
       integer :: count, index, block, variables
@@ -2082,10 +2126,10 @@ contains
 
    pure function fcvar_unpack_parameters(parameters, template, equal_orders) &
       result(out)
-      ! Restore identified FCVAR coefficient fields from a packed vector.
-      real(dp), intent(in) :: parameters(:)
-      type(fcvar_fit_t), intent(in) :: template
-      logical, intent(in), optional :: equal_orders
+      !! Restore identified FCVAR coefficient fields from a packed vector.
+      real(dp), intent(in) :: parameters(:) !! Model parameter values.
+      type(fcvar_fit_t), intent(in) :: template !! Template.
+      logical, intent(in), optional :: equal_orders !! Flag controlling equal orders.
       type(fcvar_fit_t) :: out
       logical :: equal
       integer :: count, index, block, variables
@@ -2154,10 +2198,10 @@ contains
    end function fcvar_unpack_parameters
 
    pure function fcvar_full_log_likelihood(x, fit, options) result(value)
-      ! Evaluate the covariance-concentrated likelihood at all mean parameters.
-      real(dp), intent(in) :: x(:, :)
-      type(fcvar_fit_t), intent(in) :: fit
-      type(fcvar_options_t), intent(in), optional :: options
+      !! Evaluate the covariance-concentrated likelihood at all mean parameters.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      type(fcvar_fit_t), intent(in) :: fit !! Previously fitted model.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
       real(dp) :: value
       type(fcvar_options_t) :: selected
       type(fcvar_transform_t) :: transformed
@@ -2205,10 +2249,10 @@ contains
    end function fcvar_full_log_likelihood
 
    pure function refresh_fcvar_fit(x, coefficients, options) result(out)
-      ! Recompute residuals, covariance, and likelihood for supplied coefficients.
-      real(dp), intent(in) :: x(:, :)
-      type(fcvar_fit_t), intent(in) :: coefficients
-      type(fcvar_options_t), intent(in) :: options
+      !! Recompute residuals, covariance, and likelihood for supplied coefficients.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      type(fcvar_fit_t), intent(in) :: coefficients !! Model coefficients.
+      type(fcvar_options_t), intent(in) :: options !! Algorithm options.
       type(fcvar_fit_t) :: out
       type(fcvar_transform_t) :: transformed
       real(dp), allocatable :: beta_star(:, :)
@@ -2270,12 +2314,12 @@ contains
 
    pure function fcvar_standard_errors(x, fit, options, equal_orders, &
       increment) result(out)
-      ! Estimate coefficient covariance from a centered numerical Hessian.
-      real(dp), intent(in) :: x(:, :)
-      type(fcvar_fit_t), intent(in) :: fit
-      type(fcvar_options_t), intent(in), optional :: options
-      logical, intent(in), optional :: equal_orders
-      real(dp), intent(in), optional :: increment
+      !! Estimate coefficient covariance from a centered numerical Hessian.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      type(fcvar_fit_t), intent(in) :: fit !! Previously fitted model.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      logical, intent(in), optional :: equal_orders !! Flag controlling equal orders.
+      real(dp), intent(in), optional :: increment !! Increment.
       type(fcvar_standard_errors_t) :: out
       real(dp), allocatable :: step(:), first(:), second(:), inverse(:, :)
       real(dp) :: center, first_value, second_value, third_value, fourth_value
@@ -2364,8 +2408,8 @@ contains
    contains
 
       pure function objective(parameters) result(log_likelihood)
-         ! Evaluate the full likelihood at one packed parameter vector.
-         real(dp), intent(in) :: parameters(:)
+         !! Evaluate the full likelihood at one packed parameter vector.
+         real(dp), intent(in) :: parameters(:) !! Model parameter values.
          real(dp) :: log_likelihood
          type(fcvar_fit_t) :: adjusted
 
@@ -2380,8 +2424,8 @@ contains
    end function fcvar_standard_errors
 
    pure function fcvar_characteristic_roots(fit) result(out)
-      ! Compute inverse companion eigenvalues as FCVAR characteristic roots.
-      type(fcvar_fit_t), intent(in) :: fit
+      !! Compute inverse companion eigenvalues as FCVAR characteristic roots.
+      type(fcvar_fit_t), intent(in) :: fit !! Previously fitted model.
       type(fcvar_roots_t) :: out
       real(dp), allocatable :: companion(:, :)
       integer :: variables, states, lag, row, status
@@ -2433,8 +2477,8 @@ contains
    end function fcvar_characteristic_roots
 
    pure logical function valid_fit_layout(fit) result(valid)
-      ! Check allocation and dimensions required by FCVAR postestimation.
-      type(fcvar_fit_t), intent(in) :: fit
+      !! Check allocation and dimensions required by FCVAR postestimation.
+      type(fcvar_fit_t), intent(in) :: fit !! Previously fitted model.
       integer :: variables
 
       valid = allocated(fit%alpha) .and. allocated(fit%beta) .and. &
@@ -2466,9 +2510,9 @@ contains
 
    pure integer function inference_parameter_count(fit, equal_orders) &
       result(count)
-      ! Count identified mean parameters represented in the Hessian vector.
-      type(fcvar_fit_t), intent(in) :: fit
-      logical, intent(in) :: equal_orders
+      !! Count identified mean parameters represented in the Hessian vector.
+      type(fcvar_fit_t), intent(in) :: fit !! Previously fitted model.
+      logical, intent(in) :: equal_orders !! Flag controlling equal orders.
       integer :: variables
 
       variables = size(fit%alpha, 1)
@@ -2478,9 +2522,9 @@ contains
    end function inference_parameter_count
 
    pure subroutine map_standard_errors(out, fit)
-      ! Map packed standard errors back to coefficient array shapes.
-      type(fcvar_standard_errors_t), intent(inout) :: out
-      type(fcvar_fit_t), intent(in) :: fit
+      !! Map packed standard errors back to coefficient array shapes.
+      type(fcvar_standard_errors_t), intent(inout) :: out !! Procedure result, updated in place.
+      type(fcvar_fit_t), intent(in) :: fit !! Previously fitted model.
       integer :: variables, index, block
 
       variables = size(fit%alpha, 1)
@@ -2540,8 +2584,8 @@ contains
    end subroutine map_standard_errors
 
    pure subroutine sort_complex_modulus(values)
-      ! Sort complex values by decreasing modulus.
-      complex(dp), intent(inout) :: values(:)
+      !! Sort complex values by decreasing modulus.
+      complex(dp), intent(inout) :: values(:) !! Input values, updated in place.
       complex(dp) :: selected
       integer :: i, j
 
@@ -2560,13 +2604,17 @@ contains
    pure function fcvar_restricted_estimate(x, lag_order, rank, bounds, &
       restrictions, options, equal_orders, constrain_b, grid_points, &
       max_iterations) result(out)
-      ! Estimate an FCVAR model subject to exact linear coefficient restrictions.
-      real(dp), intent(in) :: x(:, :), bounds(2, 2)
-      integer, intent(in) :: lag_order, rank
-      type(fcvar_restrictions_t), intent(in) :: restrictions
-      type(fcvar_options_t), intent(in), optional :: options
-      logical, intent(in), optional :: equal_orders, constrain_b
-      integer, intent(in), optional :: grid_points, max_iterations
+      !! Estimate an FCVAR model subject to exact linear coefficient restrictions.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: bounds(2, 2) !! Bounds.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      type(fcvar_restrictions_t), intent(in) :: restrictions !! Restrictions.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      logical, intent(in), optional :: equal_orders !! Flag controlling equal orders.
+      logical, intent(in), optional :: constrain_b !! Flag controlling constrain b.
+      integer, intent(in), optional :: grid_points !! Grid points.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(fcvar_restricted_estimation_t) :: out
       type(fcvar_options_t) :: selected
       type(fcvar_estimation_t) :: unrestricted
@@ -2666,8 +2714,8 @@ contains
    contains
 
       pure function objective(coordinates_value) result(value)
-         ! Return negative likelihood in exact restriction-null-space coordinates.
-         real(dp), intent(in) :: coordinates_value(:)
+         !! Return negative likelihood in exact restriction-null-space coordinates.
+         real(dp), intent(in) :: coordinates_value(:) !! Coordinates value.
          real(dp) :: value, likelihood
          type(fcvar_fit_t) :: adjusted
 
@@ -2693,13 +2741,18 @@ contains
    pure function fcvar_bootstrap_hypothesis_from_signs(x, lag_order, rank, &
       bounds, restrictions, signs, options, equal_orders, constrain_b, &
       grid_points, max_iterations) result(out)
-      ! Bootstrap a linear-restriction LR test using supplied wild signs.
-      real(dp), intent(in) :: x(:, :), bounds(2, 2), signs(:, :)
-      integer, intent(in) :: lag_order, rank
-      type(fcvar_restrictions_t), intent(in) :: restrictions
-      type(fcvar_options_t), intent(in), optional :: options
-      logical, intent(in), optional :: equal_orders, constrain_b
-      integer, intent(in), optional :: grid_points, max_iterations
+      !! Bootstrap a linear-restriction LR test using supplied wild signs.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: bounds(2, 2) !! Bounds.
+      real(dp), intent(in) :: signs(:, :) !! Signs.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      type(fcvar_restrictions_t), intent(in) :: restrictions !! Restrictions.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      logical, intent(in), optional :: equal_orders !! Flag controlling equal orders.
+      logical, intent(in), optional :: constrain_b !! Flag controlling constrain b.
+      integer, intent(in), optional :: grid_points !! Grid points.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(fcvar_bootstrap_hypothesis_t) :: out
       type(fcvar_options_t) :: selected
       type(fcvar_restricted_estimation_t) :: estimation
@@ -2762,7 +2815,7 @@ contains
          out%statistic(replication) = estimation%test%statistic
          deallocate(bootstrap_sample)
       end do
-      call sort_real_values(out%statistic)
+      call sort(out%statistic)
       out%exceedances = count(out%statistic > out%observed_statistic)
       out%p_value = real(out%exceedances, dp)/real(replications, dp)
    end function fcvar_bootstrap_hypothesis_from_signs
@@ -2770,13 +2823,18 @@ contains
    function fcvar_bootstrap_hypothesis(x, lag_order, rank, bounds, &
       restrictions, replications, options, equal_orders, constrain_b, &
       grid_points, max_iterations) result(out)
-      ! Draw shared-RNG wild signs and bootstrap a linear-restriction LR test.
-      real(dp), intent(in) :: x(:, :), bounds(2, 2)
-      integer, intent(in) :: lag_order, rank, replications
-      type(fcvar_restrictions_t), intent(in) :: restrictions
-      type(fcvar_options_t), intent(in), optional :: options
-      logical, intent(in), optional :: equal_orders, constrain_b
-      integer, intent(in), optional :: grid_points, max_iterations
+      !! Draw shared-RNG wild signs and bootstrap a linear-restriction LR test.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: bounds(2, 2) !! Bounds.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      integer, intent(in) :: replications !! Replications.
+      type(fcvar_restrictions_t), intent(in) :: restrictions !! Restrictions.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      logical, intent(in), optional :: equal_orders !! Flag controlling equal orders.
+      logical, intent(in), optional :: constrain_b !! Flag controlling constrain b.
+      integer, intent(in), optional :: grid_points !! Grid points.
+      integer, intent(in), optional :: max_iterations !! Maximum number of algorithm iterations.
       type(fcvar_bootstrap_hypothesis_t) :: out
       type(fcvar_options_t) :: selected
       real(dp), allocatable :: signs(:, :)
@@ -2801,29 +2859,13 @@ contains
          max_iterations)
    end function fcvar_bootstrap_hypothesis
 
-   pure function kronecker_product(left, right) result(product)
-      ! Form the Kronecker product of two real matrices.
-      real(dp), intent(in) :: left(:, :), right(:, :)
-      real(dp), allocatable :: product(:, :)
-      integer :: row, column, right_rows, right_columns
-
-      right_rows = size(right, 1)
-      right_columns = size(right, 2)
-      allocate(product(size(left, 1)*right_rows, &
-         size(left, 2)*right_columns))
-      do column = 1, size(left, 2)
-         do row = 1, size(left, 1)
-            product((row - 1)*right_rows + 1:row*right_rows, &
-               (column - 1)*right_columns + 1:column*right_columns) = &
-               left(row, column)*right
-         end do
-      end do
-   end function kronecker_product
-
    pure function switching_covariance(s00, s01, s11, alpha, beta) result(omega)
-      ! Evaluate the concentrated covariance for alpha and beta candidates.
-      real(dp), intent(in) :: s00(:, :), s01(:, :), s11(:, :)
-      real(dp), intent(in) :: alpha(:, :), beta(:, :)
+      !! Evaluate the concentrated covariance for alpha and beta candidates.
+      real(dp), intent(in) :: s00(:, :) !! S00.
+      real(dp), intent(in) :: s01(:, :) !! S01.
+      real(dp), intent(in) :: s11(:, :) !! S11.
+      real(dp), intent(in) :: alpha(:, :) !! Significance, smoothing, or model coefficient.
+      real(dp), intent(in) :: beta(:, :) !! Regression or model coefficients.
       real(dp), allocatable :: omega(:, :)
       real(dp), allocatable :: cross(:, :)
 
@@ -2836,11 +2878,13 @@ contains
 
    pure subroutine constrained_quadratic_projection(unrestricted, weight, &
       matrix, value, adjusted, info)
-      ! Project a quadratic optimum onto affine linear restrictions.
-      real(dp), intent(in) :: unrestricted(:), weight(:, :)
-      real(dp), intent(in) :: matrix(:, :), value(:)
-      real(dp), allocatable, intent(out) :: adjusted(:)
-      integer, intent(out) :: info
+      !! Project a quadratic optimum onto affine linear restrictions.
+      real(dp), intent(in) :: unrestricted(:) !! Unrestricted.
+      real(dp), intent(in) :: weight(:, :) !! Weight.
+      real(dp), intent(in) :: matrix(:, :) !! Input matrix.
+      real(dp), intent(in) :: value(:) !! Input value.
+      real(dp), allocatable, intent(out) :: adjusted(:) !! Adjusted.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: inverse(:, :), gram(:, :), gram_inverse(:, :)
       real(dp) :: tolerance
       integer :: parameters, restrictions_count
@@ -2875,12 +2919,13 @@ contains
 
    pure subroutine build_constraint_system(fit, equal_orders, restrictions, &
       matrix, value, info)
-      ! Map convenient FCVAR restrictions into the packed parameter vector.
-      type(fcvar_fit_t), intent(in) :: fit
-      logical, intent(in) :: equal_orders
-      type(fcvar_restrictions_t), intent(in) :: restrictions
-      real(dp), allocatable, intent(out) :: matrix(:, :), value(:)
-      integer, intent(out) :: info
+      !! Map convenient FCVAR restrictions into the packed parameter vector.
+      type(fcvar_fit_t), intent(in) :: fit !! Previously fitted model.
+      logical, intent(in) :: equal_orders !! Flag controlling equal orders.
+      type(fcvar_restrictions_t), intent(in) :: restrictions !! Restrictions.
+      real(dp), allocatable, intent(out) :: matrix(:, :) !! Input matrix.
+      real(dp), allocatable, intent(out) :: value(:) !! Input value.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       integer :: rows, parameter_count, order_count, alpha_count, beta_rows
       integer :: target, source, restriction, variable, relation, packed
       integer :: level_start, alpha_start, beta_start, rho_start, variables
@@ -3016,8 +3061,8 @@ contains
    end subroutine build_constraint_system
 
    pure logical function all_constraints_finite(restrictions) result(finite)
-      ! Check every allocated restriction matrix and right-hand side.
-      type(fcvar_restrictions_t), intent(in) :: restrictions
+      !! Check every allocated restriction matrix and right-hand side.
+      type(fcvar_restrictions_t), intent(in) :: restrictions !! Restrictions.
 
       finite = .true.
       if (allocated(restrictions%parameter_matrix)) finite = finite .and. &
@@ -3048,10 +3093,14 @@ contains
 
    pure subroutine constraint_geometry(matrix, value, initial, particular, &
       basis, rank, info)
-      ! Project to the affine constraint set and construct its null space.
-      real(dp), intent(in) :: matrix(:, :), value(:), initial(:)
-      real(dp), allocatable, intent(out) :: particular(:), basis(:, :)
-      integer, intent(out) :: rank, info
+      !! Project to the affine constraint set and construct its null space.
+      real(dp), intent(in) :: matrix(:, :) !! Input matrix.
+      real(dp), intent(in) :: value(:) !! Input value.
+      real(dp), intent(in) :: initial(:) !! Initial value.
+      real(dp), allocatable, intent(out) :: particular(:) !! Particular.
+      real(dp), allocatable, intent(out) :: basis(:, :) !! Basis.
+      integer, intent(out) :: rank !! Matrix or cointegration rank.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: gram(:, :), inverse(:, :), cross(:, :)
       real(dp), allocatable :: eigenvalues(:), eigenvectors(:, :)
       real(dp) :: tolerance, residual_tolerance
@@ -3091,11 +3140,14 @@ contains
 
    pure subroutine maximize_equal_order(x, lag_order, rank, bounds, options, &
       best_order, best_likelihood)
-      ! Maximize the likelihood on the equality line d equals b.
-      real(dp), intent(in) :: x(:, :), bounds(2)
-      integer, intent(in) :: lag_order, rank
-      type(fcvar_options_t), intent(in), optional :: options
-      real(dp), intent(out) :: best_order, best_likelihood
+      !! Maximize the likelihood on the equality line d equals b.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: bounds(2) !! Bounds.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      real(dp), intent(out) :: best_order !! Best order.
+      real(dp), intent(out) :: best_likelihood !! Best likelihood.
       real(dp) :: lower, upper, left, right, left_value, right_value, value
       real(dp), parameter :: ratio = 0.6180339887498948482_dp
       integer :: iteration
@@ -3148,12 +3200,16 @@ contains
 
    pure subroutine maximize_b_order(x, lag_order, rank, d, bounds, options, &
       constrained, best_b, best_likelihood)
-      ! Maximize the likelihood over b for a fixed d, including both bounds.
-      real(dp), intent(in) :: x(:, :), d, bounds(2)
-      integer, intent(in) :: lag_order, rank
-      type(fcvar_options_t), intent(in), optional :: options
-      logical, intent(in) :: constrained
-      real(dp), intent(out) :: best_b, best_likelihood
+      !! Maximize the likelihood over b for a fixed d, including both bounds.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: bounds(2) !! Bounds.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      logical, intent(in) :: constrained !! Flag controlling constrained.
+      real(dp), intent(out) :: best_b !! Best b.
+      real(dp), intent(out) :: best_likelihood !! Best likelihood.
       real(dp) :: lower, upper, left, right, left_value, right_value, value
       real(dp), parameter :: ratio = 0.6180339887498948482_dp
       integer :: iteration
@@ -3211,12 +3267,16 @@ contains
 
    pure subroutine maximize_d_order(x, lag_order, rank, b, bounds, options, &
       constrained, best_d, best_likelihood)
-      ! Maximize the likelihood over d for a fixed b, including both bounds.
-      real(dp), intent(in) :: x(:, :), b, bounds(2)
-      integer, intent(in) :: lag_order, rank
-      type(fcvar_options_t), intent(in), optional :: options
-      logical, intent(in) :: constrained
-      real(dp), intent(out) :: best_d, best_likelihood
+      !! Maximize the likelihood over d for a fixed b, including both bounds.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: b !! B.
+      real(dp), intent(in) :: bounds(2) !! Bounds.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      type(fcvar_options_t), intent(in), optional :: options !! Algorithm options.
+      logical, intent(in) :: constrained !! Flag controlling constrained.
+      real(dp), intent(out) :: best_d !! Best d.
+      real(dp), intent(out) :: best_likelihood !! Best likelihood.
       real(dp) :: lower, upper, left, right, left_value, right_value, value
       real(dp), parameter :: ratio = 0.6180339887498948482_dp
       integer :: iteration
@@ -3274,8 +3334,11 @@ contains
 
    pure logical function orders_feasible(orders, matrix, value, tolerance) &
       result(feasible)
-      ! Test an order pair against affine greater-than-or-equal constraints.
-      real(dp), intent(in) :: orders(:), matrix(:, :), value(:), tolerance
+      !! Test an order pair against affine greater-than-or-equal constraints.
+      real(dp), intent(in) :: orders(:) !! Orders.
+      real(dp), intent(in) :: matrix(:, :) !! Input matrix.
+      real(dp), intent(in) :: value(:) !! Input value.
+      real(dp), intent(in) :: tolerance !! Numerical convergence tolerance.
 
       feasible = size(orders) == 2 .and. size(matrix, 2) == 2 .and. &
          size(value) == size(matrix, 1)
@@ -3284,10 +3347,12 @@ contains
    end function orders_feasible
 
    pure subroutine feasible_line_interval(coefficient, value, lower, upper, info)
-      ! Intersect scalar affine inequalities into one closed interval.
-      real(dp), intent(in) :: coefficient(:), value(:)
-      real(dp), intent(out) :: lower, upper
-      integer, intent(out) :: info
+      !! Intersect scalar affine inequalities into one closed interval.
+      real(dp), intent(in) :: coefficient(:) !! Coefficient.
+      real(dp), intent(in) :: value(:) !! Input value.
+      real(dp), intent(out) :: lower !! Lower.
+      real(dp), intent(out) :: upper !! Upper.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp) :: tolerance
       integer :: constraint
 
@@ -3319,11 +3384,14 @@ contains
 
    pure subroutine boundary_line_interval(point, direction, matrix, value, &
       lower, upper, info)
-      ! Find the feasible coordinate interval on an affine boundary line.
-      real(dp), intent(in) :: point(2), direction(2)
-      real(dp), intent(in) :: matrix(:, :), value(:)
-      real(dp), intent(out) :: lower, upper
-      integer, intent(out) :: info
+      !! Find the feasible coordinate interval on an affine boundary line.
+      real(dp), intent(in) :: point(2) !! Point.
+      real(dp), intent(in) :: direction(2) !! Direction.
+      real(dp), intent(in) :: matrix(:, :) !! Input matrix.
+      real(dp), intent(in) :: value(:) !! Input value.
+      real(dp), intent(out) :: lower !! Lower.
+      real(dp), intent(out) :: upper !! Upper.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: coefficient(:), reduced_value(:)
 
       coefficient = matmul(matrix, direction)
@@ -3333,13 +3401,17 @@ contains
 
    pure subroutine maximize_fcvar_order_line(x, lag_order, rank, options, &
       line_lower, line_upper, point, direction, orders, likelihood)
-      ! Maximize the FCVAR likelihood over one closed affine line segment.
-      real(dp), intent(in) :: x(:, :), line_lower, line_upper
-      real(dp), intent(in) :: point(2), direction(2)
-      integer, intent(in) :: lag_order, rank
-      type(fcvar_options_t), intent(in) :: options
-      real(dp), allocatable, intent(out) :: orders(:)
-      real(dp), intent(out) :: likelihood
+      !! Maximize the FCVAR likelihood over one closed affine line segment.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: line_lower !! Line lower.
+      real(dp), intent(in) :: line_upper !! Line upper.
+      real(dp), intent(in) :: point(2) !! Point.
+      real(dp), intent(in) :: direction(2) !! Direction.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      type(fcvar_options_t), intent(in) :: options !! Algorithm options.
+      real(dp), allocatable, intent(out) :: orders(:) !! Orders.
+      real(dp), intent(out) :: likelihood !! Likelihood.
       real(dp) :: left, right, left_value, right_value, lower, upper
       real(dp) :: endpoint_value
       real(dp), parameter :: ratio = 0.6180339887498948482_dp
@@ -3393,10 +3465,14 @@ contains
 
    pure function fcvar_order_line_likelihood(x, lag_order, rank, options, &
       point, direction, coordinate) result(value)
-      ! Evaluate the fixed-order likelihood at one affine-line coordinate.
-      real(dp), intent(in) :: x(:, :), point(2), direction(2), coordinate
-      integer, intent(in) :: lag_order, rank
-      type(fcvar_options_t), intent(in) :: options
+      !! Evaluate the fixed-order likelihood at one affine-line coordinate.
+      real(dp), intent(in) :: x(:, :) !! Input data or predictor values.
+      real(dp), intent(in) :: point(2) !! Point.
+      real(dp), intent(in) :: direction(2) !! Direction.
+      real(dp), intent(in) :: coordinate !! Coordinate.
+      integer, intent(in) :: lag_order !! Model lag order.
+      integer, intent(in) :: rank !! Matrix or cointegration rank.
+      type(fcvar_options_t), intent(in) :: options !! Algorithm options.
       real(dp) :: value
       real(dp) :: orders(2)
 
@@ -3406,9 +3482,9 @@ contains
    end function fcvar_order_line_likelihood
 
    pure function regular_grid(bounds, points) result(grid)
-      ! Construct an equally spaced grid including both bounds.
-      real(dp), intent(in) :: bounds(2)
-      integer, intent(in) :: points
+      !! Construct an equally spaced grid including both bounds.
+      real(dp), intent(in) :: bounds(2) !! Bounds.
+      integer, intent(in) :: points !! Points.
       real(dp), allocatable :: grid(:)
       integer :: index
 
@@ -3421,10 +3497,13 @@ contains
 
    pure subroutine encode_orders(d, b, d_bounds, b_bounds, constrained, &
       coordinates)
-      ! Map bounded fractional orders to unconstrained optimizer coordinates.
-      real(dp), intent(in) :: d, b, d_bounds(2), b_bounds(2)
-      logical, intent(in) :: constrained
-      real(dp), intent(out) :: coordinates(2)
+      !! Map bounded fractional orders to unconstrained optimizer coordinates.
+      real(dp), intent(in) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(in) :: b !! B.
+      real(dp), intent(in) :: d_bounds(2) !! D bounds.
+      real(dp), intent(in) :: b_bounds(2) !! B bounds.
+      logical, intent(in) :: constrained !! Flag controlling constrained.
+      real(dp), intent(out) :: coordinates(2) !! Coordinates.
       real(dp) :: d_fraction, b_fraction, upper_b, tolerance
 
       tolerance = 1.0e-3_dp
@@ -3444,10 +3523,13 @@ contains
 
    pure subroutine decode_orders(coordinates, d_bounds, b_bounds, constrained, &
       d, b)
-      ! Map unconstrained optimizer coordinates into the bounded parameter space.
-      real(dp), intent(in) :: coordinates(:), d_bounds(2), b_bounds(2)
-      logical, intent(in) :: constrained
-      real(dp), intent(out) :: d, b
+      !! Map unconstrained optimizer coordinates into the bounded parameter space.
+      real(dp), intent(in) :: coordinates(:) !! Coordinates.
+      real(dp), intent(in) :: d_bounds(2) !! D bounds.
+      real(dp), intent(in) :: b_bounds(2) !! B bounds.
+      logical, intent(in) :: constrained !! Flag controlling constrained.
+      real(dp), intent(out) :: d !! Fractional-differencing parameter or differencing order.
+      real(dp), intent(out) :: b !! B.
       real(dp) :: d_fraction, b_fraction, upper_b
 
       d_fraction = stable_logistic(coordinates(1))
@@ -3463,8 +3545,8 @@ contains
    end subroutine decode_orders
 
    pure elemental function stable_logistic(value) result(transformed)
-      ! Evaluate a logistic transform without exponential overflow.
-      real(dp), intent(in) :: value
+      !! Evaluate a logistic transform without exponential overflow.
+      real(dp), intent(in) :: value !! Input value.
       real(dp) :: transformed
 
       if (value >= 0.0_dp) then
@@ -3475,10 +3557,10 @@ contains
    end function stable_logistic
 
    pure subroutine covariance_log_determinant(covariance, log_determinant, info)
-      ! Compute a positive-definite covariance log determinant by Cholesky.
-      real(dp), intent(in) :: covariance(:, :)
-      real(dp), intent(out) :: log_determinant
-      integer, intent(out) :: info
+      !! Compute a positive-definite covariance log determinant by Cholesky.
+      real(dp), intent(in) :: covariance(:, :) !! Covariance matrix.
+      real(dp), intent(out) :: log_determinant !! Log determinant.
+      integer, intent(out) :: info !! Status code; zero indicates success.
       real(dp), allocatable :: lower(:, :)
       integer :: index
 

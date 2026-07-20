@@ -1,0 +1,9 @@
+bentcableAR Fortran translation license notice
+
+The algorithms in bentcablear.f90 are translated from the bentcableAR R
+package, version 0.3.1, by Grace Chiu.
+
+The upstream DESCRIPTION licenses bentcableAR under the GNU General Public
+License, version 3 or later. The translated source is distributed under the
+same terms using SPDX identifier GPL-3.0-or-later. The complete GNU GPL
+version 3 text is included in licenses/LICENSE-ARIMA2.

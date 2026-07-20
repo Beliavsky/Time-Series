@@ -1,0 +1,7 @@
+The algorithms in starvars.f90 are translated from version 1.1.10 of the R
+package starvars, authored by Andrea Bucci, Giulio Palomba, Eduardo Rossi, and
+Andrea Faragalli.
+
+The upstream package declares its license as GPL. The translation is therefore
+distributed under GPL-3.0-or-later. The GNU General Public License text is
+available at https://www.gnu.org/licenses/gpl-3.0.txt.

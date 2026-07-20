@@ -3,7 +3,7 @@
 program test_astsa
    use kind_mod, only: dp
    use astsa_mod
-   use time_series_random_mod, only: set_random_seed
+   use random_mod, only: set_random_seed
    implicit none
    real(dp) :: y(6, 2), observation(2, 2, 1), mu0(2), sigma0(2, 2)
    real(dp) :: transition(2, 2), sq(2, 2), sr(2, 2), matrix(2, 2)
@@ -416,9 +416,9 @@ program test_astsa
 contains
 
    subroutine check(ok, name)
-      ! Stop the test program when a named assertion fails.
-      logical, intent(in) :: ok
-      character(len=*), intent(in) :: name
+      !! Stop the test program when a named assertion fails.
+      logical, intent(in) :: ok !! Flag controlling ok.
+      character(len=*), intent(in) :: name !! Name.
       if (.not. ok) then
          print '(a)', 'FAILED: '//name
          error stop 1
