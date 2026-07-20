@@ -2,13 +2,19 @@
 
 [Back to the implemented-package index](../../README.md#implemented-packages).
 
+## Overview
+
 `astsa.f90` translates the
-[astsa](https://cran.r-project.org/web/packages/astsa/index.html) R package. It
-contains astsa-compatible version-1 `Kfilter` and `Ksmooth` adapters,
+[astsa](https://cran.r-project.org/web/packages/astsa/index.html) R package.
+
+## Algorithms and Procedures
+
+It contains astsa-compatible version-1 `Kfilter` and `Ksmooth` adapters,
 polynomial multiplication, ARMA-to-infinite-AR conversion, symmetric matrix
-powers, and FDR cutoff behavior. Version-2 filtering and smoothing support
-contemporaneously correlated state and observation disturbances using the
-shared linear-algebra layer. The translation is licensed under GPL-3.0-only.
+powers, and FDR cutoff behavior.
+
+Version-2 filtering and smoothing support contemporaneously correlated state
+and observation disturbances using the shared linear-algebra layer.
 
 The no-input Gaussian state-space EM estimator reuses `astsa_ksmooth`, exposes
 RTS gains, computes lag-one smoothed covariances, and estimates the transition,
@@ -44,26 +50,32 @@ and AIC, AICc, and BIC.
 
 Conditional SARIMA parameter estimation uses the shared finite-difference BFGS
 optimizer with caller-provided starting values, causal and invertible parameter
-validation, convergence status, and the final likelihood result. The optimizer
-is adapted from the MIT-licensed GARCH-BFGS implementation; its notice is in
-`licenses/LICENSE-BFGS`.
+validation, convergence status, and the final likelihood result.
+
+The optimizer is adapted from the MIT-licensed GARCH-BFGS implementation; its
+notice is in `licenses/LICENSE-BFGS`.
 
 The estimator also supports fixed-parameter masks, intercept and drift terms,
 regression coefficients, a finite-difference Hessian, parameter covariance and
 standard errors, and coefficient-to-standard-error statistics.
 
-Unconstrained optimizer coordinates are mapped through partial
-autocorrelations and the Levinson recursion so estimated AR and seasonal AR
-blocks remain causal and MA blocks remain invertible. Covariances are returned
-on the reported coefficient scale through the transformation Jacobian. The
-transform is disabled when dynamic coefficients are fixed individually.
+Unconstrained optimizer coordinates are mapped through partial autocorrelations
+and the Levinson recursion so estimated AR and seasonal AR blocks remain causal
+and MA blocks remain invertible.
+
+Covariances are returned on the reported coefficient scale through the
+transformation Jacobian.
+
+The transform is disabled when dynamic coefficients are fixed individually.
 
 An optional exact Gaussian likelihood converts ordinary or seasonal ARMA
 polynomials to an innovations-form companion state-space model and initializes
-its covariance from the stationary Lyapunov equation. Ordinary and seasonal
-differencing add explicit integration states with exact diffuse initialization
-through `kfas_mod`. The innovation scale is profiled analytically after the
-diffuse phase.
+its covariance from the stationary Lyapunov equation.
+
+Ordinary and seasonal differencing add explicit integration states with exact
+diffuse initialization through `kfas_mod`.
+
+The innovation scale is profiled analytically after the diffuse phase.
 
 SARIMA forecasting propagates ordinary and seasonal ARMA recursions, reverses
 ordinary and seasonal differencing, continues intercept, drift, and future
@@ -72,8 +84,10 @@ integrated impulse response.
 
 Graphics-independent SARIMA diagnostics provide standardized effective
 residuals, residual autocorrelations, Ljung-Box statistics with fitted-order
-degrees-of-freedom corrections, chi-squared tail probabilities, and normal
-Q-Q coordinates. Conditional and exact diffuse fits share the same interface.
+degrees-of-freedom corrections, chi-squared tail probabilities, and normal Q-Q
+coordinates.
+
+Conditional and exact diffuse fits share the same interface.
 
 The LagReg numerical layer estimates a smoothed frequency-domain transfer
 function, inverts it to two-sided lag coefficients, selects forward or inverse
@@ -85,10 +99,11 @@ ideal low-frequency band-pass response. It returns symmetric two-sided filter
 coefficients, the filtered series with explicit valid endpoints, and desired
 and attained frequency-response arrays.
 
-Stochastic regression implements astsa's multivariate spectral full-versus-
-reduced regression analysis. It returns residual power spectra, two-sided
-frequency-domain regression coefficients, partial F statistics, squared
-coherence, degrees of freedom, and configurable critical values without plots.
+Stochastic regression implements astsa's multivariate spectral
+full-versus-reduced regression analysis. It returns residual power spectra,
+two-sided frequency-domain regression coefficients, partial F statistics,
+squared coherence, degrees of freedom, and configurable critical values without
+plots.
 
 Stochastic-volatility maximum likelihood implements astsa's two-component
 Gaussian-mixture filter, optional return feedback and leverage correlation,
@@ -99,8 +114,9 @@ notice is preserved in `licenses/LICENSE-GARCH-SV`.
 The stochastic-volatility MCMC foundation provides a pure conditional particle
 filter with ancestor sampling, caller-supplied normal and uniform draws,
 normalized particle weights, likelihood estimates, terminal selection, and
-genealogy tracing. A convenience wrapper obtains draws from the shared random
-module.
+genealogy tracing.
+
+A convenience wrapper obtains draws from the shared random module.
 
 The complete stochastic-volatility particle-Gibbs wrapper adds correlated
 random-walk Metropolis updates for persistence and state volatility,
@@ -115,13 +131,17 @@ variances together with Hessian covariance and standard errors.
 
 AR residual bootstrapping reuses the shared Yule-Walker implementation, accepts
 caller-supplied residual indices for pure reproducible operation, and provides
-a shared-RNG wrapper. Results include simulated series, coefficient draws,
-means, and configurable R type-7 quantiles.
+a shared-RNG wrapper.
+
+Results include simulated series, coefficient draws, means, and configurable R
+type-7 quantiles.
 
 Bayesian AR sampling implements astsa's conjugate intercept-plus-lag regression
 with Gaussian coefficient updates and inverse-gamma innovation-variance
-updates. Pure supplied-draw and shared-RNG interfaces return retained posterior
-draws, means, standard deviations, quantiles, and effective sample sizes.
+updates.
+
+Pure supplied-draw and shared-RNG interfaces return retained posterior draws,
+means, standard deviations, quantiles, and effective sample sizes.
 
 AR spectral information-criterion selection evaluates all Yule-Walker orders
 through a configurable maximum, returns relative AIC and BIC tables, and builds
@@ -131,3 +151,7 @@ detrending.
 The frequency-domain linearity test computes block DFTs, normalized bispectral
 coefficients, astsa's nonlinearity statistic matrix, an estimated
 noncentrality, and noncentral chi-squared p-values without contour plotting.
+
+## Licensing
+
+The translation is licensed under GPL-3.0-only.
