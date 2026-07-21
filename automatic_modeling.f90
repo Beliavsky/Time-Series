@@ -1212,7 +1212,8 @@ contains
    end subroutine display_series_profile
 
    subroutine display_automatic_model_result(result, display_lags, &
-      print_parameters, max_models, print_all_ar, print_all_arma)
+      print_parameters, max_models, print_all_ar, print_all_arma, &
+      max_forecasts)
       !! Display a profile, ranked candidates, and selected-model forecasts.
       type(automatic_model_result_t), intent(in) :: result !! Automatic modeling result.
       integer, intent(in), optional :: display_lags !! Maximum positive lag to print.
@@ -1220,7 +1221,8 @@ contains
       integer, intent(in), optional :: max_models !! Maximum candidate summaries, or zero for all.
       logical, intent(in), optional :: print_all_ar !! Print every tested AR order.
       logical, intent(in), optional :: print_all_arma !! Print every tested ARMA order.
-      integer :: display_count, i
+      integer, intent(in), optional :: max_forecasts !! Maximum forecasts, with zero suppressing them.
+      integer :: display_count, forecast_count, i
       logical :: show_all_ar, show_all_arma, show_parameters
 
       show_parameters = .false.
@@ -1274,10 +1276,18 @@ contains
       if (result%profile%conditional_variance_detected) then
          write(*, '(a)') "Variance note: squared-value dependence suggests a conditional variance model."
       end if
-      write(*, '(a)') "Forecasts"
-      do i = 1, size(result%forecast)
-         write(*, '(2x,i5,2x,es16.8)') i, result%forecast(i)
-      end do
+      forecast_count = size(result%forecast)
+      if (present(max_forecasts)) then
+         if (max_forecasts >= 0) then
+            forecast_count = min(max_forecasts, forecast_count)
+         end if
+      end if
+      if (forecast_count > 0) then
+         write(*, '(a)') "Forecasts"
+         do i = 1, forecast_count
+            write(*, '(2x,i5,2x,es16.8)') i, result%forecast(i)
+         end do
+      end if
    end subroutine display_automatic_model_result
 
    subroutine display_order_search(result, model_code, print_parameters)
