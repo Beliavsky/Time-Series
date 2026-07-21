@@ -23,6 +23,7 @@ add_library(time_series STATIC
    rolling_forecast.f90
    time_series_var_utils.f90
    forecast.f90
+   automatic_modeling.f90
    kfas.f90
    urca.f90
    astsa.f90
@@ -79,6 +80,7 @@ add_library(time_series STATIC
    rugarch.f90
    rugarch_extensions.f90
    rugarch_diagnostics.f90
+   automatic_volatility.f90
    arma.f90
    long_memory.f90
    state_space.f90
@@ -105,14 +107,17 @@ target_include_directories(time_series PUBLIC
 add_executable(example_var2_fit examples/var2_fit.f90)
 target_link_libraries(example_var2_fit PRIVATE time_series)
 
+add_executable(ts_auto ts_auto.f90)
+target_link_libraries(ts_auto PRIVATE time_series)
+
 include(CTest)
 if(BUILD_TESTING)
    foreach(test_name IN ITEMS
-      forecast kfas urca astsa random mixture calendar spline neural_network itsmr arima2 arfima fracdiff fracdist
+      forecast automatic_modeling kfas urca astsa random mixture calendar spline neural_network itsmr arima2 arfima fracdiff fracdist
       nsarfima garma esemifar tfarima robustarima mts bayesforecast bsts bssm
       tsss tsissm mar fcvar
       bigtime bigvar varshrink vars var_etp bvartools bvar bvars bvarsv gmvarkit ugmar
-      mswm nts tsdyn expar exparma bentcablear baystar mixar setartree tseriestarma gmdh nnfor narfima nlints tslstmplus tsann echos starvars distribution rugarch facades
+      mswm nts tsdyn expar exparma bentcablear baystar mixar setartree tseriestarma gmdh nnfor narfima nlints tslstmplus tsann echos starvars distribution rugarch automatic_volatility facades
    )
       add_executable(test_${test_name} test_${test_name}.f90)
       target_link_libraries(test_${test_name} PRIVATE time_series)

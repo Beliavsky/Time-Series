@@ -275,6 +275,93 @@ Package-specific notices and license texts are retained under `licenses/`.
 
 ## Build
 
+With GNU Make and `gfortran`:
+
+```sh
+make -j4
+make examples
+make test
+```
+
+The static library, module files, tests, and examples are written under
+`build-make`. Generate the FORD documentation with `make docs`, and remove GNU
+Make artifacts with `make clean` or `make distclean`. The committed Makefile
+does not require CMake or Python. Maintainers should run
+`python tools/generate_makefile.py` after changing the library source list or
+Fortran module dependencies.
+
+Run automatic univariate profiling, model comparison, and forecasting with:
+
+```sh
+build-make/bin/ts_auto data.csv --frequency 12 --horizon 24
+```
+
+The input file may contain one numeric series per line or comma-separated
+numeric columns with an optional header and leading index column such as a
+date. Each numeric column is analyzed independently and identified by its
+header. The program reports level and squared-value autocorrelations, trend and
+seasonal indicators, model rankings, the selected model, and its forecasts. Holdout
+forecast validation is the default. Use `--selection aicc` or `--selection bic`
+to fit and compare candidates on the full data set using Gaussian innovation
+information criteria. Use `--observations N`, or its `--obs N` alias, to read
+only the first `N` valid numeric observations. The correlation table displays
+five positive lags by default; use `--display-lags N` to change that limit.
+Use `--print-parameters` to include fitted parameters for every candidate.
+The shorter `--print-param` and `--param` spellings are equivalent.
+Stationary dependent series also receive a Gaussian ARMA candidate selected
+over a bounded autoregressive and moving-average order grid. Large samples use
+fast Hannan-Rissanen coefficient estimates with conditional likelihood scoring;
+samples of at most 2,000 observations use exact maximum-likelihood estimation.
+The command reports total elapsed wall-clock time after the forecasts.
+Use `--time-fits` to report full-data and validation fit times for each
+candidate.
+Use `--max-models N` to limit printed model summaries without changing the
+models fitted, ranked, or retained in the result; zero displays all candidates.
+Use `--print-all-ar` or `--print-all-arma` to inspect every order tested within
+those model classes. Combine either option with `--param` to include the
+coefficients for every successful order fit.
+Use `--transform log`, `--transform diff`, or `--transform log-diff` to model a
+transformed series; `--log`, `--diff`, and `--log-diff` are equivalent aliases.
+Forecasts are restored to the original observation scale. Logarithmic forecasts
+are back-transformed by exponentiation and therefore represent median forecasts
+without a lognormal bias correction.
+Use `--print-forecasts N` to limit the number of forecasts displayed without
+changing the fitted forecast horizon; zero suppresses the forecast section.
+Use `--stride 1 5 20` to run separate analyses retaining every observation,
+every fifth observation, and every twentieth observation. Striding is applied
+after the `--observations` input limit and before transformation. Each strided
+series starts with the first input observation, and `--frequency` describes the
+already-strided series. Striding can alias high-frequency behavior and is not
+equivalent to temporal aggregation.
+Use `--corr` to print the correlation matrix of the transformed numeric columns
+for each requested stride before the individual univariate analyses.
+Use `--resample` to analyze one IID bootstrap sample of the transformed rows,
+or `--resample N` for `N` successive bootstrap samples. All columns use the
+same sampled row indices, preserving contemporaneous relationships while
+removing temporal dependence. The original data are not analyzed when this
+option is present. Use `--seed N` to reproduce the samples; the default seed is
+12345.
+Use `--target volatility` to compare Gaussian constant variance, Gaussian
+ARCH(1), Gaussian GARCH(1,1), and Student-t GARCH(1,1) candidates instead of
+conditional-mean models. Validation uses Gaussian QLIKE loss, while `aicc` and
+`bic` use the fitted likelihood criteria. Forecasts are conditional standard
+deviations on the transformed-series scale and are not inverse-transformed.
+
+An independent R reference driver accepts the same options and uses the
+`forecast` and `rugarch` R packages:
+
+```sh
+Rscript tools/ts_auto_reference.R data.csv --diff --selection aicc
+```
+
+Install its dependencies with
+`install.packages(c("forecast", "rugarch"))`. The script supports the same
+multicolumn, stride, transformation, resampling, correlation, mean-model, and
+volatility-model workflows for numerical checks and timing comparisons. R and
+Fortran random-number streams differ even when given the same seed.
+
+Alternatively, build with CMake and Ninja:
+
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_Fortran_COMPILER=gfortran
 cmake --build build
@@ -284,7 +371,7 @@ ctest --test-dir build --output-on-failure
 Run the VAR(2) simulation and fitting example with:
 
 ```sh
-./build/example_var2_fit
+./build-make/bin/example_var2_fit
 ```
 
 The translated source packages use GPL licenses. Redistribution of derived code

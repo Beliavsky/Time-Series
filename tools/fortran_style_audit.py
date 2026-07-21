@@ -407,6 +407,13 @@ def cmake_findings(root: Path, sources: Sequence[Path]) -> list[Finding]:
     listed_sources = set(re.findall(r"\b([a-z0-9_]+\.f(?:90|95|03|08|or)?)\b", library_match.group("body"), re.IGNORECASE)) if library_match else set()
     test_match = re.search(r"foreach\s*\(\s*test_name\s+IN\s+ITEMS(?P<body>.*?)\)", text, re.IGNORECASE | re.DOTALL)
     listed_tests = set(re.findall(r"\b[a-z][a-z0-9_]*\b", test_match.group("body"), re.IGNORECASE)) if test_match else set()
+    listed_executable_sources = set(
+        re.findall(
+            r"add_executable\s*\(\s*[a-z0-9_]+\s+([a-z0-9_./-]+\.f(?:90|95|03|08|or)?)",
+            text,
+            re.IGNORECASE,
+        )
+    )
     for source in sources:
         if source.parent != root:
             continue
@@ -415,6 +422,8 @@ def cmake_findings(root: Path, sources: Sequence[Path]) -> list[Finding]:
             test_name = source.stem[5:].lower()
             if test_name not in {item.lower() for item in listed_tests}:
                 findings.append(Finding("CMakeLists.txt", 1, "error", "C001", f"test {name} is not in the test list"))
+        elif name in {Path(item).name.lower() for item in listed_executable_sources}:
+            continue
         elif name not in {item.lower() for item in listed_sources}:
             findings.append(Finding("CMakeLists.txt", 1, "error", "C002", f"source {name} is not in time_series"))
     root_sources = [

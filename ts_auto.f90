@@ -4,7 +4,10 @@ program ts_auto
    !! Read a numeric series, profile it, compare models, and forecast it.
    use kind_mod, only: dp
    use automatic_modeling_mod, only: automatic_model_options_t, &
-      automatic_model_result_t, automatic_model, display
+      automatic_model_result_t, automatic_model, display_mean => display
+   use automatic_volatility_mod, only: automatic_volatility_options_t, &
+      automatic_volatility_result_t, automatic_volatility, &
+      display_volatility => display
    use stats_mod, only: correlation_matrix
    use random_mod, only: random_uniform, set_random_seed
    use resampling_mod, only: resample
@@ -41,10 +44,13 @@ program ts_auto
 
    type(automatic_model_options_t) :: options
    type(automatic_model_result_t) :: result
+   type(automatic_volatility_options_t) :: volatility_options
+   type(automatic_volatility_result_t) :: volatility_result
    type(table_read_t) :: input
    type(numeric_result_t) :: modeled, restored, sampled
    character(len=256) :: option_error
    character(len=16) :: transformation
+   character(len=16) :: target
    character(len=1024) :: path
    integer :: clock_end, clock_max, clock_rate, clock_start
    integer :: display_lags, maximum_forecasts, maximum_models
@@ -69,7 +75,7 @@ program ts_auto
    call parse_options(options, maximum_observations, display_lags, &
       maximum_models, print_parameters, print_all_ar, print_all_arma, &
       print_correlations, maximum_forecasts, strides, transformation, &
-      resample_count, seed, status, option_error)
+      target, resample_count, seed, status, option_error)
    if (status /= 0) then
       write(error_unit, '(a)') trim(option_error)
       call print_usage()
@@ -90,6 +96,11 @@ program ts_auto
       write(*, '(a,i0,a)') "Input truncated at the requested limit of ", &
          maximum_observations, " observations."
    end if
+   write(*, '(a,a)') "Modeling target: ", trim(target)
+   volatility_options%horizon = options%horizon
+   volatility_options%validation_size = options%validation_size
+   volatility_options%time_fits = options%time_fits
+   volatility_options%selection = options%selection
    allocate(bootstrap_plans(size(strides)))
    if (resample_count > 0) then
       call initialize_bootstrap_plans(size(input%values, 1), strides, &
@@ -138,30 +149,40 @@ program ts_auto
             write(*, '(a,a)') "Transformation: ", &
                transformation_label(transformation)
             write(*, '(a,i0)') "Modeling observations: ", size(modeled%values)
-            write(*, '(a)') "Forecast scale: original observations"
-            if (transformation == "log" .or. &
-               transformation == "log-diff") then
-               write(*, '(a)') &
-                  "Back-transformed log forecasts are median forecasts on the original scale."
-            end if
-            result = automatic_model(modeled%values, options)
-            if (result%info == 0) then
-               restored = restore_forecasts(result%forecast, sampled%values, &
-                  transformation)
-               if (restored%info /= 0) then
-                  write(error_unit, '(a,i0,a)') "Stride ", &
-                     strides(stride_index), &
-                     ": unable to restore forecasts to the original data scale."
-                  overall_status = 1
-                  cycle
+            if (trim(target) == "mean") then
+               write(*, '(a)') "Forecast scale: original observations"
+               if (transformation == "log" .or. &
+                  transformation == "log-diff") then
+                  write(*, '(a)') &
+                     "Back-transformed log forecasts are median forecasts on the original scale."
                end if
-               result%forecast = restored%values
+               result = automatic_model(modeled%values, options)
+               if (result%info == 0) then
+                  restored = restore_forecasts(result%forecast, &
+                     sampled%values, transformation)
+                  if (restored%info /= 0) then
+                     write(error_unit, '(a,i0,a)') "Stride ", &
+                        strides(stride_index), &
+                        ": unable to restore forecasts to the original data scale."
+                     overall_status = 1
+                     cycle
+                  end if
+                  result%forecast = restored%values
+               else
+                  overall_status = 1
+               end if
+               call display_mean(result, display_lags, print_parameters, &
+                  maximum_models, print_all_ar, print_all_arma, &
+                  maximum_forecasts)
             else
-               overall_status = 1
+               write(*, '(a)') &
+                  "Forecast scale: transformed-series conditional standard deviation"
+               volatility_result = automatic_volatility(modeled%values, &
+                  volatility_options)
+               if (volatility_result%info /= 0) overall_status = 1
+               call display_volatility(volatility_result, print_parameters, &
+                  maximum_models, maximum_forecasts)
             end if
-            call display(result, display_lags, print_parameters, &
-               maximum_models, print_all_ar, print_all_arma, &
-               maximum_forecasts)
          end do
       end do
    end do
@@ -199,7 +220,7 @@ contains
    subroutine parse_options(options, maximum_observations, display_lags, &
       maximum_models, print_parameters, print_all_ar, print_all_arma, &
       print_correlations, maximum_forecasts, strides, transformation, &
-      resample_count, seed, info, error_message)
+      target, resample_count, seed, info, error_message)
       !! Parse command-line settings following the input path.
       type(automatic_model_options_t), intent(out) :: options !! Parsed modeling options.
       integer, intent(out) :: maximum_observations !! Maximum valid input values, or zero for all.
@@ -212,6 +233,7 @@ contains
       integer, intent(out) :: maximum_forecasts !! Maximum forecasts printed.
       integer, allocatable, intent(out) :: strides(:) !! Positive sampling strides.
       character(len=*), intent(out) :: transformation !! Requested input transformation.
+      character(len=*), intent(out) :: target !! Mean or volatility modeling target.
       integer, intent(out) :: resample_count !! Number of IID bootstrap replicates.
       integer, intent(out) :: seed !! Random-number seed for bootstrap sampling.
       integer, intent(out) :: info !! Zero on successful parsing.
@@ -231,6 +253,7 @@ contains
       print_all_arma = .false.
       print_correlations = .false.
       transformation = "none"
+      target = "mean"
       resample_count = 0
       seed = 12345
       transformation_set = .false.
@@ -357,6 +380,16 @@ contains
                lower_ascii(trim(value)), info, error_message)
             if (info /= 0) return
             read_status = 0
+         case ("--target")
+            target = lower_ascii(trim(value))
+            if (trim(target) /= "mean" .and. &
+               trim(target) /= "volatility") then
+               info = 15
+               error_message = "Invalid target: " // trim(value) // &
+                  ". Expected mean or volatility."
+               return
+            end if
+            read_status = 0
          case ("--observations", "--obs")
             read(value, *, iostat=read_status) maximum_observations
          case ("--display-lags")
@@ -429,7 +462,7 @@ contains
       case ("--frequency", "--horizon", "--max-lag", "--max-ar", &
          "--validation", "--selection", "--observations", "--obs", &
          "--display-lags", "--max-models", "--print-forecasts", &
-         "--transform", "--seed")
+         "--transform", "--target", "--seed")
          required = .true.
       case default
          required = .false.
@@ -983,6 +1016,7 @@ contains
       write(*, '(a)') "  --max-ar N       maximum autoregressive order (default 12)"
       write(*, '(a)') "  --validation N   held-out tail length (default automatic)"
       write(*, '(a)') "  --selection NAME validation, aicc, or bic (default validation)"
+      write(*, '(a)') "  --target NAME    mean or volatility (default mean)"
       write(*, '(a)') "  --print-parameters print fitted parameters for every candidate"
       write(*, '(a)') "  --print-param     alias for --print-parameters"
       write(*, '(a)') "  --param           alias for --print-parameters"
